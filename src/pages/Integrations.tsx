@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { PageLayout } from '../components/Layout';
-import { theme } from '../styles/theme';
 import {
   CheckCircle,
   Circle,
@@ -17,6 +16,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
+import { Card, CardContent } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 
 interface Integration {
   id: string;
@@ -144,145 +145,46 @@ const Integrations: React.FC = () => {
     alert(`Opening settings for ${integrations.find((i) => i.id === id)?.name}...`);
   };
 
-  const cardStyle: React.CSSProperties = {
-    background: theme.colors.cardBgSolid,
-    borderRadius: theme.borderRadius['2xl'],
-    border: theme.colors.cardBorder,
-    padding: theme.spacing['2xl'],
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing.lg,
-    transition: `all ${theme.transitions.normal}`,
-    position: 'relative',
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    padding: `${theme.spacing.md} ${theme.spacing.xl}`,
-    background: theme.colors.gradient,
-    border: 'none',
-    borderRadius: theme.borderRadius.lg,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer',
-    transition: `all ${theme.transitions.normal}`,
-  };
-
   // Empty state when no integrations are connected
   if (connectedCount === 0) {
     return (
       <PageLayout title="Integrations" subtitle="Connect your favorite tools and services">
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: theme.spacing['3xl'],
-            textAlign: 'center',
-          }}
-        >
-          <div
-            style={{
-              width: '120px',
-              height: '120px',
-              borderRadius: theme.borderRadius.full,
-              background: theme.colors.primaryLight,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: theme.spacing['2xl'],
-            }}
-          >
-            <Puzzle size={48} color={theme.colors.primary} />
+        <div className="flex flex-col items-center justify-center p-10 text-center">
+          <div className="w-[120px] h-[120px] rounded-full bg-primary/15 flex items-center justify-center mb-8">
+            <Puzzle size={48} className="text-primary" />
           </div>
-          <h2
-            style={{
-              fontSize: theme.fontSize['3xl'],
-              fontWeight: theme.fontWeight.bold,
-              marginBottom: theme.spacing.lg,
-            }}
-          >
+          <h2 className="text-2xl font-bold text-foreground mb-4">
             No Integrations Connected
           </h2>
-          <p
-            style={{
-              fontSize: theme.fontSize.lg,
-              color: theme.colors.textSecondary,
-              marginBottom: theme.spacing['2xl'],
-              maxWidth: '500px',
-            }}
-          >
+          <p className="text-lg text-muted-foreground mb-8 max-w-[500px]">
             Connect your first integration to start syncing data and unlock the full power of your
             Business Command Center.
           </p>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: theme.spacing.md,
-              color: theme.colors.accent,
-              fontSize: theme.fontSize.base,
-            }}
-          >
+          <div className="flex items-center gap-3 text-accent text-sm">
             <Zap size={18} />
             <span>Choose from 8 popular integrations below</span>
           </div>
         </div>
 
         {/* Integration Cards */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            gap: theme.spacing.xl,
-            marginTop: theme.spacing['2xl'],
-          }}
-        >
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-6 mt-8">
           {integrations.map((integration) => (
-            <div key={integration.id} style={cardStyle}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: theme.spacing.lg }}>
-                <div
-                  style={{
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: theme.borderRadius.xl,
-                    background: theme.colors.dark,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '24px',
-                  }}
-                >
-                  {integration.icon}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
-                    <h3
-                      style={{
-                        fontSize: theme.fontSize.lg,
-                        fontWeight: theme.fontWeight.semibold,
-                      }}
-                    >
-                      {integration.name}
-                    </h3>
+            <Card key={integration.id} className="glass border-border/50">
+              <CardContent className="pt-6 flex flex-col gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-2xl">
+                    {integration.icon}
                   </div>
-                  <p
-                    style={{
-                      fontSize: theme.fontSize.sm,
-                      color: theme.colors.textSecondary,
-                      marginTop: theme.spacing.xs,
-                    }}
-                  >
-                    {integration.description}
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-foreground">{integration.name}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">{integration.description}</p>
+                  </div>
                 </div>
-              </div>
-
-              <button style={buttonStyle} onClick={() => handleConnect(integration.id)}>
-                Connect
-              </button>
-            </div>
+                <Button onClick={() => handleConnect(integration.id)}>
+                  Connect
+                </Button>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </PageLayout>
@@ -292,245 +194,116 @@ const Integrations: React.FC = () => {
   return (
     <PageLayout title="Integrations" subtitle="Connect your favorite tools and services">
       {/* Stats Bar */}
-      <div
-        style={{
-          display: 'flex',
-          gap: theme.spacing.xl,
-          marginBottom: theme.spacing['2xl'],
-        }}
-      >
-        <div
-          style={{
-            background: theme.colors.cardBgSolid,
-            borderRadius: theme.borderRadius.xl,
-            border: theme.colors.cardBorder,
-            padding: theme.spacing.xl,
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.lg,
-          }}
-        >
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: theme.borderRadius.lg,
-              background: theme.colors.successLight,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <CheckCircle size={20} color={theme.colors.success} />
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: theme.fontSize['2xl'],
-                fontWeight: theme.fontWeight.bold,
-              }}
-            >
-              {connectedCount}
+      <div className="flex gap-6 mb-8">
+        <Card className="glass border-border/50">
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-success/15 flex items-center justify-center">
+              <CheckCircle size={20} className="text-success" />
             </div>
-            <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-              Connected
+            <div>
+              <div className="text-2xl font-bold text-foreground">{connectedCount}</div>
+              <div className="text-sm text-muted-foreground">Connected</div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div
-          style={{
-            background: theme.colors.cardBgSolid,
-            borderRadius: theme.borderRadius.xl,
-            border: theme.colors.cardBorder,
-            padding: theme.spacing.xl,
-            display: 'flex',
-            alignItems: 'center',
-            gap: theme.spacing.lg,
-          }}
-        >
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: theme.borderRadius.lg,
-              background: theme.colors.mutedLight,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Circle size={20} color={theme.colors.muted} />
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: theme.fontSize['2xl'],
-                fontWeight: theme.fontWeight.bold,
-              }}
-            >
-              {integrations.length - connectedCount}
+        <Card className="glass border-border/50">
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+              <Circle size={20} className="text-muted-foreground" />
             </div>
-            <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-              Available
+            <div>
+              <div className="text-2xl font-bold text-foreground">
+                {integrations.length - connectedCount}
+              </div>
+              <div className="text-sm text-muted-foreground">Available</div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Integration Cards Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: theme.spacing.xl,
-        }}
-      >
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-6">
         {integrations.map((integration) => (
-          <div
-            key={integration.id}
-            style={{
-              ...cardStyle,
-              borderColor: integration.connected ? theme.colors.successBorder : undefined,
-            }}
+          <Card 
+            key={integration.id} 
+            className={`glass ${integration.connected ? 'border-success/30' : 'border-border/50'}`}
           >
-            {/* Integration Header */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: theme.spacing.lg }}>
-              <div
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: theme.borderRadius.xl,
-                  background: theme.colors.dark,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '28px',
-                }}
-              >
-                {integration.icon}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
-                  <h3
-                    style={{
-                      fontSize: theme.fontSize.xl,
-                      fontWeight: theme.fontWeight.semibold,
-                    }}
-                  >
-                    {integration.name}
-                  </h3>
-                  <span
-                    style={{
-                      padding: `${theme.spacing.xs} ${theme.spacing.md}`,
-                      background: integration.connected
-                        ? theme.colors.successLight
-                        : theme.colors.mutedLight,
-                      border: `1px solid ${
-                        integration.connected ? theme.colors.successBorder : theme.colors.mutedBorder
-                      }`,
-                      borderRadius: theme.borderRadius.md,
-                      color: integration.connected ? theme.colors.success : theme.colors.muted,
-                      fontSize: theme.fontSize.xs,
-                      fontWeight: theme.fontWeight.semibold,
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    {integration.connected ? 'Connected' : 'Not Connected'}
-                  </span>
+            <CardContent className="pt-6 flex flex-col gap-4">
+              {/* Integration Header */}
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 rounded-xl bg-muted flex items-center justify-center text-3xl">
+                  {integration.icon}
                 </div>
-                <p
-                  style={{
-                    fontSize: theme.fontSize.base,
-                    color: theme.colors.textSecondary,
-                    marginTop: theme.spacing.xs,
-                  }}
-                >
-                  {integration.description}
-                </p>
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-xl font-semibold text-foreground">{integration.name}</h3>
+                    <span
+                      className={`px-2 py-1 text-xs font-semibold uppercase rounded ${
+                        integration.connected
+                          ? 'bg-success/15 text-success border border-success/30'
+                          : 'bg-muted text-muted-foreground border border-border'
+                      }`}
+                    >
+                      {integration.connected ? 'Connected' : 'Not Connected'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">{integration.description}</p>
+                </div>
               </div>
-            </div>
 
-            {/* Last Synced */}
-            {integration.connected && integration.lastSynced && (
-              <div
-                style={{
-                  fontSize: theme.fontSize.sm,
-                  color: theme.colors.textMuted,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                }}
-              >
-                <RefreshCw size={14} />
-                Last synced: {integration.lastSynced}
-              </div>
-            )}
-
-            {/* Action Button */}
-            <div style={{ marginTop: 'auto' }}>
-              {integration.connected ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      style={{
-                        width: '100%',
-                        padding: `${theme.spacing.md} ${theme.spacing.xl}`,
-                        background: theme.colors.dark,
-                        border: `1px solid ${theme.colors.mutedBorder}`,
-                        borderRadius: theme.borderRadius.lg,
-                        color: theme.colors.text,
-                        fontSize: theme.fontSize.base,
-                        fontWeight: theme.fontWeight.medium,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: theme.spacing.sm,
-                      }}
-                    >
-                      Manage
-                      <ChevronDown size={16} />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="bg-slate-800 border-slate-700" align="end">
-                    <DropdownMenuItem
-                      className="text-white hover:bg-slate-700 cursor-pointer"
-                      onClick={() => handleSync(integration.id)}
-                      disabled={syncing === integration.id}
-                    >
-                      <RefreshCw
-                        size={16}
-                        className={`mr-2 ${syncing === integration.id ? 'animate-spin' : ''}`}
-                      />
-                      {syncing === integration.id ? 'Syncing...' : 'Sync Now'}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-white hover:bg-slate-700 cursor-pointer"
-                      onClick={() => handleViewSettings(integration.id)}
-                    >
-                      <Settings size={16} className="mr-2" />
-                      View Settings
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-red-400 hover:bg-slate-700 hover:text-red-300 cursor-pointer"
-                      onClick={() => handleDisconnect(integration.id)}
-                    >
-                      <Unlink size={16} className="mr-2" />
-                      Disconnect
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <button
-                  style={buttonStyle}
-                  onClick={() => handleConnect(integration.id)}
-                >
-                  Connect
-                </button>
+              {/* Last Synced */}
+              {integration.connected && integration.lastSynced && (
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <RefreshCw size={14} />
+                  Last synced: {integration.lastSynced}
+                </div>
               )}
-            </div>
-          </div>
+
+              {/* Action Button */}
+              <div className="mt-auto">
+                {integration.connected ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="w-full">
+                        Manage
+                        <ChevronDown size={16} className="ml-2" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => handleSync(integration.id)}
+                        disabled={syncing === integration.id}
+                      >
+                        <RefreshCw
+                          size={14}
+                          className={syncing === integration.id ? 'animate-spin' : ''}
+                        />
+                        <span className="ml-2">
+                          {syncing === integration.id ? 'Syncing...' : 'Sync Now'}
+                        </span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleViewSettings(integration.id)}>
+                        <Settings size={14} />
+                        <span className="ml-2">Settings</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleDisconnect(integration.id)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Unlink size={14} />
+                        <span className="ml-2">Disconnect</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <Button onClick={() => handleConnect(integration.id)} className="w-full">
+                    Connect
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </PageLayout>

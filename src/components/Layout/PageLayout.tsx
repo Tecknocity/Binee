@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, Settings, CreditCard, LogOut, LayoutDashboard, Puzzle } from 'lucide-react';
-import { theme } from '../../styles/theme';
+import { cn } from '@/lib/utils';
 
 interface PageLayoutProps {
   children: React.ReactNode;
@@ -49,121 +49,41 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
   }, [showUserMenu]);
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: theme.colors.bg,
-        color: theme.colors.text,
-        fontFamily: 'system-ui, sans-serif',
-      }}
-    >
+    <div className="min-h-screen bg-background text-foreground font-sans">
       {/* Header */}
-      <header
-        style={{
-          background: theme.colors.headerBg,
-          borderBottom: theme.colors.headerBorder,
-          padding: `1.25rem ${theme.spacing['3xl']}`,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xl }}>
+      <header className="bg-background/95 backdrop-blur-sm border-b border-border/50 px-8 py-5">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-6">
             {showBackButton && (
               <button
                 onClick={() => navigate('/')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                  background: 'transparent',
-                  border: `1px solid ${theme.colors.mutedBorder}`,
-                  borderRadius: theme.borderRadius.lg,
-                  color: theme.colors.textSecondary,
-                  fontSize: theme.fontSize.base,
-                  cursor: 'pointer',
-                  transition: `all ${theme.transitions.normal}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = theme.colors.dark;
-                  e.currentTarget.style.color = theme.colors.text;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = theme.colors.textSecondary;
-                }}
+                className="flex items-center gap-2 px-3 py-2 bg-transparent border border-border rounded-lg text-muted-foreground text-sm cursor-pointer transition-all hover:bg-muted hover:text-foreground"
               >
                 <ArrowLeft size={16} />
                 Dashboard
               </button>
             )}
             <div>
-              <h1
-                style={{
-                  fontSize: theme.fontSize['4xl'],
-                  fontWeight: theme.fontWeight.bold,
-                  background: theme.colors.gradient,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  marginBottom: theme.spacing.xs,
-                }}
-              >
-                {title}
-              </h1>
+              <h1 className="text-2xl font-bold gradient-text mb-1">{title}</h1>
               {subtitle && (
-                <p style={{ color: theme.colors.textSecondary, fontSize: theme.fontSize.base }}>
-                  {subtitle}
-                </p>
+                <p className="text-muted-foreground text-sm">{subtitle}</p>
               )}
             </div>
           </div>
 
           {/* Navigation and User Menu */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.lg }}>
-            <nav style={{ display: 'flex', gap: theme.spacing.sm }}>
+          <div className="flex items-center gap-4">
+            <nav className="flex gap-2">
               <Link
                 to="/"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                  background: 'transparent',
-                  border: 'none',
-                  borderRadius: theme.borderRadius.lg,
-                  color: theme.colors.textSecondary,
-                  fontSize: theme.fontSize.base,
-                  fontWeight: theme.fontWeight.medium,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  transition: `all ${theme.transitions.normal}`,
-                }}
+                className="flex items-center gap-2 px-4 py-2 bg-transparent border-none rounded-lg text-muted-foreground text-sm font-medium no-underline cursor-pointer transition-all hover:bg-muted hover:text-foreground"
               >
                 <LayoutDashboard size={16} />
                 Dashboard
               </Link>
               <Link
                 to="/integrations"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                  background: 'transparent',
-                  border: 'none',
-                  borderRadius: theme.borderRadius.lg,
-                  color: theme.colors.textSecondary,
-                  fontSize: theme.fontSize.base,
-                  fontWeight: theme.fontWeight.medium,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  transition: `all ${theme.transitions.normal}`,
-                }}
+                className="flex items-center gap-2 px-4 py-2 bg-transparent border-none rounded-lg text-muted-foreground text-sm font-medium no-underline cursor-pointer transition-all hover:bg-muted hover:text-foreground"
               >
                 <Puzzle size={16} />
                 Integrations
@@ -171,74 +91,34 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
             </nav>
 
             {/* User Menu */}
-            <div style={{ position: 'relative' }}>
+            <div className="relative">
               <button
                 ref={buttonRef}
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 aria-expanded={showUserMenu}
                 aria-haspopup="true"
                 aria-label="Account menu"
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: theme.borderRadius.full,
-                  background: theme.colors.gradient,
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+                className="w-10 h-10 rounded-full gradient-primary border-none cursor-pointer flex items-center justify-center"
               >
-                <User size={18} color={theme.colors.text} />
+                <User size={18} className="text-primary-foreground" />
               </button>
 
               {showUserMenu && (
                 <div
                   ref={menuRef}
                   role="menu"
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    right: 0,
-                    marginTop: theme.spacing.sm,
-                    width: '220px',
-                    background: theme.colors.darkSolid,
-                    borderRadius: theme.borderRadius.xl,
-                    border: `1px solid ${theme.colors.mutedBorder}`,
-                    boxShadow: theme.shadows.dropdown,
-                    zIndex: 1000,
-                    overflow: 'hidden',
-                  }}
+                  className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden"
                 >
-                  <div
-                    style={{
-                      padding: theme.spacing.lg,
-                      borderBottom: `1px solid ${theme.colors.mutedBorder}`,
-                    }}
-                  >
-                    <div style={{ fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>
-                      John Doe
-                    </div>
-                    <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-                      john@company.com
-                    </div>
+                  <div className="p-4 border-b border-border">
+                    <div className="font-semibold text-foreground">John Doe</div>
+                    <div className="text-sm text-muted-foreground">john@company.com</div>
                   </div>
 
                   <Link
                     to="/profile"
                     role="menuitem"
                     onClick={() => setShowUserMenu(false)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.md,
-                      padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                      color: theme.colors.text,
-                      fontSize: theme.fontSize.base,
-                      textDecoration: 'none',
-                      cursor: 'pointer',
-                    }}
+                    className="flex items-center gap-3 px-4 py-3 text-foreground text-sm no-underline cursor-pointer hover:bg-muted transition-colors"
                   >
                     <User size={16} /> Profile
                   </Link>
@@ -247,16 +127,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                     to="/settings"
                     role="menuitem"
                     onClick={() => setShowUserMenu(false)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.md,
-                      padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                      color: theme.colors.text,
-                      fontSize: theme.fontSize.base,
-                      textDecoration: 'none',
-                      cursor: 'pointer',
-                    }}
+                    className="flex items-center gap-3 px-4 py-3 text-foreground text-sm no-underline cursor-pointer hover:bg-muted transition-colors"
                   >
                     <Settings size={16} /> Settings
                   </Link>
@@ -265,16 +136,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                     to="/billing"
                     role="menuitem"
                     onClick={() => setShowUserMenu(false)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.md,
-                      padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                      color: theme.colors.text,
-                      fontSize: theme.fontSize.base,
-                      textDecoration: 'none',
-                      cursor: 'pointer',
-                    }}
+                    className="flex items-center gap-3 px-4 py-3 text-foreground text-sm no-underline cursor-pointer hover:bg-muted transition-colors"
                   >
                     <CreditCard size={16} /> Billing
                   </Link>
@@ -285,20 +147,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
                       setShowUserMenu(false);
                       alert('Logging out...');
                     }}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: theme.spacing.md,
-                      padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                      background: 'transparent',
-                      border: 'none',
-                      borderTop: `1px solid ${theme.colors.mutedBorder}`,
-                      textAlign: 'left',
-                      color: theme.colors.danger,
-                      fontSize: theme.fontSize.base,
-                      cursor: 'pointer',
-                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-transparent border-t border-border text-left text-destructive text-sm cursor-pointer hover:bg-muted transition-colors"
                   >
                     <LogOut size={16} /> Sign Out
                   </button>
@@ -310,7 +159,7 @@ export const PageLayout: React.FC<PageLayoutProps> = ({
       </header>
 
       {/* Main Content */}
-      <main style={{ padding: theme.spacing['3xl'] }}>{children}</main>
+      <main className="p-8">{children}</main>
     </div>
   );
 };

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef } from 'react';
 import { PageLayout } from '../components/Layout';
 import { useTheme } from 'next-themes';
+import { useSettings } from '../hooks/useSettings';
 import {
   User,
   Lock,
@@ -15,6 +16,8 @@ import {
   Sun,
   Moon,
   Monitor,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { Switch } from '../components/ui/switch';
 import { Input } from '../components/ui/input';
@@ -42,68 +45,21 @@ import { Button } from '../components/ui/button';
 
 type SettingsSection = 'profile' | 'brand' | 'security' | 'notifications' | 'appearance' | 'privacy';
 
-interface NotificationSettings {
-  emailWeeklyDigest: boolean;
-  emailAlerts: boolean;
-  emailProductUpdates: boolean;
-  inAppTaskReminders: boolean;
-  inAppSyncAlerts: boolean;
-  inAppGoalUpdates: boolean;
-}
-
-interface BrandSettings {
-  name: string;
-  tagline: string;
-  website: string;
-  supportEmail: string;
-  primaryColor: string;
-  secondaryColor: string;
-}
-
 const Settings: React.FC = () => {
   const { theme: currentTheme, setTheme } = useTheme();
-  const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
-  const [isEditing, setIsEditing] = useState(false);
-  const [isBrandEditing, setIsBrandEditing] = useState(false);
+  const [activeSection, setActiveSection] = React.useState<SettingsSection>('profile');
+  const { settings, isSaving, updateProfile, updateBrand, updateNotifications, updateAppearance } = useSettings();
 
-  // Profile state
-  const [profile, setProfile] = useState({
-    name: 'John Doe',
-    email: 'john@company.com',
-    timezone: 'America/New_York',
-    avatar: null as string | null,
-  });
+  // File upload refs
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // Brand state
-  const [brand, setBrand] = useState<BrandSettings>({
-    name: 'Binee',
-    tagline: 'AI-powered business intelligence',
-    website: 'https://binee.lovable.app',
-    supportEmail: 'support@binee.app',
-    primaryColor: '258 90% 66%',
-    secondaryColor: '24 95% 53%',
-  });
-
-  // Security state
-  const [passwords, setPasswords] = useState({
+  // Password state (not auto-saved)
+  const [passwords, setPasswords] = React.useState({
     current: '',
     new: '',
     confirm: '',
   });
-
-  // Notification settings
-  const [notifications, setNotifications] = useState<NotificationSettings>({
-    emailWeeklyDigest: true,
-    emailAlerts: true,
-    emailProductUpdates: false,
-    inAppTaskReminders: true,
-    inAppSyncAlerts: true,
-    inAppGoalUpdates: true,
-  });
-
-  // Appearance settings
-  const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
-  const [defaultTab, setDefaultTab] = useState('overview');
 
   const sections = [
     { id: 'profile' as const, label: 'Profile', icon: User },
@@ -135,14 +91,15 @@ const Settings: React.FC = () => {
     { value: 'suggestions', label: 'Suggestions' },
   ];
 
-  const handleSaveProfile = () => {
-    setIsEditing(false);
-    alert('Profile saved successfully!');
-  };
-
-  const handleSaveBrand = () => {
-    setIsBrandEditing(false);
-    alert('Brand settings saved successfully!');
+  const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        updateProfile({ avatar: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleChangePassword = () => {
@@ -166,6 +123,22 @@ const Settings: React.FC = () => {
     alert('Account deletion requested. This action cannot be undone.');
   };
 
+  const SaveIndicator = () => (
+    <div className="fixed bottom-6 right-6 flex items-center gap-2 bg-card border border-border rounded-lg px-4 py-2 shadow-lg animate-fade-in">
+      {isSaving ? (
+        <>
+          <Loader2 size={16} className="animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Saving...</span>
+        </>
+      ) : (
+        <>
+          <Check size={16} className="text-success" />
+          <span className="text-sm text-muted-foreground">Saved</span>
+        </>
+      )}
+    </div>
+  );
+
   const renderProfileSection = () => (
     <div className="space-y-6">
       <div>
@@ -178,10 +151,27 @@ const Settings: React.FC = () => {
           {/* Avatar Upload */}
           <div className="flex items-center gap-6 mb-8">
             <div className="relative">
-              <div className="w-20 h-20 rounded-full gradient-primary flex items-center justify-center">
-                <User size={32} className="text-primary-foreground" />
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+                className="hidden"
+              />
+              <div 
+                className="w-20 h-20 rounded-full gradient-primary flex items-center justify-center overflow-hidden cursor-pointer"
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                {settings.profile.avatar ? (
+                  <img src={settings.profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <User size={32} className="text-primary-foreground" />
+                )}
               </div>
-              <button className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-card border-2 border-primary flex items-center justify-center hover:bg-muted transition-colors">
+              <button 
+                onClick={() => avatarInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-card border-2 border-primary flex items-center justify-center hover:bg-muted transition-colors"
+              >
                 <Camera size={14} className="text-primary" />
               </button>
             </div>
@@ -191,16 +181,15 @@ const Settings: React.FC = () => {
             </div>
           </div>
 
-          {/* Form Fields */}
+          {/* Form Fields - Auto-save on change */}
           <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="name">Full Name</Label>
               <Input
                 id="name"
                 type="text"
-                value={profile.name}
-                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                disabled={!isEditing}
+                value={settings.profile.name}
+                onChange={(e) => updateProfile({ name: e.target.value })}
                 className="bg-muted/50 border-border"
               />
             </div>
@@ -210,9 +199,8 @@ const Settings: React.FC = () => {
               <Input
                 id="email"
                 type="email"
-                value={profile.email}
-                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                disabled={!isEditing}
+                value={settings.profile.email}
+                onChange={(e) => updateProfile({ email: e.target.value })}
                 className="bg-muted/50 border-border"
               />
             </div>
@@ -220,9 +208,8 @@ const Settings: React.FC = () => {
             <div className="space-y-2">
               <Label htmlFor="timezone">Timezone</Label>
               <Select
-                value={profile.timezone}
-                onValueChange={(value) => setProfile({ ...profile, timezone: value })}
-                disabled={!isEditing}
+                value={settings.profile.timezone}
+                onValueChange={(value) => updateProfile({ timezone: value })}
               >
                 <SelectTrigger className="bg-muted/50 border-border">
                   <SelectValue placeholder="Select timezone" />
@@ -235,17 +222,6 @@ const Settings: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              {isEditing ? (
-                <>
-                  <Button onClick={handleSaveProfile}>Save Changes</Button>
-                  <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
-                </>
-              ) : (
-                <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
-              )}
             </div>
           </div>
         </CardContent>
@@ -274,9 +250,8 @@ const Settings: React.FC = () => {
             <Input
               id="brandName"
               type="text"
-              value={brand.name}
-              onChange={(e) => setBrand({ ...brand, name: e.target.value })}
-              disabled={!isBrandEditing}
+              value={settings.brand.name}
+              onChange={(e) => updateBrand({ name: e.target.value })}
               className="bg-muted/50 border-border"
             />
           </div>
@@ -286,9 +261,8 @@ const Settings: React.FC = () => {
             <Input
               id="tagline"
               type="text"
-              value={brand.tagline}
-              onChange={(e) => setBrand({ ...brand, tagline: e.target.value })}
-              disabled={!isBrandEditing}
+              value={settings.brand.tagline}
+              onChange={(e) => updateBrand({ tagline: e.target.value })}
               className="bg-muted/50 border-border"
             />
           </div>
@@ -301,9 +275,8 @@ const Settings: React.FC = () => {
             <Input
               id="website"
               type="url"
-              value={brand.website}
-              onChange={(e) => setBrand({ ...brand, website: e.target.value })}
-              disabled={!isBrandEditing}
+              value={settings.brand.website}
+              onChange={(e) => updateBrand({ website: e.target.value })}
               className="bg-muted/50 border-border"
             />
           </div>
@@ -316,9 +289,8 @@ const Settings: React.FC = () => {
             <Input
               id="supportEmail"
               type="email"
-              value={brand.supportEmail}
-              onChange={(e) => setBrand({ ...brand, supportEmail: e.target.value })}
-              disabled={!isBrandEditing}
+              value={settings.brand.supportEmail}
+              onChange={(e) => updateBrand({ supportEmail: e.target.value })}
               className="bg-muted/50 border-border"
             />
           </div>
@@ -327,73 +299,26 @@ const Settings: React.FC = () => {
 
       <Card className="glass border-border/50">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Palette size={20} className="text-primary" />
-            Brand Colors
-          </CardTitle>
-          <CardDescription>Define your brand's color palette (HSL format)</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="primaryColor">Primary Color</Label>
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-lg border border-border"
-                  style={{ backgroundColor: `hsl(${brand.primaryColor})` }}
-                />
-                <Input
-                  id="primaryColor"
-                  type="text"
-                  value={brand.primaryColor}
-                  onChange={(e) => setBrand({ ...brand, primaryColor: e.target.value })}
-                  disabled={!isBrandEditing}
-                  placeholder="258 90% 66%"
-                  className="bg-muted/50 border-border flex-1"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="secondaryColor">Accent Color</Label>
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-lg border border-border"
-                  style={{ backgroundColor: `hsl(${brand.secondaryColor})` }}
-                />
-                <Input
-                  id="secondaryColor"
-                  type="text"
-                  value={brand.secondaryColor}
-                  onChange={(e) => setBrand({ ...brand, secondaryColor: e.target.value })}
-                  disabled={!isBrandEditing}
-                  placeholder="24 95% 53%"
-                  className="bg-muted/50 border-border flex-1"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            {isBrandEditing ? (
-              <>
-                <Button onClick={handleSaveBrand}>Save Brand Settings</Button>
-                <Button variant="outline" onClick={() => setIsBrandEditing(false)}>Cancel</Button>
-              </>
-            ) : (
-              <Button onClick={() => setIsBrandEditing(true)}>Edit Brand</Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="glass border-border/50">
-        <CardHeader>
           <CardTitle className="text-lg">Logo Upload</CardTitle>
-          <CardDescription>Upload your brand logo (coming soon)</CardDescription>
+          <CardDescription>Upload your brand logo</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="border-2 border-dashed border-border rounded-xl p-8 text-center">
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                alert(`Logo "${file.name}" selected! In production, this would be uploaded to storage.`);
+              }
+            }}
+            className="hidden"
+          />
+          <div 
+            onClick={() => logoInputRef.current?.click()}
+            className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-all"
+          >
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
               <Camera size={24} className="text-muted-foreground" />
             </div>
@@ -498,8 +423,8 @@ const Settings: React.FC = () => {
               <div className="text-sm text-muted-foreground">Receive a weekly summary of your dashboard activity</div>
             </div>
             <Switch
-              checked={notifications.emailWeeklyDigest}
-              onCheckedChange={(checked) => setNotifications({ ...notifications, emailWeeklyDigest: checked })}
+              checked={settings.notifications.emailWeeklyDigest}
+              onCheckedChange={(checked) => updateNotifications({ emailWeeklyDigest: checked })}
             />
           </div>
 
@@ -509,8 +434,8 @@ const Settings: React.FC = () => {
               <div className="text-sm text-muted-foreground">Get notified about important issues and updates</div>
             </div>
             <Switch
-              checked={notifications.emailAlerts}
-              onCheckedChange={(checked) => setNotifications({ ...notifications, emailAlerts: checked })}
+              checked={settings.notifications.emailAlerts}
+              onCheckedChange={(checked) => updateNotifications({ emailAlerts: checked })}
             />
           </div>
 
@@ -520,8 +445,8 @@ const Settings: React.FC = () => {
               <div className="text-sm text-muted-foreground">Learn about new features and improvements</div>
             </div>
             <Switch
-              checked={notifications.emailProductUpdates}
-              onCheckedChange={(checked) => setNotifications({ ...notifications, emailProductUpdates: checked })}
+              checked={settings.notifications.emailProductUpdates}
+              onCheckedChange={(checked) => updateNotifications({ emailProductUpdates: checked })}
             />
           </div>
         </CardContent>
@@ -538,8 +463,8 @@ const Settings: React.FC = () => {
               <div className="text-sm text-muted-foreground">Get reminded about upcoming and overdue tasks</div>
             </div>
             <Switch
-              checked={notifications.inAppTaskReminders}
-              onCheckedChange={(checked) => setNotifications({ ...notifications, inAppTaskReminders: checked })}
+              checked={settings.notifications.inAppTaskReminders}
+              onCheckedChange={(checked) => updateNotifications({ inAppTaskReminders: checked })}
             />
           </div>
 
@@ -549,8 +474,8 @@ const Settings: React.FC = () => {
               <div className="text-sm text-muted-foreground">Be notified when integrations sync or encounter issues</div>
             </div>
             <Switch
-              checked={notifications.inAppSyncAlerts}
-              onCheckedChange={(checked) => setNotifications({ ...notifications, inAppSyncAlerts: checked })}
+              checked={settings.notifications.inAppSyncAlerts}
+              onCheckedChange={(checked) => updateNotifications({ inAppSyncAlerts: checked })}
             />
           </div>
 
@@ -560,8 +485,8 @@ const Settings: React.FC = () => {
               <div className="text-sm text-muted-foreground">Track progress towards your goals</div>
             </div>
             <Switch
-              checked={notifications.inAppGoalUpdates}
-              onCheckedChange={(checked) => setNotifications({ ...notifications, inAppGoalUpdates: checked })}
+              checked={settings.notifications.inAppGoalUpdates}
+              onCheckedChange={(checked) => updateNotifications({ inAppGoalUpdates: checked })}
             />
           </div>
         </CardContent>
@@ -622,7 +547,7 @@ const Settings: React.FC = () => {
               }`}
             >
               <div className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center mx-auto mb-3">
-                <Monitor size={24} className="text-foreground" />
+                <Monitor size={24} className="text-primary-foreground" />
               </div>
               <div className="font-semibold text-foreground">System</div>
               <div className="text-xs text-muted-foreground">Match device</div>
@@ -639,9 +564,9 @@ const Settings: React.FC = () => {
         <CardContent>
           <div className="grid grid-cols-2 gap-4">
             <button
-              onClick={() => setDensity('comfortable')}
+              onClick={() => updateAppearance({ density: 'comfortable' })}
               className={`p-4 rounded-xl border-2 transition-all ${
-                density === 'comfortable'
+                settings.appearance.density === 'comfortable'
                   ? 'border-primary bg-primary/10'
                   : 'border-border hover:border-primary/50'
               }`}
@@ -651,9 +576,9 @@ const Settings: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setDensity('compact')}
+              onClick={() => updateAppearance({ density: 'compact' })}
               className={`p-4 rounded-xl border-2 transition-all ${
-                density === 'compact'
+                settings.appearance.density === 'compact'
                   ? 'border-primary bg-primary/10'
                   : 'border-border hover:border-primary/50'
               }`}
@@ -671,7 +596,10 @@ const Settings: React.FC = () => {
           <CardDescription>Choose which tab opens first</CardDescription>
         </CardHeader>
         <CardContent>
-          <Select value={defaultTab} onValueChange={setDefaultTab}>
+          <Select 
+            value={settings.appearance.defaultTab} 
+            onValueChange={(value) => updateAppearance({ defaultTab: value })}
+          >
             <SelectTrigger className="bg-muted/50 border-border">
               <SelectValue placeholder="Select default tab" />
             </SelectTrigger>
@@ -801,6 +729,8 @@ const Settings: React.FC = () => {
           {renderContent()}
         </div>
       </div>
+      
+      <SaveIndicator />
     </PageLayout>
   );
 };
