@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { User, Settings, LogOut, CreditCard, Puzzle } from 'lucide-react';
+import { User, Settings, LogOut, CreditCard, Puzzle, RefreshCw, Database } from 'lucide-react';
 import { ViewMode } from '../../types/dashboard';
-import { theme } from '../../styles/theme';
+import { cn } from '@/lib/utils';
 
 interface HeaderProps {
   viewMode: ViewMode;
@@ -41,119 +41,137 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [handleClickOutside, handleEscapeKey]);
 
-  const menuItemStyle: React.CSSProperties = {
-    width: '100%',
-    padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-    background: 'transparent',
-    border: 'none',
-    textAlign: 'left',
-    color: theme.colors.text,
-    fontSize: theme.fontSize.base,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    textDecoration: 'none',
-  };
-
   return (
-    <header style={{ background: theme.colors.headerBg, borderBottom: theme.colors.headerBorder, padding: `1.75rem ${theme.spacing['3xl']}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ fontSize: theme.fontSize['5xl'], fontWeight: theme.fontWeight.bold, background: theme.colors.gradient, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: theme.spacing.xs }}>
-            Business Command Center
-          </h1>
-          <p style={{ color: theme.colors.textSecondary, fontSize: theme.fontSize.md }}>AI-powered business intelligence</p>
+    <header className="glass-strong sticky top-0 z-50 border-b border-primary/20 px-8 py-6">
+      <div className="flex justify-between items-center max-w-[1800px] mx-auto">
+        {/* Logo and Title */}
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-glow-sm">
+            <span className="text-white font-bold text-lg">B</span>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold gradient-text">
+              Business Command Center
+            </h1>
+            <p className="text-muted-foreground text-sm mt-0.5">AI-powered business intelligence</p>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.lg }}>
-          {/* Navigation Links */}
-          <nav style={{ display: 'flex', gap: theme.spacing.sm }}>
-            <Link
-              to="/integrations"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
-                background: 'transparent',
-                border: `1px solid ${theme.colors.mutedBorder}`,
-                borderRadius: theme.borderRadius.lg,
-                color: theme.colors.textSecondary,
-                fontSize: theme.fontSize.base,
-                fontWeight: theme.fontWeight.medium,
-                textDecoration: 'none',
-                cursor: 'pointer',
-                transition: `all ${theme.transitions.normal}`,
-              }}
-            >
-              <Puzzle size={16} />
-              Integrations
-            </Link>
-          </nav>
 
-          <button onClick={onMappingClick} style={{ padding: '0.65rem 1.25rem', background: theme.colors.infoLight, border: `1px solid ${theme.colors.infoBorder}`, color: theme.colors.info, borderRadius: theme.borderRadius.xl, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>
+        {/* Actions */}
+        <div className="flex items-center gap-3">
+          {/* Navigation Links */}
+          <Link
+            to="/integrations"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all duration-200 text-sm font-medium"
+          >
+            <Puzzle size={16} />
+            Integrations
+          </Link>
+
+          <button 
+            onClick={onMappingClick} 
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-info/10 border border-info/30 text-info hover:bg-info/20 transition-all duration-200 text-sm font-medium"
+          >
+            <Database size={16} />
             Data Mapping
           </button>
-          <button onClick={onRefreshClick} style={{ padding: '0.65rem 1.25rem', background: theme.colors.gradient, border: 'none', color: theme.colors.text, borderRadius: theme.borderRadius.xl, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>
+
+          <button 
+            onClick={onRefreshClick} 
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl gradient-primary text-white hover:opacity-90 transition-all duration-200 text-sm font-semibold shadow-glow-sm hover:shadow-glow"
+          >
+            <RefreshCw size={16} />
             Refresh Data
           </button>
-          <div style={{ display: 'flex', background: theme.colors.dark, borderRadius: theme.borderRadius.xl, padding: '0.35rem' }}>
-            <button onClick={() => onViewModeChange('company')} style={{ padding: '0.65rem 1.25rem', background: viewMode === 'company' ? theme.colors.gradient : 'transparent', color: viewMode === 'company' ? theme.colors.text : theme.colors.textSecondary, border: 'none', borderRadius: theme.borderRadius.lg, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>
+
+          {/* View Mode Toggle */}
+          <div className="flex bg-secondary/50 rounded-xl p-1 ml-2">
+            <button 
+              onClick={() => onViewModeChange('company')} 
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                viewMode === 'company' 
+                  ? "gradient-primary text-white shadow-glow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
               Company View
             </button>
-            <button onClick={() => onViewModeChange('binee')} style={{ padding: '0.65rem 1.25rem', background: viewMode === 'binee' ? theme.colors.gradient : 'transparent', color: viewMode === 'binee' ? theme.colors.text : theme.colors.textSecondary, border: 'none', borderRadius: theme.borderRadius.lg, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>
+            <button 
+              onClick={() => onViewModeChange('binee')} 
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                viewMode === 'binee' 
+                  ? "gradient-primary text-white shadow-glow-sm" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
               Binee View
             </button>
           </div>
-          <div style={{ position: 'relative' }}>
-            <button ref={accountButtonRef} onClick={() => onAccountMenuToggle(!showAccountMenu)} aria-expanded={showAccountMenu} aria-haspopup="true" aria-label="Account menu" style={{ width: '44px', height: '44px', borderRadius: theme.borderRadius.full, background: theme.colors.gradient, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <User size={20} color={theme.colors.text} />
+
+          {/* Account Menu */}
+          <div className="relative ml-2">
+            <button 
+              ref={accountButtonRef} 
+              onClick={() => onAccountMenuToggle(!showAccountMenu)} 
+              aria-expanded={showAccountMenu} 
+              aria-haspopup="true" 
+              aria-label="Account menu" 
+              className="w-11 h-11 rounded-full gradient-primary flex items-center justify-center transition-all duration-200 hover:shadow-glow hover:scale-105"
+            >
+              <User size={20} className="text-white" />
             </button>
+
             {showAccountMenu && (
-              <div ref={accountMenuRef} role="menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: theme.spacing.sm, width: '240px', background: theme.colors.darkSolid, borderRadius: theme.borderRadius.xl, border: `1px solid ${theme.colors.mutedBorder}`, boxShadow: theme.shadows.dropdown, zIndex: 1000, overflow: 'hidden' }}>
-                <div style={{ padding: theme.spacing.lg, borderBottom: `1px solid ${theme.colors.mutedBorder}` }}>
-                  <div style={{ fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>John Doe</div>
-                  <div style={{ fontSize: theme.fontSize.base, color: theme.colors.textSecondary }}>john@company.com</div>
+              <div 
+                ref={accountMenuRef} 
+                role="menu" 
+                className="absolute top-full right-0 mt-2 w-60 bg-card rounded-xl border border-border shadow-card animate-scale-in overflow-hidden"
+              >
+                <div className="px-4 py-3 border-b border-border bg-secondary/30">
+                  <div className="font-semibold text-foreground">John Doe</div>
+                  <div className="text-sm text-muted-foreground">john@company.com</div>
                 </div>
 
-                <Link
-                  to="/profile"
-                  role="menuitem"
-                  onClick={() => onAccountMenuToggle(false)}
-                  style={menuItemStyle}
-                >
-                  <User size={16} /> Profile
-                </Link>
+                <div className="py-1">
+                  <Link
+                    to="/profile"
+                    role="menuitem"
+                    onClick={() => onAccountMenuToggle(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-foreground hover:bg-secondary/50 transition-colors text-sm"
+                  >
+                    <User size={16} className="text-muted-foreground" /> Profile
+                  </Link>
 
-                <Link
-                  to="/settings"
-                  role="menuitem"
-                  onClick={() => onAccountMenuToggle(false)}
-                  style={menuItemStyle}
-                >
-                  <Settings size={16} /> Settings
-                </Link>
+                  <Link
+                    to="/settings"
+                    role="menuitem"
+                    onClick={() => onAccountMenuToggle(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-foreground hover:bg-secondary/50 transition-colors text-sm"
+                  >
+                    <Settings size={16} className="text-muted-foreground" /> Settings
+                  </Link>
 
-                <Link
-                  to="/billing"
-                  role="menuitem"
-                  onClick={() => onAccountMenuToggle(false)}
-                  style={menuItemStyle}
-                >
-                  <CreditCard size={16} /> Billing
-                </Link>
+                  <Link
+                    to="/billing"
+                    role="menuitem"
+                    onClick={() => onAccountMenuToggle(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-foreground hover:bg-secondary/50 transition-colors text-sm"
+                  >
+                    <CreditCard size={16} className="text-muted-foreground" /> Billing
+                  </Link>
+                </div>
 
-                <button
-                  role="menuitem"
-                  onClick={() => { onLogout(); onAccountMenuToggle(false); }}
-                  style={{
-                    ...menuItemStyle,
-                    color: theme.colors.danger,
-                    borderTop: `1px solid ${theme.colors.mutedBorder}`
-                  }}
-                >
-                  <LogOut size={16} /> Sign Out
-                </button>
+                <div className="border-t border-border py-1">
+                  <button
+                    role="menuitem"
+                    onClick={() => { onLogout(); onAccountMenuToggle(false); }}
+                    className="flex items-center gap-3 px-4 py-2.5 text-destructive hover:bg-destructive/10 transition-colors text-sm w-full"
+                  >
+                    <LogOut size={16} /> Sign Out
+                  </button>
+                </div>
               </div>
             )}
           </div>

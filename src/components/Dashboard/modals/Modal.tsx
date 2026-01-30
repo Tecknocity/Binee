@@ -1,6 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
-import { theme } from '../../../styles/theme';
 
 interface ModalProps {
   isOpen: boolean;
@@ -29,16 +28,44 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
   if (!isOpen) return null;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} onClick={onClose} />
-      <div style={{ position: 'relative', width, maxWidth: '90vw', maxHeight: '85vh', background: theme.colors.darkSolid, borderRadius: theme.borderRadius['2xl'], border: `1px solid ${theme.colors.mutedBorder}`, boxShadow: theme.shadows.dropdown, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: theme.spacing['xl'], borderBottom: `1px solid ${theme.colors.mutedBorder}` }}>
-          <h2 id="modal-title" style={{ fontSize: theme.fontSize['3xl'], fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>{title}</h2>
-          <button onClick={onClose} aria-label="Close modal" style={{ width: '36px', height: '36px', borderRadius: theme.borderRadius.md, background: 'transparent', border: `1px solid ${theme.colors.mutedBorder}`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.colors.textSecondary }}>
+    <div 
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+      role="dialog" 
+      aria-modal="true" 
+      aria-labelledby="modal-title"
+    >
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-fade-in" 
+        onClick={onClose} 
+      />
+      
+      {/* Modal Content */}
+      <div 
+        className="relative bg-card rounded-2xl border border-border shadow-card max-w-[90vw] max-h-[85vh] overflow-hidden flex flex-col animate-scale-in"
+        style={{ width }}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center px-6 py-4 border-b border-border bg-secondary/20">
+          <h2 
+            id="modal-title" 
+            className="text-xl font-semibold text-foreground"
+          >
+            {title}
+          </h2>
+          <button 
+            onClick={onClose} 
+            aria-label="Close modal" 
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+          >
             <X size={18} />
           </button>
         </div>
-        <div style={{ padding: theme.spacing['xl'], overflowY: 'auto' }}>{children}</div>
+        
+        {/* Body */}
+        <div className="p-6 overflow-y-auto custom-scrollbar">
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 import React from 'react';
 import { Briefcase } from 'lucide-react';
 import { MockData, WidgetId } from '../../../types/dashboard';
-import { theme } from '../../../styles/theme';
 import { WidgetWrapper } from '../WidgetWrapper';
 import { ProjectHealth } from '../widgets/ProjectHealth';
 import { TeamPerformance } from '../widgets/TeamPerformance';
@@ -16,18 +15,25 @@ interface OperationsTabProps {
 
 export const OperationsTab: React.FC<OperationsTabProps> = ({ data, overviewWidgets, onToggleWidget }) => {
   return (
-    <div role="tabpanel" id="operations-panel" aria-labelledby="operations-tab" style={{ display: 'grid', gap: theme.spacing['2xl'] }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
-        <Briefcase size={28} color={theme.colors.accent} />
+    <div role="tabpanel" id="operations-panel" aria-labelledby="operations-tab" className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-accent/15 flex items-center justify-center">
+          <Briefcase size={24} className="text-accent" />
+        </div>
         <div>
-          <h2 style={{ fontSize: theme.fontSize['4xl'], fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>Operations & Team</h2>
-          <p style={{ fontSize: theme.fontSize.base, color: theme.colors.textSecondary, marginTop: theme.spacing.xs }}>Project health, team performance, and capacity utilization</p>
+          <h2 className="text-2xl font-bold text-foreground">Operations & Team</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Project health, team performance, and capacity utilization</p>
         </div>
       </div>
+
+      {/* Project Health */}
       <WidgetWrapper widgetId="projectHealth" overviewWidgets={overviewWidgets} activeTab="operations" onToggle={onToggleWidget}>
         <ProjectHealth projects={data.projects} />
       </WidgetWrapper>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing['xl'] }}>
+
+      {/* Team Performance + Task Completion */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <WidgetWrapper widgetId="teamPerformance" overviewWidgets={overviewWidgets} activeTab="operations" onToggle={onToggleWidget}>
           <TeamPerformance data={data.teamPerformance} />
         </WidgetWrapper>
@@ -35,6 +41,8 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({ data, overviewWidg
           <TaskCompletionTrend data={data.taskCompletionTrend} />
         </WidgetWrapper>
       </div>
+
+      {/* Capacity Utilization */}
       <WidgetWrapper widgetId="teamCapacityUtilization" overviewWidgets={overviewWidgets} activeTab="operations" onToggle={onToggleWidget}>
         <TeamCapacityUtilization data={data.teamCapacityUtilization} />
       </WidgetWrapper>

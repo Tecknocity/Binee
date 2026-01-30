@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal } from './Modal';
-import { theme } from '../../../styles/theme';
+import { Settings, Bell, Puzzle, Shield } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,43 +10,75 @@ interface SettingsModalProps {
 
 type SettingsTab = 'general' | 'notifications' | 'integrations' | 'security';
 
-const TABS: { id: SettingsTab; label: string }[] = [
-  { id: 'general', label: 'General' },
-  { id: 'notifications', label: 'Notifications' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'security', label: 'Security' },
+const TABS: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
+  { id: 'general', label: 'General', icon: Settings },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'integrations', label: 'Integrations', icon: Puzzle },
+  { id: 'security', label: 'Security', icon: Shield },
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
+  const inputClass = "w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Settings" width="700px">
-      <div style={{ display: 'flex', gap: theme.spacing['2xl'] }}>
-        <div style={{ width: '180px', flexShrink: 0, borderRight: `1px solid ${theme.colors.mutedBorder}`, paddingRight: theme.spacing['xl'] }}>
-          {TABS.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ width: '100%', padding: `${theme.spacing.md} ${theme.spacing.lg}`, marginBottom: theme.spacing.sm, background: activeTab === tab.id ? theme.colors.primaryLight : 'transparent', border: 'none', borderRadius: theme.borderRadius.md, textAlign: 'left', color: activeTab === tab.id ? theme.colors.primary : theme.colors.textSecondary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium, cursor: 'pointer', transition: `all ${theme.transitions.normal}` }}>{tab.label}</button>
-          ))}
+      <div className="flex gap-6">
+        {/* Sidebar */}
+        <div className="w-48 flex-shrink-0 border-r border-border pr-4">
+          <div className="space-y-1">
+            {TABS.map((tab) => (
+              <button 
+                key={tab.id} 
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
+                  activeTab === tab.id 
+                    ? "bg-primary/15 text-primary" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                )}
+              >
+                <tab.icon size={16} />
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div style={{ flex: 1 }}>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
           {activeTab === 'general' && (
-            <div>
-              <h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, color: theme.colors.text, marginBottom: theme.spacing['xl'] }}>General Settings</h3>
-              <div style={{ marginBottom: theme.spacing['xl'] }}>
-                <label style={{ display: 'block', fontSize: theme.fontSize.base, color: theme.colors.textSecondary, marginBottom: theme.spacing.sm }}>Company Name</label>
-                <input type="text" defaultValue="Acme Corporation" style={{ width: '100%', padding: theme.spacing.md, background: theme.colors.cardInner, border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.md, color: theme.colors.text, fontSize: theme.fontSize.base }} />
+            <div className="space-y-5">
+              <h3 className="text-lg font-semibold text-foreground">General Settings</h3>
+              
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                  Company Name
+                </label>
+                <input 
+                  type="text" 
+                  defaultValue="Acme Corporation"
+                  className={inputClass}
+                />
               </div>
-              <div style={{ marginBottom: theme.spacing['xl'] }}>
-                <label style={{ display: 'block', fontSize: theme.fontSize.base, color: theme.colors.textSecondary, marginBottom: theme.spacing.sm }}>Timezone</label>
-                <select defaultValue="UTC-5" style={{ width: '100%', padding: theme.spacing.md, background: theme.colors.cardInner, border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.md, color: theme.colors.text, fontSize: theme.fontSize.base }}>
+
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                  Timezone
+                </label>
+                <select defaultValue="UTC-5" className={inputClass}>
                   <option value="UTC-5">Eastern Time (UTC-5)</option>
                   <option value="UTC-8">Pacific Time (UTC-8)</option>
                   <option value="UTC+0">UTC</option>
                 </select>
               </div>
-              <div style={{ marginBottom: theme.spacing['xl'] }}>
-                <label style={{ display: 'block', fontSize: theme.fontSize.base, color: theme.colors.textSecondary, marginBottom: theme.spacing.sm }}>Currency</label>
-                <select defaultValue="USD" style={{ width: '100%', padding: theme.spacing.md, background: theme.colors.cardInner, border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.md, color: theme.colors.text, fontSize: theme.fontSize.base }}>
+
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                  Currency
+                </label>
+                <select defaultValue="USD" className={inputClass}>
                   <option value="USD">USD ($)</option>
                   <option value="EUR">EUR (€)</option>
                   <option value="GBP">GBP (£)</option>
@@ -53,14 +86,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               </div>
             </div>
           )}
-          {activeTab === 'notifications' && <div><h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, color: theme.colors.text, marginBottom: theme.spacing['xl'] }}>Notification Preferences</h3><p style={{ color: theme.colors.textSecondary }}>Configure your notification preferences here.</p></div>}
-          {activeTab === 'integrations' && <div><h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, color: theme.colors.text, marginBottom: theme.spacing['xl'] }}>Connected Integrations</h3><p style={{ color: theme.colors.textSecondary }}>Manage your connected apps and services.</p></div>}
-          {activeTab === 'security' && <div><h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, color: theme.colors.text, marginBottom: theme.spacing['xl'] }}>Security Settings</h3><p style={{ color: theme.colors.textSecondary }}>Manage your security and authentication settings.</p></div>}
+
+          {activeTab === 'notifications' && (
+            <div className="space-y-5">
+              <h3 className="text-lg font-semibold text-foreground">Notification Preferences</h3>
+              <p className="text-sm text-muted-foreground">Configure your notification preferences here.</p>
+            </div>
+          )}
+
+          {activeTab === 'integrations' && (
+            <div className="space-y-5">
+              <h3 className="text-lg font-semibold text-foreground">Connected Integrations</h3>
+              <p className="text-sm text-muted-foreground">Manage your connected apps and services.</p>
+            </div>
+          )}
+
+          {activeTab === 'security' && (
+            <div className="space-y-5">
+              <h3 className="text-lg font-semibold text-foreground">Security Settings</h3>
+              <p className="text-sm text-muted-foreground">Manage your security and authentication settings.</p>
+            </div>
+          )}
         </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.md, marginTop: theme.spacing['2xl'], paddingTop: theme.spacing['xl'], borderTop: `1px solid ${theme.colors.mutedBorder}` }}>
-        <button onClick={onClose} style={{ padding: `${theme.spacing.md} ${theme.spacing['xl']}`, background: 'transparent', border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.lg, color: theme.colors.textSecondary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>Cancel</button>
-        <button onClick={onClose} style={{ padding: `${theme.spacing.md} ${theme.spacing['xl']}`, background: theme.colors.gradient, border: 'none', borderRadius: theme.borderRadius.lg, color: theme.colors.text, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>Save Changes</button>
+
+      {/* Footer */}
+      <div className="flex justify-end gap-3 mt-6 pt-5 border-t border-border">
+        <button 
+          onClick={onClose}
+          className="px-5 py-2.5 bg-transparent border border-border rounded-xl text-muted-foreground text-sm font-medium hover:bg-secondary/50 hover:text-foreground transition-colors"
+        >
+          Cancel
+        </button>
+        <button 
+          onClick={onClose}
+          className="px-5 py-2.5 gradient-primary rounded-xl text-white text-sm font-semibold hover:opacity-90 hover:shadow-glow transition-all"
+        >
+          Save Changes
+        </button>
       </div>
     </Modal>
   );

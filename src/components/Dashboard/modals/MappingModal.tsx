@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Modal } from './Modal';
 import { DataMapping, StageMapping, StatusMapping } from '../../../types/dashboard';
-import { theme } from '../../../styles/theme';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Database, FolderKanban } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface MappingModalProps {
   isOpen: boolean;
@@ -13,10 +13,7 @@ interface MappingModalProps {
 
 type MappingTab = 'crm' | 'projectManagement';
 
-// Binee standard stages for CRM
 const BINEE_CRM_STAGES = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost'];
-
-// Binee standard statuses for Project Management
 const BINEE_PROJECT_STATUSES = ['Planned', 'Active', 'On Hold', 'Completed', 'Cancelled'];
 
 export const MappingModal: React.FC<MappingModalProps> = ({ isOpen, onClose, dataMapping, onSave }) => {
@@ -26,133 +23,98 @@ export const MappingModal: React.FC<MappingModalProps> = ({ isOpen, onClose, dat
   const [editingCell, setEditingCell] = useState<{ type: 'crm' | 'project'; order: number } | null>(null);
 
   const handleCrmStageChange = (order: number, newBineeStage: string) => {
-    setCrmStages(prev =>
-      prev.map(stage =>
-        stage.order === order ? { ...stage, ourStage: newBineeStage } : stage
-      )
-    );
+    setCrmStages(prev => prev.map(stage => stage.order === order ? { ...stage, ourStage: newBineeStage } : stage));
     setEditingCell(null);
   };
 
   const handleProjectStatusChange = (order: number, newBineeStatus: string) => {
-    setProjectStatuses(prev =>
-      prev.map(status =>
-        status.order === order ? { ...status, ourStatus: newBineeStatus } : status
-      )
-    );
+    setProjectStatuses(prev => prev.map(status => status.order === order ? { ...status, ourStatus: newBineeStatus } : status));
     setEditingCell(null);
   };
 
   const handleSave = () => {
     const updatedMapping: DataMapping = {
-      crm: {
-        ...dataMapping.crm,
-        stages: crmStages,
-        lastUpdated: new Date().toISOString().split('T')[0],
-      },
-      projectManagement: {
-        ...dataMapping.projectManagement,
-        statuses: projectStatuses,
-        lastUpdated: new Date().toISOString().split('T')[0],
-      },
+      crm: { ...dataMapping.crm, stages: crmStages, lastUpdated: new Date().toISOString().split('T')[0] },
+      projectManagement: { ...dataMapping.projectManagement, statuses: projectStatuses, lastUpdated: new Date().toISOString().split('T')[0] },
     };
     onSave?.(updatedMapping);
     alert('Mapping saved successfully!');
   };
 
-  const dropdownStyle: React.CSSProperties = {
-    position: 'relative',
-    display: 'inline-block',
-  };
-
-  const dropdownButtonStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-    background: theme.colors.primaryLight,
-    border: `1px solid ${theme.colors.primaryBorder}`,
-    borderRadius: theme.borderRadius.md,
-    color: theme.colors.primary,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer',
-    minWidth: '140px',
-    justifyContent: 'space-between',
-  };
-
-  const dropdownMenuStyle: React.CSSProperties = {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: theme.spacing.xs,
-    background: theme.colors.darkSolid,
-    border: `1px solid ${theme.colors.mutedBorder}`,
-    borderRadius: theme.borderRadius.md,
-    boxShadow: theme.shadows.dropdown,
-    zIndex: 100,
-    overflow: 'hidden',
-  };
-
-  const dropdownItemStyle: React.CSSProperties = {
-    padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-    fontSize: theme.fontSize.base,
-    color: theme.colors.text,
-    cursor: 'pointer',
-    transition: `background ${theme.transitions.fast}`,
-  };
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Data Mapping Configuration" width="800px">
-      <div style={{ display: 'flex', gap: theme.spacing.md, marginBottom: theme.spacing['xl'] }}>
-        <button onClick={() => setActiveTab('crm')} style={{ padding: `${theme.spacing.md} ${theme.spacing.lg}`, background: activeTab === 'crm' ? theme.colors.primaryLight : 'transparent', border: activeTab === 'crm' ? `1px solid ${theme.colors.primaryBorder}` : `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.md, color: activeTab === 'crm' ? theme.colors.primary : theme.colors.textSecondary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>CRM Stages</button>
-        <button onClick={() => setActiveTab('projectManagement')} style={{ padding: `${theme.spacing.md} ${theme.spacing.lg}`, background: activeTab === 'projectManagement' ? theme.colors.primaryLight : 'transparent', border: activeTab === 'projectManagement' ? `1px solid ${theme.colors.primaryBorder}` : `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.md, color: activeTab === 'projectManagement' ? theme.colors.primary : theme.colors.textSecondary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>Project Statuses</button>
+      {/* Tab Buttons */}
+      <div className="flex gap-2 mb-6">
+        <button 
+          onClick={() => setActiveTab('crm')}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all",
+            activeTab === 'crm' 
+              ? "bg-primary/15 border border-primary/30 text-primary" 
+              : "border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+          )}
+        >
+          <Database size={16} />
+          CRM Stages
+        </button>
+        <button 
+          onClick={() => setActiveTab('projectManagement')}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all",
+            activeTab === 'projectManagement' 
+              ? "bg-primary/15 border border-primary/30 text-primary" 
+              : "border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+          )}
+        >
+          <FolderKanban size={16} />
+          Project Statuses
+        </button>
       </div>
+
+      {/* CRM Tab */}
       {activeTab === 'crm' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.lg }}>
-            <h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>CRM Pipeline Stage Mapping</h3>
-            <span style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>Last updated: {dataMapping.crm.lastUpdated}</span>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-base font-semibold text-foreground">CRM Pipeline Stage Mapping</h3>
+            <span className="text-xs text-muted-foreground">Last updated: {dataMapping.crm.lastUpdated}</span>
           </div>
-          <div style={{ background: theme.colors.cardInner, borderRadius: theme.borderRadius.lg, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 40px 1fr', gap: theme.spacing.md, padding: theme.spacing.lg, borderBottom: `1px solid ${theme.colors.mutedBorder}`, fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, textTransform: 'uppercase' }}>
-              <div>Order</div><div>Company Stage</div><div></div><div>Binee Stage</div>
+          
+          <div className="bg-background/50 rounded-xl border border-border/50 overflow-hidden">
+            {/* Header */}
+            <div className="grid grid-cols-[60px_1fr_40px_1fr] gap-3 px-4 py-3 border-b border-border/50 text-xs text-muted-foreground uppercase tracking-wide">
+              <div>Order</div>
+              <div>Company Stage</div>
+              <div></div>
+              <div>Binee Stage</div>
             </div>
+            
+            {/* Rows */}
             {crmStages.map((stage) => (
-              <div key={stage.order} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 40px 1fr', gap: theme.spacing.md, padding: theme.spacing.lg, borderBottom: `1px solid ${theme.colors.mutedBorder}`, alignItems: 'center' }}>
-                <div style={{ fontSize: theme.fontSize.base, color: theme.colors.textMuted }}>{stage.order}</div>
-                <div style={{ fontSize: theme.fontSize.base, color: theme.colors.text }}>{stage.theirStage}</div>
-                <div style={{ fontSize: theme.fontSize.base, color: theme.colors.textMuted }}>→</div>
-                <div style={dropdownStyle}>
+              <div key={stage.order} className="grid grid-cols-[60px_1fr_40px_1fr] gap-3 px-4 py-3 border-b border-border/50 last:border-b-0 items-center">
+                <div className="text-sm text-muted-foreground">{stage.order}</div>
+                <div className="text-sm text-foreground">{stage.theirStage}</div>
+                <div className="text-muted-foreground">→</div>
+                <div className="relative">
                   <button
                     onClick={() => setEditingCell(editingCell?.type === 'crm' && editingCell?.order === stage.order ? null : { type: 'crm', order: stage.order })}
-                    style={dropdownButtonStyle}
+                    className="flex items-center justify-between gap-2 px-3 py-2 bg-primary/10 border border-primary/30 rounded-lg text-primary text-sm font-medium min-w-[140px] hover:bg-primary/20 transition-colors"
                   >
                     {stage.ourStage}
-                    <ChevronDown size={16} />
+                    <ChevronDown size={14} />
                   </button>
+                  
                   {editingCell?.type === 'crm' && editingCell?.order === stage.order && (
-                    <div style={dropdownMenuStyle}>
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-card z-50 overflow-hidden animate-scale-in">
                       {BINEE_CRM_STAGES.map((bineeStage) => (
                         <div
                           key={bineeStage}
                           onClick={() => handleCrmStageChange(stage.order, bineeStage)}
-                          style={{
-                            ...dropdownItemStyle,
-                            background: stage.ourStage === bineeStage ? theme.colors.primaryLight : 'transparent',
-                            color: stage.ourStage === bineeStage ? theme.colors.primary : theme.colors.text,
-                          }}
-                          onMouseEnter={(e) => {
-                            if (stage.ourStage !== bineeStage) {
-                              e.currentTarget.style.background = theme.colors.dark;
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (stage.ourStage !== bineeStage) {
-                              e.currentTarget.style.background = 'transparent';
-                            }
-                          }}
+                          className={cn(
+                            "px-3 py-2 text-sm cursor-pointer transition-colors",
+                            stage.ourStage === bineeStage 
+                              ? "bg-primary/15 text-primary" 
+                              : "text-foreground hover:bg-secondary/50"
+                          )}
                         >
                           {bineeStage}
                         </div>
@@ -165,50 +127,51 @@ export const MappingModal: React.FC<MappingModalProps> = ({ isOpen, onClose, dat
           </div>
         </div>
       )}
+
+      {/* Project Management Tab */}
       {activeTab === 'projectManagement' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: theme.spacing.lg }}>
-            <h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>Project Status Mapping</h3>
-            <span style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>Last updated: {dataMapping.projectManagement.lastUpdated}</span>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-base font-semibold text-foreground">Project Status Mapping</h3>
+            <span className="text-xs text-muted-foreground">Last updated: {dataMapping.projectManagement.lastUpdated}</span>
           </div>
-          <div style={{ background: theme.colors.cardInner, borderRadius: theme.borderRadius.lg, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 40px 1fr', gap: theme.spacing.md, padding: theme.spacing.lg, borderBottom: `1px solid ${theme.colors.mutedBorder}`, fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, textTransform: 'uppercase' }}>
-              <div>Order</div><div>Company Status</div><div></div><div>Binee Status</div>
+          
+          <div className="bg-background/50 rounded-xl border border-border/50 overflow-hidden">
+            {/* Header */}
+            <div className="grid grid-cols-[60px_1fr_40px_1fr] gap-3 px-4 py-3 border-b border-border/50 text-xs text-muted-foreground uppercase tracking-wide">
+              <div>Order</div>
+              <div>Company Status</div>
+              <div></div>
+              <div>Binee Status</div>
             </div>
+            
+            {/* Rows */}
             {projectStatuses.map((status) => (
-              <div key={status.order} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 40px 1fr', gap: theme.spacing.md, padding: theme.spacing.lg, borderBottom: `1px solid ${theme.colors.mutedBorder}`, alignItems: 'center' }}>
-                <div style={{ fontSize: theme.fontSize.base, color: theme.colors.textMuted }}>{status.order}</div>
-                <div style={{ fontSize: theme.fontSize.base, color: theme.colors.text }}>{status.theirStatus}</div>
-                <div style={{ fontSize: theme.fontSize.base, color: theme.colors.textMuted }}>→</div>
-                <div style={dropdownStyle}>
+              <div key={status.order} className="grid grid-cols-[60px_1fr_40px_1fr] gap-3 px-4 py-3 border-b border-border/50 last:border-b-0 items-center">
+                <div className="text-sm text-muted-foreground">{status.order}</div>
+                <div className="text-sm text-foreground">{status.theirStatus}</div>
+                <div className="text-muted-foreground">→</div>
+                <div className="relative">
                   <button
                     onClick={() => setEditingCell(editingCell?.type === 'project' && editingCell?.order === status.order ? null : { type: 'project', order: status.order })}
-                    style={dropdownButtonStyle}
+                    className="flex items-center justify-between gap-2 px-3 py-2 bg-primary/10 border border-primary/30 rounded-lg text-primary text-sm font-medium min-w-[140px] hover:bg-primary/20 transition-colors"
                   >
                     {status.ourStatus}
-                    <ChevronDown size={16} />
+                    <ChevronDown size={14} />
                   </button>
+                  
                   {editingCell?.type === 'project' && editingCell?.order === status.order && (
-                    <div style={dropdownMenuStyle}>
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-card z-50 overflow-hidden animate-scale-in">
                       {BINEE_PROJECT_STATUSES.map((bineeStatus) => (
                         <div
                           key={bineeStatus}
                           onClick={() => handleProjectStatusChange(status.order, bineeStatus)}
-                          style={{
-                            ...dropdownItemStyle,
-                            background: status.ourStatus === bineeStatus ? theme.colors.primaryLight : 'transparent',
-                            color: status.ourStatus === bineeStatus ? theme.colors.primary : theme.colors.text,
-                          }}
-                          onMouseEnter={(e) => {
-                            if (status.ourStatus !== bineeStatus) {
-                              e.currentTarget.style.background = theme.colors.dark;
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (status.ourStatus !== bineeStatus) {
-                              e.currentTarget.style.background = 'transparent';
-                            }
-                          }}
+                          className={cn(
+                            "px-3 py-2 text-sm cursor-pointer transition-colors",
+                            status.ourStatus === bineeStatus 
+                              ? "bg-primary/15 text-primary" 
+                              : "text-foreground hover:bg-secondary/50"
+                          )}
                         >
                           {bineeStatus}
                         </div>
@@ -221,9 +184,21 @@ export const MappingModal: React.FC<MappingModalProps> = ({ isOpen, onClose, dat
           </div>
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: theme.spacing.md, marginTop: theme.spacing['2xl'], paddingTop: theme.spacing['xl'], borderTop: `1px solid ${theme.colors.mutedBorder}` }}>
-        <button onClick={onClose} style={{ padding: `${theme.spacing.md} ${theme.spacing['xl']}`, background: 'transparent', border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.lg, color: theme.colors.textSecondary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>Close</button>
-        <button onClick={handleSave} style={{ padding: `${theme.spacing.md} ${theme.spacing['xl']}`, background: theme.colors.gradient, border: 'none', borderRadius: theme.borderRadius.lg, color: theme.colors.text, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>Save Changes</button>
+
+      {/* Footer */}
+      <div className="flex justify-end gap-3 mt-6 pt-5 border-t border-border">
+        <button 
+          onClick={onClose}
+          className="px-5 py-2.5 bg-transparent border border-border rounded-xl text-muted-foreground text-sm font-medium hover:bg-secondary/50 hover:text-foreground transition-colors"
+        >
+          Close
+        </button>
+        <button 
+          onClick={handleSave}
+          className="px-5 py-2.5 gradient-primary rounded-xl text-white text-sm font-semibold hover:opacity-90 hover:shadow-glow transition-all"
+        >
+          Save Changes
+        </button>
       </div>
     </Modal>
   );
