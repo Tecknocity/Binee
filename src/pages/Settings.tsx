@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PageLayout } from '../components/Layout';
-import { theme } from '../styles/theme';
+import { useTheme } from 'next-themes';
 import {
   User,
   Lock,
@@ -9,9 +9,16 @@ import {
   Shield,
   Camera,
   AlertTriangle,
+  Building2,
+  Globe,
+  Mail,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
 import { Switch } from '../components/ui/switch';
 import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import {
   Select,
   SelectContent,
@@ -30,8 +37,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 
-type SettingsSection = 'profile' | 'security' | 'notifications' | 'appearance' | 'privacy';
+type SettingsSection = 'profile' | 'brand' | 'security' | 'notifications' | 'appearance' | 'privacy';
 
 interface NotificationSettings {
   emailWeeklyDigest: boolean;
@@ -42,15 +51,20 @@ interface NotificationSettings {
   inAppGoalUpdates: boolean;
 }
 
-interface AppearanceSettings {
-  theme: 'dark' | 'light';
-  density: 'comfortable' | 'compact';
-  defaultTab: string;
+interface BrandSettings {
+  name: string;
+  tagline: string;
+  website: string;
+  supportEmail: string;
+  primaryColor: string;
+  secondaryColor: string;
 }
 
 const Settings: React.FC = () => {
+  const { theme: currentTheme, setTheme } = useTheme();
   const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
   const [isEditing, setIsEditing] = useState(false);
+  const [isBrandEditing, setIsBrandEditing] = useState(false);
 
   // Profile state
   const [profile, setProfile] = useState({
@@ -58,6 +72,16 @@ const Settings: React.FC = () => {
     email: 'john@company.com',
     timezone: 'America/New_York',
     avatar: null as string | null,
+  });
+
+  // Brand state
+  const [brand, setBrand] = useState<BrandSettings>({
+    name: 'Binee',
+    tagline: 'AI-powered business intelligence',
+    website: 'https://binee.lovable.app',
+    supportEmail: 'support@binee.app',
+    primaryColor: '258 90% 66%',
+    secondaryColor: '24 95% 53%',
   });
 
   // Security state
@@ -78,14 +102,12 @@ const Settings: React.FC = () => {
   });
 
   // Appearance settings
-  const [appearance, setAppearance] = useState<AppearanceSettings>({
-    theme: 'dark',
-    density: 'comfortable',
-    defaultTab: 'overview',
-  });
+  const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable');
+  const [defaultTab, setDefaultTab] = useState('overview');
 
   const sections = [
     { id: 'profile' as const, label: 'Profile', icon: User },
+    { id: 'brand' as const, label: 'Brand', icon: Building2 },
     { id: 'security' as const, label: 'Password & Security', icon: Lock },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'appearance' as const, label: 'Appearance', icon: Palette },
@@ -118,6 +140,11 @@ const Settings: React.FC = () => {
     alert('Profile saved successfully!');
   };
 
+  const handleSaveBrand = () => {
+    setIsBrandEditing(false);
+    alert('Brand settings saved successfully!');
+  };
+
   const handleChangePassword = () => {
     if (passwords.new !== passwords.confirm) {
       alert('New passwords do not match!');
@@ -139,278 +166,336 @@ const Settings: React.FC = () => {
     alert('Account deletion requested. This action cannot be undone.');
   };
 
-  const cardStyle: React.CSSProperties = {
-    background: theme.colors.cardBgSolid,
-    borderRadius: theme.borderRadius['2xl'],
-    border: theme.colors.cardBorder,
-    padding: theme.spacing['2xl'],
-    marginBottom: theme.spacing.xl,
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: 'block',
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-    background: theme.colors.dark,
-    border: `1px solid ${theme.colors.mutedBorder}`,
-    borderRadius: theme.borderRadius.lg,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.base,
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    padding: `${theme.spacing.md} ${theme.spacing.xl}`,
-    background: theme.colors.gradient,
-    border: 'none',
-    borderRadius: theme.borderRadius.lg,
-    color: theme.colors.text,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
-    cursor: 'pointer',
-    transition: `all ${theme.transitions.normal}`,
-  };
-
-  const secondaryButtonStyle: React.CSSProperties = {
-    ...buttonStyle,
-    background: 'transparent',
-    border: `1px solid ${theme.colors.mutedBorder}`,
-    color: theme.colors.textSecondary,
-  };
-
-  const dangerButtonStyle: React.CSSProperties = {
-    ...buttonStyle,
-    background: theme.colors.dangerLight,
-    border: `1px solid ${theme.colors.dangerBorder}`,
-    color: theme.colors.danger,
-  };
-
   const renderProfileSection = () => (
-    <div>
-      <h2 style={{ fontSize: theme.fontSize['2xl'], fontWeight: theme.fontWeight.bold, marginBottom: theme.spacing.xl }}>
-        Profile Settings
-      </h2>
-
-      <div style={cardStyle}>
-        {/* Avatar Upload */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.xl, marginBottom: theme.spacing['2xl'] }}>
-          <div
-            style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: theme.borderRadius.full,
-              background: theme.colors.gradient,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative',
-              cursor: 'pointer',
-            }}
-          >
-            <User size={32} color={theme.colors.text} />
-            <div
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                right: 0,
-                width: '28px',
-                height: '28px',
-                borderRadius: theme.borderRadius.full,
-                background: theme.colors.darkSolid,
-                border: `2px solid ${theme.colors.primary}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Camera size={14} color={theme.colors.primary} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>
-              Profile Photo
-            </div>
-            <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-              Click to upload a new photo
-            </div>
-          </div>
-        </div>
-
-        {/* Name */}
-        <div style={{ marginBottom: theme.spacing.xl }}>
-          <label style={labelStyle}>Full Name</label>
-          <Input
-            type="text"
-            value={profile.name}
-            onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-            className="bg-slate-800/80 border-slate-600 text-white"
-            disabled={!isEditing}
-          />
-        </div>
-
-        {/* Email */}
-        <div style={{ marginBottom: theme.spacing.xl }}>
-          <label style={labelStyle}>Email Address</label>
-          <Input
-            type="email"
-            value={profile.email}
-            onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-            className="bg-slate-800/80 border-slate-600 text-white"
-            disabled={!isEditing}
-          />
-        </div>
-
-        {/* Timezone */}
-        <div style={{ marginBottom: theme.spacing['2xl'] }}>
-          <label style={labelStyle}>Timezone</label>
-          <Select
-            value={profile.timezone}
-            onValueChange={(value) => setProfile({ ...profile, timezone: value })}
-            disabled={!isEditing}
-          >
-            <SelectTrigger className="bg-slate-800/80 border-slate-600 text-white">
-              <SelectValue placeholder="Select timezone" />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-600">
-              {timezones.map((tz) => (
-                <SelectItem key={tz.value} value={tz.value} className="text-white hover:bg-slate-700">
-                  {tz.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: theme.spacing.md }}>
-          {isEditing ? (
-            <>
-              <button style={buttonStyle} onClick={handleSaveProfile}>
-                Save Changes
-              </button>
-              <button style={secondaryButtonStyle} onClick={() => setIsEditing(false)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button style={buttonStyle} onClick={() => setIsEditing(true)}>
-              Edit Profile
-            </button>
-          )}
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Profile Settings</h2>
+        <p className="text-muted-foreground">Manage your personal information</p>
       </div>
+
+      <Card className="glass border-border/50">
+        <CardContent className="pt-6">
+          {/* Avatar Upload */}
+          <div className="flex items-center gap-6 mb-8">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full gradient-primary flex items-center justify-center">
+                <User size={32} className="text-primary-foreground" />
+              </div>
+              <button className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-card border-2 border-primary flex items-center justify-center hover:bg-muted transition-colors">
+                <Camera size={14} className="text-primary" />
+              </button>
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-foreground">Profile Photo</div>
+              <div className="text-sm text-muted-foreground">Click to upload a new photo</div>
+            </div>
+          </div>
+
+          {/* Form Fields */}
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                type="text"
+                value={profile.name}
+                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                disabled={!isEditing}
+                className="bg-muted/50 border-border"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input
+                id="email"
+                type="email"
+                value={profile.email}
+                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                disabled={!isEditing}
+                className="bg-muted/50 border-border"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="timezone">Timezone</Label>
+              <Select
+                value={profile.timezone}
+                onValueChange={(value) => setProfile({ ...profile, timezone: value })}
+                disabled={!isEditing}
+              >
+                <SelectTrigger className="bg-muted/50 border-border">
+                  <SelectValue placeholder="Select timezone" />
+                </SelectTrigger>
+                <SelectContent>
+                  {timezones.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              {isEditing ? (
+                <>
+                  <Button onClick={handleSaveProfile}>Save Changes</Button>
+                  <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+                </>
+              ) : (
+                <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderBrandSection = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Brand Settings</h2>
+        <p className="text-muted-foreground">Customize your brand identity</p>
+      </div>
+
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Building2 size={20} className="text-primary" />
+            Brand Identity
+          </CardTitle>
+          <CardDescription>Configure your brand name and messaging</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="brandName">Brand Name</Label>
+            <Input
+              id="brandName"
+              type="text"
+              value={brand.name}
+              onChange={(e) => setBrand({ ...brand, name: e.target.value })}
+              disabled={!isBrandEditing}
+              className="bg-muted/50 border-border"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tagline">Tagline</Label>
+            <Input
+              id="tagline"
+              type="text"
+              value={brand.tagline}
+              onChange={(e) => setBrand({ ...brand, tagline: e.target.value })}
+              disabled={!isBrandEditing}
+              className="bg-muted/50 border-border"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="website" className="flex items-center gap-2">
+              <Globe size={14} />
+              Website
+            </Label>
+            <Input
+              id="website"
+              type="url"
+              value={brand.website}
+              onChange={(e) => setBrand({ ...brand, website: e.target.value })}
+              disabled={!isBrandEditing}
+              className="bg-muted/50 border-border"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="supportEmail" className="flex items-center gap-2">
+              <Mail size={14} />
+              Support Email
+            </Label>
+            <Input
+              id="supportEmail"
+              type="email"
+              value={brand.supportEmail}
+              onChange={(e) => setBrand({ ...brand, supportEmail: e.target.value })}
+              disabled={!isBrandEditing}
+              className="bg-muted/50 border-border"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Palette size={20} className="text-primary" />
+            Brand Colors
+          </CardTitle>
+          <CardDescription>Define your brand's color palette (HSL format)</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="primaryColor">Primary Color</Label>
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-lg border border-border"
+                  style={{ backgroundColor: `hsl(${brand.primaryColor})` }}
+                />
+                <Input
+                  id="primaryColor"
+                  type="text"
+                  value={brand.primaryColor}
+                  onChange={(e) => setBrand({ ...brand, primaryColor: e.target.value })}
+                  disabled={!isBrandEditing}
+                  placeholder="258 90% 66%"
+                  className="bg-muted/50 border-border flex-1"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="secondaryColor">Accent Color</Label>
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-lg border border-border"
+                  style={{ backgroundColor: `hsl(${brand.secondaryColor})` }}
+                />
+                <Input
+                  id="secondaryColor"
+                  type="text"
+                  value={brand.secondaryColor}
+                  onChange={(e) => setBrand({ ...brand, secondaryColor: e.target.value })}
+                  disabled={!isBrandEditing}
+                  placeholder="24 95% 53%"
+                  className="bg-muted/50 border-border flex-1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            {isBrandEditing ? (
+              <>
+                <Button onClick={handleSaveBrand}>Save Brand Settings</Button>
+                <Button variant="outline" onClick={() => setIsBrandEditing(false)}>Cancel</Button>
+              </>
+            ) : (
+              <Button onClick={() => setIsBrandEditing(true)}>Edit Brand</Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Logo Upload</CardTitle>
+          <CardDescription>Upload your brand logo (coming soon)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="border-2 border-dashed border-border rounded-xl p-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+              <Camera size={24} className="text-muted-foreground" />
+            </div>
+            <p className="text-muted-foreground text-sm">
+              Drag and drop your logo here, or click to browse
+            </p>
+            <p className="text-muted-foreground text-xs mt-2">
+              Recommended: 512x512px, PNG or SVG
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderSecuritySection = () => (
-    <div>
-      <h2 style={{ fontSize: theme.fontSize['2xl'], fontWeight: theme.fontWeight.bold, marginBottom: theme.spacing.xl }}>
-        Password & Security
-      </h2>
-
-      {/* Change Password */}
-      <div style={cardStyle}>
-        <h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, marginBottom: theme.spacing.xl }}>
-          Change Password
-        </h3>
-
-        <div style={{ marginBottom: theme.spacing.xl }}>
-          <label style={labelStyle}>Current Password</label>
-          <Input
-            type="password"
-            value={passwords.current}
-            onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-            className="bg-slate-800/80 border-slate-600 text-white"
-            placeholder="Enter current password"
-          />
-        </div>
-
-        <div style={{ marginBottom: theme.spacing.xl }}>
-          <label style={labelStyle}>New Password</label>
-          <Input
-            type="password"
-            value={passwords.new}
-            onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-            className="bg-slate-800/80 border-slate-600 text-white"
-            placeholder="Enter new password"
-          />
-        </div>
-
-        <div style={{ marginBottom: theme.spacing['2xl'] }}>
-          <label style={labelStyle}>Confirm New Password</label>
-          <Input
-            type="password"
-            value={passwords.confirm}
-            onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-            className="bg-slate-800/80 border-slate-600 text-white"
-            placeholder="Confirm new password"
-          />
-        </div>
-
-        <button style={buttonStyle} onClick={handleChangePassword}>
-          Change Password
-        </button>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Password & Security</h2>
+        <p className="text-muted-foreground">Manage your account security</p>
       </div>
 
-      {/* Two-Factor Authentication */}
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, marginBottom: theme.spacing.xs }}>
-              Two-Factor Authentication
-            </h3>
-            <p style={{ fontSize: theme.fontSize.base, color: theme.colors.textSecondary }}>
-              Add an extra layer of security to your account
-            </p>
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Change Password</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="currentPassword">Current Password</Label>
+            <Input
+              id="currentPassword"
+              type="password"
+              value={passwords.current}
+              onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+              placeholder="Enter current password"
+              className="bg-muted/50 border-border"
+            />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
-            <span
-              style={{
-                padding: `${theme.spacing.xs} ${theme.spacing.md}`,
-                background: theme.colors.warningLight,
-                border: `1px solid ${theme.colors.warningBorder}`,
-                borderRadius: theme.borderRadius.md,
-                color: theme.colors.warning,
-                fontSize: theme.fontSize.sm,
-                fontWeight: theme.fontWeight.medium,
-              }}
-            >
-              Coming Soon
-            </span>
-            <Switch disabled />
+
+          <div className="space-y-2">
+            <Label htmlFor="newPassword">New Password</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              value={passwords.new}
+              onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+              placeholder="Enter new password"
+              className="bg-muted/50 border-border"
+            />
           </div>
-        </div>
-      </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirm New Password</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              value={passwords.confirm}
+              onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+              placeholder="Confirm new password"
+              className="bg-muted/50 border-border"
+            />
+          </div>
+
+          <Button onClick={handleChangePassword}>Change Password</Button>
+        </CardContent>
+      </Card>
+
+      <Card className="glass border-border/50">
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Two-Factor Authentication</h3>
+              <p className="text-muted-foreground text-sm">Add an extra layer of security to your account</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1 bg-warning/15 border border-warning/30 rounded-md text-warning text-sm font-medium">
+                Coming Soon
+              </span>
+              <Switch disabled />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderNotificationsSection = () => (
-    <div>
-      <h2 style={{ fontSize: theme.fontSize['2xl'], fontWeight: theme.fontWeight.bold, marginBottom: theme.spacing.xl }}>
-        Notification Preferences
-      </h2>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Notification Preferences</h2>
+        <p className="text-muted-foreground">Control how you receive notifications</p>
+      </div>
 
-      {/* Email Notifications */}
-      <div style={cardStyle}>
-        <h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, marginBottom: theme.spacing.xl }}>
-          Email Notifications
-        </h3>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xl }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Email Notifications</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex justify-between items-center">
             <div>
-              <div style={{ fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium, color: theme.colors.text }}>
-                Weekly Digest
-              </div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-                Receive a weekly summary of your dashboard activity
-              </div>
+              <div className="font-medium text-foreground">Weekly Digest</div>
+              <div className="text-sm text-muted-foreground">Receive a weekly summary of your dashboard activity</div>
             </div>
             <Switch
               checked={notifications.emailWeeklyDigest}
@@ -418,14 +503,10 @@ const Settings: React.FC = () => {
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="flex justify-between items-center">
             <div>
-              <div style={{ fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium, color: theme.colors.text }}>
-                Alerts
-              </div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-                Get notified about important issues and updates
-              </div>
+              <div className="font-medium text-foreground">Alerts</div>
+              <div className="text-sm text-muted-foreground">Get notified about important issues and updates</div>
             </div>
             <Switch
               checked={notifications.emailAlerts}
@@ -433,38 +514,28 @@ const Settings: React.FC = () => {
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="flex justify-between items-center">
             <div>
-              <div style={{ fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium, color: theme.colors.text }}>
-                Product Updates
-              </div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-                Learn about new features and improvements
-              </div>
+              <div className="font-medium text-foreground">Product Updates</div>
+              <div className="text-sm text-muted-foreground">Learn about new features and improvements</div>
             </div>
             <Switch
               checked={notifications.emailProductUpdates}
               onCheckedChange={(checked) => setNotifications({ ...notifications, emailProductUpdates: checked })}
             />
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* In-App Notifications */}
-      <div style={cardStyle}>
-        <h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, marginBottom: theme.spacing.xl }}>
-          In-App Notifications
-        </h3>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing.xl }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">In-App Notifications</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex justify-between items-center">
             <div>
-              <div style={{ fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium, color: theme.colors.text }}>
-                Task Reminders
-              </div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-                Get reminded about upcoming and overdue tasks
-              </div>
+              <div className="font-medium text-foreground">Task Reminders</div>
+              <div className="text-sm text-muted-foreground">Get reminded about upcoming and overdue tasks</div>
             </div>
             <Switch
               checked={notifications.inAppTaskReminders}
@@ -472,14 +543,10 @@ const Settings: React.FC = () => {
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="flex justify-between items-center">
             <div>
-              <div style={{ fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium, color: theme.colors.text }}>
-                Sync Alerts
-              </div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-                Be notified when integrations sync or encounter issues
-              </div>
+              <div className="font-medium text-foreground">Sync Alerts</div>
+              <div className="text-sm text-muted-foreground">Be notified when integrations sync or encounter issues</div>
             </div>
             <Switch
               checked={notifications.inAppSyncAlerts}
@@ -487,205 +554,197 @@ const Settings: React.FC = () => {
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="flex justify-between items-center">
             <div>
-              <div style={{ fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.medium, color: theme.colors.text }}>
-                Goal Updates
-              </div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>
-                Track progress towards your goals
-              </div>
+              <div className="font-medium text-foreground">Goal Updates</div>
+              <div className="text-sm text-muted-foreground">Track progress towards your goals</div>
             </div>
             <Switch
               checked={notifications.inAppGoalUpdates}
               onCheckedChange={(checked) => setNotifications({ ...notifications, inAppGoalUpdates: checked })}
             />
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderAppearanceSection = () => (
-    <div>
-      <h2 style={{ fontSize: theme.fontSize['2xl'], fontWeight: theme.fontWeight.bold, marginBottom: theme.spacing.xl }}>
-        Appearance
-      </h2>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Appearance</h2>
+        <p className="text-muted-foreground">Customize how the dashboard looks</p>
+      </div>
 
-      <div style={cardStyle}>
-        {/* Theme Toggle */}
-        <div style={{ marginBottom: theme.spacing['2xl'] }}>
-          <label style={labelStyle}>Theme</label>
-          <div style={{ display: 'flex', gap: theme.spacing.md }}>
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Theme</CardTitle>
+          <CardDescription>Select your preferred color scheme</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
             <button
-              onClick={() => setAppearance({ ...appearance, theme: 'dark' })}
-              style={{
-                flex: 1,
-                padding: theme.spacing.lg,
-                background: appearance.theme === 'dark' ? theme.colors.primaryLight : 'transparent',
-                border: `1px solid ${appearance.theme === 'dark' ? theme.colors.primary : theme.colors.mutedBorder}`,
-                borderRadius: theme.borderRadius.lg,
-                color: theme.colors.text,
-                cursor: 'pointer',
-                transition: `all ${theme.transitions.normal}`,
-              }}
+              onClick={() => setTheme('light')}
+              className={`p-4 rounded-xl border-2 transition-all ${
+                currentTheme === 'light'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
             >
-              <div style={{ fontWeight: theme.fontWeight.semibold }}>Dark</div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>Default theme</div>
+              <div className="w-12 h-12 rounded-full bg-warning/20 flex items-center justify-center mx-auto mb-3">
+                <Sun size={24} className="text-warning" />
+              </div>
+              <div className="font-semibold text-foreground">Light</div>
+              <div className="text-xs text-muted-foreground">Bright and clean</div>
             </button>
+
             <button
-              onClick={() => setAppearance({ ...appearance, theme: 'light' })}
-              style={{
-                flex: 1,
-                padding: theme.spacing.lg,
-                background: appearance.theme === 'light' ? theme.colors.primaryLight : 'transparent',
-                border: `1px solid ${appearance.theme === 'light' ? theme.colors.primary : theme.colors.mutedBorder}`,
-                borderRadius: theme.borderRadius.lg,
-                color: theme.colors.text,
-                cursor: 'pointer',
-                transition: `all ${theme.transitions.normal}`,
-              }}
+              onClick={() => setTheme('dark')}
+              className={`p-4 rounded-xl border-2 transition-all ${
+                currentTheme === 'dark'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
             >
-              <div style={{ fontWeight: theme.fontWeight.semibold }}>Light</div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>Coming soon</div>
+              <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3">
+                <Moon size={24} className="text-muted-foreground" />
+              </div>
+              <div className="font-semibold text-foreground">Dark</div>
+              <div className="text-xs text-muted-foreground">Easy on the eyes</div>
+            </button>
+
+            <button
+              onClick={() => setTheme('system')}
+              className={`p-4 rounded-xl border-2 transition-all ${
+                currentTheme === 'system'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
+            >
+              <div className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center mx-auto mb-3">
+                <Monitor size={24} className="text-foreground" />
+              </div>
+              <div className="font-semibold text-foreground">System</div>
+              <div className="text-xs text-muted-foreground">Match device</div>
             </button>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Density */}
-        <div style={{ marginBottom: theme.spacing['2xl'] }}>
-          <label style={labelStyle}>Dashboard Density</label>
-          <div style={{ display: 'flex', gap: theme.spacing.md }}>
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Dashboard Density</CardTitle>
+          <CardDescription>Choose your preferred content spacing</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
             <button
-              onClick={() => setAppearance({ ...appearance, density: 'comfortable' })}
-              style={{
-                flex: 1,
-                padding: theme.spacing.lg,
-                background: appearance.density === 'comfortable' ? theme.colors.primaryLight : 'transparent',
-                border: `1px solid ${appearance.density === 'comfortable' ? theme.colors.primary : theme.colors.mutedBorder}`,
-                borderRadius: theme.borderRadius.lg,
-                color: theme.colors.text,
-                cursor: 'pointer',
-                transition: `all ${theme.transitions.normal}`,
-              }}
+              onClick={() => setDensity('comfortable')}
+              className={`p-4 rounded-xl border-2 transition-all ${
+                density === 'comfortable'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
             >
-              <div style={{ fontWeight: theme.fontWeight.semibold }}>Comfortable</div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>More spacing</div>
+              <div className="font-semibold text-foreground">Comfortable</div>
+              <div className="text-sm text-muted-foreground">More spacing</div>
             </button>
+
             <button
-              onClick={() => setAppearance({ ...appearance, density: 'compact' })}
-              style={{
-                flex: 1,
-                padding: theme.spacing.lg,
-                background: appearance.density === 'compact' ? theme.colors.primaryLight : 'transparent',
-                border: `1px solid ${appearance.density === 'compact' ? theme.colors.primary : theme.colors.mutedBorder}`,
-                borderRadius: theme.borderRadius.lg,
-                color: theme.colors.text,
-                cursor: 'pointer',
-                transition: `all ${theme.transitions.normal}`,
-              }}
+              onClick={() => setDensity('compact')}
+              className={`p-4 rounded-xl border-2 transition-all ${
+                density === 'compact'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
             >
-              <div style={{ fontWeight: theme.fontWeight.semibold }}>Compact</div>
-              <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }}>Less spacing</div>
+              <div className="font-semibold text-foreground">Compact</div>
+              <div className="text-sm text-muted-foreground">Less spacing</div>
             </button>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Default Landing Tab */}
-        <div>
-          <label style={labelStyle}>Default Landing Tab</label>
-          <Select
-            value={appearance.defaultTab}
-            onValueChange={(value) => setAppearance({ ...appearance, defaultTab: value })}
-          >
-            <SelectTrigger className="bg-slate-800/80 border-slate-600 text-white">
+      <Card className="glass border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Default Landing Tab</CardTitle>
+          <CardDescription>Choose which tab opens first</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Select value={defaultTab} onValueChange={setDefaultTab}>
+            <SelectTrigger className="bg-muted/50 border-border">
               <SelectValue placeholder="Select default tab" />
             </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-600">
+            <SelectContent>
               {tabs.map((tab) => (
-                <SelectItem key={tab.value} value={tab.value} className="text-white hover:bg-slate-700">
+                <SelectItem key={tab.value} value={tab.value}>
                   {tab.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderPrivacySection = () => (
-    <div>
-      <h2 style={{ fontSize: theme.fontSize['2xl'], fontWeight: theme.fontWeight.bold, marginBottom: theme.spacing.xl }}>
-        Data & Privacy
-      </h2>
-
-      {/* Export Data */}
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3 style={{ fontSize: theme.fontSize.lg, fontWeight: theme.fontWeight.semibold, marginBottom: theme.spacing.xs }}>
-              Export My Data
-            </h3>
-            <p style={{ fontSize: theme.fontSize.base, color: theme.colors.textSecondary }}>
-              Download a copy of all your data in JSON format
-            </p>
-          </div>
-          <button style={secondaryButtonStyle} onClick={handleExportData}>
-            Export Data
-          </button>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Data & Privacy</h2>
+        <p className="text-muted-foreground">Manage your data and privacy settings</p>
       </div>
 
-      {/* Delete Account */}
-      <div style={{ ...cardStyle, borderColor: theme.colors.dangerBorder }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3
-              style={{
-                fontSize: theme.fontSize.lg,
-                fontWeight: theme.fontWeight.semibold,
-                marginBottom: theme.spacing.xs,
-                color: theme.colors.danger,
-                display: 'flex',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-              }}
-            >
-              <AlertTriangle size={18} />
-              Delete Account
-            </h3>
-            <p style={{ fontSize: theme.fontSize.base, color: theme.colors.textSecondary }}>
-              Permanently delete your account and all associated data. This action cannot be undone.
-            </p>
+      <Card className="glass border-border/50">
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Export My Data</h3>
+              <p className="text-muted-foreground text-sm">Download a copy of all your data in JSON format</p>
+            </div>
+            <Button variant="outline" onClick={handleExportData}>Export Data</Button>
           </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <button style={dangerButtonStyle}>Delete Account</button>
-            </AlertDialogTrigger>
-            <AlertDialogContent className="bg-slate-900 border-slate-700">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-white">Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription className="text-slate-400">
-                  This action cannot be undone. This will permanently delete your account and remove all
-                  your data from our servers.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="bg-slate-800 border-slate-600 text-white hover:bg-slate-700">
-                  Cancel
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-red-600 text-white hover:bg-red-700"
-                  onClick={handleDeleteAccount}
-                >
-                  Yes, delete my account
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
+
+      <Card className="glass border-destructive/30">
+        <CardContent className="pt-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold text-destructive flex items-center gap-2">
+                <AlertTriangle size={18} />
+                Delete Account
+              </h3>
+              <p className="text-muted-foreground text-sm">
+                Permanently delete your account and all associated data. This action cannot be undone.
+              </p>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">Delete Account</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete your account and remove all
+                    your data from our servers.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={handleDeleteAccount}
+                  >
+                    Yes, delete my account
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -693,6 +752,8 @@ const Settings: React.FC = () => {
     switch (activeSection) {
       case 'profile':
         return renderProfileSection();
+      case 'brand':
+        return renderBrandSection();
       case 'security':
         return renderSecuritySection();
       case 'notifications':
@@ -708,59 +769,37 @@ const Settings: React.FC = () => {
 
   return (
     <PageLayout title="Settings" subtitle="Manage your account preferences">
-      <div style={{ display: 'flex', gap: theme.spacing['2xl'] }}>
+      <div className="flex gap-8">
         {/* Sidebar */}
-        <nav
-          style={{
-            width: '260px',
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              background: theme.colors.cardBgSolid,
-              borderRadius: theme.borderRadius['2xl'],
-              border: theme.colors.cardBorder,
-              padding: theme.spacing.lg,
-              position: 'sticky',
-              top: theme.spacing['2xl'],
-            }}
-          >
-            {sections.map((section) => {
-              const Icon = section.icon;
-              const isActive = activeSection === section.id;
-              return (
-                <button
-                  key={section.id}
-                  onClick={() => setActiveSection(section.id)}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: theme.spacing.md,
-                    padding: `${theme.spacing.md} ${theme.spacing.lg}`,
-                    background: isActive ? theme.colors.primaryLight : 'transparent',
-                    border: 'none',
-                    borderRadius: theme.borderRadius.lg,
-                    color: isActive ? theme.colors.primary : theme.colors.textSecondary,
-                    fontSize: theme.fontSize.base,
-                    fontWeight: isActive ? theme.fontWeight.semibold : theme.fontWeight.medium,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: `all ${theme.transitions.normal}`,
-                    marginBottom: theme.spacing.xs,
-                  }}
-                >
-                  <Icon size={18} />
-                  {section.label}
-                </button>
-              );
-            })}
-          </div>
+        <nav className="w-64 flex-shrink-0">
+          <Card className="glass border-border/50 sticky top-8">
+            <CardContent className="p-4">
+              {sections.map((section) => {
+                const Icon = section.icon;
+                const isActive = activeSection === section.id;
+                return (
+                  <button
+                    key={section.id}
+                    onClick={() => setActiveSection(section.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all mb-1 ${
+                      isActive
+                        ? 'bg-primary/15 text-primary font-semibold'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    }`}
+                  >
+                    <Icon size={18} />
+                    {section.label}
+                  </button>
+                );
+              })}
+            </CardContent>
+          </Card>
         </nav>
 
         {/* Main Content */}
-        <div style={{ flex: 1, maxWidth: '800px' }}>{renderContent()}</div>
+        <div className="flex-1 max-w-3xl animate-fade-in">
+          {renderContent()}
+        </div>
       </div>
     </PageLayout>
   );
