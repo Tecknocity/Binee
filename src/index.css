@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  color-scheme: light dark;
+}
 /* Modern SaaS Design System
    All colors in HSL format for consistency
    Dark theme optimized for dashboard applications
