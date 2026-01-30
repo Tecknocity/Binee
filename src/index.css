@@ -118,15 +118,6 @@ html {
   body {
     @apply bg-background text-foreground antialiased;
   }
-
-  /* Force dark mode for this dashboard app */
-  :root {
-    color-scheme: dark;
-  }
-
-  html {
-    @apply dark;
-  }
 }
 
 @layer utilities {
