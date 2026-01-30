@@ -1,15 +1,19 @@
-import { useLocation, Link } from 'react-router-dom';
-import { useEffect } from 'react';
+import React from 'react';
+import { Link } from 'react-router-dom';
 import { theme } from '../styles/theme';
-import { Home, Search, ArrowLeft } from 'lucide-react';
+import { Home, RefreshCw, AlertTriangle } from 'lucide-react';
 
-const NotFound = () => {
-  const location = useLocation();
+interface ErrorPageProps {
+  title?: string;
+  message?: string;
+  showTryAgain?: boolean;
+}
 
-  useEffect(() => {
-    console.error('404 Error: User attempted to access non-existent route:', location.pathname);
-  }, [location.pathname]);
-
+const Error: React.FC<ErrorPageProps> = ({
+  title = 'Something Went Wrong',
+  message = "We're sorry, but something unexpected happened. Please try again or return to the dashboard.",
+  showTryAgain = true,
+}) => {
   const buttonStyle: React.CSSProperties = {
     padding: `${theme.spacing.md} ${theme.spacing.xl}`,
     background: theme.colors.gradient,
@@ -33,6 +37,10 @@ const NotFound = () => {
     color: theme.colors.textSecondary,
   };
 
+  const handleTryAgain = () => {
+    window.location.reload();
+  };
+
   return (
     <div
       style={{
@@ -47,13 +55,13 @@ const NotFound = () => {
       }}
     >
       <div style={{ textAlign: 'center', maxWidth: '500px' }}>
-        {/* 404 Icon */}
+        {/* Error Icon */}
         <div
           style={{
             width: '120px',
             height: '120px',
             borderRadius: theme.borderRadius.full,
-            background: theme.colors.primaryLight,
+            background: theme.colors.dangerLight,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -61,33 +69,19 @@ const NotFound = () => {
             marginBottom: theme.spacing['2xl'],
           }}
         >
-          <Search size={48} color={theme.colors.primary} />
+          <AlertTriangle size={48} color={theme.colors.danger} />
         </div>
 
-        {/* 404 Text */}
+        {/* Error Text */}
         <h1
-          style={{
-            fontSize: theme.fontSize['9xl'],
-            fontWeight: theme.fontWeight.bold,
-            background: theme.colors.gradient,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            marginBottom: theme.spacing.lg,
-            lineHeight: 1,
-          }}
-        >
-          404
-        </h1>
-
-        <h2
           style={{
             fontSize: theme.fontSize['3xl'],
             fontWeight: theme.fontWeight.bold,
             marginBottom: theme.spacing.lg,
           }}
         >
-          Page Not Found
-        </h2>
+          {title}
+        </h1>
 
         <p
           style={{
@@ -97,50 +91,63 @@ const NotFound = () => {
             lineHeight: 1.6,
           }}
         >
-          The page you're looking for doesn't exist or has been moved. Let's get you back on track.
+          {message}
         </p>
 
-        {/* Attempted Path */}
+        {/* Error Details Box */}
         <div
           style={{
             background: theme.colors.dark,
             borderRadius: theme.borderRadius.lg,
-            padding: theme.spacing.lg,
+            padding: theme.spacing.xl,
             marginBottom: theme.spacing['2xl'],
+            textAlign: 'left',
           }}
         >
-          <span style={{ fontSize: theme.fontSize.sm, color: theme.colors.textMuted }}>
-            Attempted path:
-          </span>
-          <code
+          <div
             style={{
-              display: 'block',
-              fontSize: theme.fontSize.base,
-              color: theme.colors.accent,
-              marginTop: theme.spacing.xs,
+              fontSize: theme.fontSize.sm,
+              color: theme.colors.textMuted,
+              marginBottom: theme.spacing.md,
             }}
           >
-            {location.pathname}
-          </code>
+            If this problem persists, please contact support with the following information:
+          </div>
+          <div
+            style={{
+              background: theme.colors.darkSolid,
+              borderRadius: theme.borderRadius.md,
+              padding: theme.spacing.md,
+              fontSize: theme.fontSize.sm,
+              fontFamily: 'monospace',
+            }}
+          >
+            <div style={{ color: theme.colors.textSecondary }}>
+              <span style={{ color: theme.colors.accent }}>Timestamp:</span>{' '}
+              {new Date().toISOString()}
+            </div>
+            <div style={{ color: theme.colors.textSecondary, marginTop: theme.spacing.xs }}>
+              <span style={{ color: theme.colors.accent }}>URL:</span> {window.location.href}
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'center' }}>
-          <Link to="/" style={buttonStyle}>
+          {showTryAgain && (
+            <button onClick={handleTryAgain} style={buttonStyle}>
+              <RefreshCw size={18} />
+              Try Again
+            </button>
+          )}
+          <Link to="/" style={secondaryButtonStyle}>
             <Home size={18} />
             Go to Dashboard
           </Link>
-          <button
-            onClick={() => window.history.back()}
-            style={secondaryButtonStyle}
-          >
-            <ArrowLeft size={18} />
-            Go Back
-          </button>
         </div>
       </div>
     </div>
   );
 };
 
-export default NotFound;
+export default Error;

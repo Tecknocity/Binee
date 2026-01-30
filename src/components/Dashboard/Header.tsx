@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { User, Settings, LogOut } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { User, Settings, LogOut, CreditCard, Puzzle } from 'lucide-react';
 import { ViewMode } from '../../types/dashboard';
 import { theme } from '../../styles/theme';
 
@@ -40,6 +41,21 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [handleClickOutside, handleEscapeKey]);
 
+  const menuItemStyle: React.CSSProperties = {
+    width: '100%',
+    padding: `${theme.spacing.md} ${theme.spacing.lg}`,
+    background: 'transparent',
+    border: 'none',
+    textAlign: 'left',
+    color: theme.colors.text,
+    fontSize: theme.fontSize.base,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    textDecoration: 'none',
+  };
+
   return (
     <header style={{ background: theme.colors.headerBg, borderBottom: theme.colors.headerBorder, padding: `1.75rem ${theme.spacing['3xl']}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -50,6 +66,31 @@ export const Header: React.FC<HeaderProps> = ({
           <p style={{ color: theme.colors.textSecondary, fontSize: theme.fontSize.md }}>AI-powered business intelligence</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.lg }}>
+          {/* Navigation Links */}
+          <nav style={{ display: 'flex', gap: theme.spacing.sm }}>
+            <Link
+              to="/integrations"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing.sm,
+                padding: `${theme.spacing.sm} ${theme.spacing.lg}`,
+                background: 'transparent',
+                border: `1px solid ${theme.colors.mutedBorder}`,
+                borderRadius: theme.borderRadius.lg,
+                color: theme.colors.textSecondary,
+                fontSize: theme.fontSize.base,
+                fontWeight: theme.fontWeight.medium,
+                textDecoration: 'none',
+                cursor: 'pointer',
+                transition: `all ${theme.transitions.normal}`,
+              }}
+            >
+              <Puzzle size={16} />
+              Integrations
+            </Link>
+          </nav>
+
           <button onClick={onMappingClick} style={{ padding: '0.65rem 1.25rem', background: theme.colors.infoLight, border: `1px solid ${theme.colors.infoBorder}`, color: theme.colors.info, borderRadius: theme.borderRadius.xl, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>
             Data Mapping
           </button>
@@ -69,16 +110,49 @@ export const Header: React.FC<HeaderProps> = ({
               <User size={20} color={theme.colors.text} />
             </button>
             {showAccountMenu && (
-              <div ref={accountMenuRef} role="menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: theme.spacing.sm, width: '240px', background: theme.colors.darkSolid, borderRadius: theme.borderRadius.xl, border: `1px solid ${theme.colors.mutedBorder}`, boxShadow: theme.shadows.dropdown, zIndex: 1000 }}>
+              <div ref={accountMenuRef} role="menu" style={{ position: 'absolute', top: '100%', right: 0, marginTop: theme.spacing.sm, width: '240px', background: theme.colors.darkSolid, borderRadius: theme.borderRadius.xl, border: `1px solid ${theme.colors.mutedBorder}`, boxShadow: theme.shadows.dropdown, zIndex: 1000, overflow: 'hidden' }}>
                 <div style={{ padding: theme.spacing.lg, borderBottom: `1px solid ${theme.colors.mutedBorder}` }}>
                   <div style={{ fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>John Doe</div>
                   <div style={{ fontSize: theme.fontSize.base, color: theme.colors.textSecondary }}>john@company.com</div>
                 </div>
-                <button role="menuitem" onClick={() => { onSettingsClick(); onAccountMenuToggle(false); }} style={{ width: '100%', padding: `${theme.spacing.md} ${theme.spacing.lg}`, background: 'transparent', border: 'none', textAlign: 'left', color: theme.colors.text, fontSize: theme.fontSize.base, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
+
+                <Link
+                  to="/profile"
+                  role="menuitem"
+                  onClick={() => onAccountMenuToggle(false)}
+                  style={menuItemStyle}
+                >
+                  <User size={16} /> Profile
+                </Link>
+
+                <Link
+                  to="/settings"
+                  role="menuitem"
+                  onClick={() => onAccountMenuToggle(false)}
+                  style={menuItemStyle}
+                >
                   <Settings size={16} /> Settings
-                </button>
-                <button role="menuitem" onClick={() => { onLogout(); onAccountMenuToggle(false); }} style={{ width: '100%', padding: `${theme.spacing.md} ${theme.spacing.lg}`, background: 'transparent', border: 'none', textAlign: 'left', color: theme.colors.danger, fontSize: theme.fontSize.base, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: theme.spacing.md, borderTop: `1px solid ${theme.colors.mutedBorder}` }}>
-                  <LogOut size={16} /> Log Out
+                </Link>
+
+                <Link
+                  to="/billing"
+                  role="menuitem"
+                  onClick={() => onAccountMenuToggle(false)}
+                  style={menuItemStyle}
+                >
+                  <CreditCard size={16} /> Billing
+                </Link>
+
+                <button
+                  role="menuitem"
+                  onClick={() => { onLogout(); onAccountMenuToggle(false); }}
+                  style={{
+                    ...menuItemStyle,
+                    color: theme.colors.danger,
+                    borderTop: `1px solid ${theme.colors.mutedBorder}`
+                  }}
+                >
+                  <LogOut size={16} /> Sign Out
                 </button>
               </div>
             )}
