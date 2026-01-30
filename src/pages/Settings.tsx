@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../components/Layout';
 import { useTheme } from 'next-themes';
 import { useSettings } from '../hooks/useSettings';
@@ -18,6 +19,14 @@ import {
   Monitor,
   Check,
   Loader2,
+  Puzzle,
+  CheckCircle,
+  Circle,
+  RefreshCw,
+  Settings as SettingsIcon,
+  Unlink,
+  ChevronDown,
+  Zap,
 } from 'lucide-react';
 import { Switch } from '../components/ui/switch';
 import { Input } from '../components/ui/input';
@@ -40,15 +49,49 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 
-type SettingsSection = 'profile' | 'brand' | 'security' | 'notifications' | 'appearance' | 'privacy';
+type SettingsSection = 'profile' | 'brand' | 'security' | 'notifications' | 'appearance' | 'privacy' | 'integrations';
+
+interface Integration {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  connected: boolean;
+  lastSynced?: string;
+  category: 'productivity' | 'communication' | 'finance' | 'crm';
+}
+
+const INTEGRATIONS: Integration[] = [
+  { id: 'clickup', name: 'ClickUp', description: 'Project management and task tracking', icon: '📋', connected: true, lastSynced: '2 hours ago', category: 'productivity' },
+  { id: 'hubspot', name: 'HubSpot', description: 'CRM and marketing automation', icon: '🎯', connected: true, lastSynced: '30 minutes ago', category: 'crm' },
+  { id: 'gmail', name: 'Gmail', description: 'Email communication and tracking', icon: '✉️', connected: false, category: 'communication' },
+  { id: 'google-calendar', name: 'Google Calendar', description: 'Event scheduling and reminders', icon: '📅', connected: true, lastSynced: '1 hour ago', category: 'productivity' },
+  { id: 'slack', name: 'Slack', description: 'Team messaging and notifications', icon: '💬', connected: false, category: 'communication' },
+  { id: 'quickbooks', name: 'QuickBooks', description: 'Accounting and financial management', icon: '📊', connected: true, lastSynced: '4 hours ago', category: 'finance' },
+  { id: 'stripe', name: 'Stripe', description: 'Payment processing and billing', icon: '💳', connected: false, category: 'finance' },
+  { id: 'notion', name: 'Notion', description: 'Documentation and knowledge base', icon: '📝', connected: false, category: 'productivity' },
+];
 
 const Settings: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const initialSection = (searchParams.get('section') as SettingsSection) || 'profile';
+  
   const { theme: currentTheme, setTheme } = useTheme();
-  const [activeSection, setActiveSection] = React.useState<SettingsSection>('profile');
+  const [activeSection, setActiveSection] = React.useState<SettingsSection>(initialSection);
   const { settings, isSaving, updateProfile, updateBrand, updateNotifications, updateAppearance } = useSettings();
+
+  // Integrations state
+  const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS);
+  const [syncing, setSyncing] = useState<string | null>(null);
 
   // File upload refs
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -68,6 +111,7 @@ const Settings: React.FC = () => {
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'appearance' as const, label: 'Appearance', icon: Palette },
     { id: 'privacy' as const, label: 'Data & Privacy', icon: Shield },
+    { id: 'integrations' as const, label: 'Integrations', icon: Puzzle },
   ];
 
   const timezones = [
@@ -123,8 +167,50 @@ const Settings: React.FC = () => {
     alert('Account deletion requested. This action cannot be undone.');
   };
 
+  // Integration handlers
+  const connectedCount = integrations.filter((i) => i.connected).length;
+
+  const handleConnect = (id: string) => {
+    setIntegrations((prev) =>
+      prev.map((integration) =>
+        integration.id === id
+          ? { ...integration, connected: true, lastSynced: 'Just now' }
+          : integration
+      )
+    );
+    alert(`Connected to ${integrations.find((i) => i.id === id)?.name}!`);
+  };
+
+  const handleDisconnect = (id: string) => {
+    setIntegrations((prev) =>
+      prev.map((integration) =>
+        integration.id === id
+          ? { ...integration, connected: false, lastSynced: undefined }
+          : integration
+      )
+    );
+    alert(`Disconnected from ${integrations.find((i) => i.id === id)?.name}`);
+  };
+
+  const handleSync = (id: string) => {
+    setSyncing(id);
+    setTimeout(() => {
+      setIntegrations((prev) =>
+        prev.map((integration) =>
+          integration.id === id ? { ...integration, lastSynced: 'Just now' } : integration
+        )
+      );
+      setSyncing(null);
+      alert(`${integrations.find((i) => i.id === id)?.name} synced successfully!`);
+    }, 2000);
+  };
+
+  const handleViewIntegrationSettings = (id: string) => {
+    alert(`Opening settings for ${integrations.find((i) => i.id === id)?.name}...`);
+  };
+
   const SaveIndicator = () => (
-    <div className="fixed bottom-6 right-6 flex items-center gap-2 bg-card border border-border rounded-lg px-4 py-2 shadow-lg animate-fade-in">
+    <div className="fixed bottom-6 right-6 flex items-center gap-2 bg-card border border-border rounded-lg px-4 py-2 shadow-lg animate-fade-in z-50">
       {isSaving ? (
         <>
           <Loader2 size={16} className="animate-spin text-muted-foreground" />
@@ -181,7 +267,7 @@ const Settings: React.FC = () => {
             </div>
           </div>
 
-          {/* Form Fields - Auto-save on change */}
+          {/* Form Fields */}
           <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="name">Full Name</Label>
@@ -676,6 +762,125 @@ const Settings: React.FC = () => {
     </div>
   );
 
+  const renderIntegrationsSection = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Integrations</h2>
+        <p className="text-muted-foreground">Connect your favorite tools and services</p>
+      </div>
+
+      {/* Stats */}
+      <div className="flex gap-4">
+        <Card className="glass border-border/50 flex-1">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-success/15 flex items-center justify-center">
+              <CheckCircle size={20} className="text-success" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{connectedCount}</div>
+              <div className="text-xs text-muted-foreground">Connected</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass border-border/50 flex-1">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+              <Circle size={20} className="text-muted-foreground" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">{integrations.length - connectedCount}</div>
+              <div className="text-xs text-muted-foreground">Available</div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Integration Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {integrations.map((integration) => (
+          <Card 
+            key={integration.id} 
+            className={`glass ${integration.connected ? 'border-success/30' : 'border-border/50'}`}
+          >
+            <CardContent className="pt-5 flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center text-2xl shrink-0">
+                  {integration.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-semibold text-foreground">{integration.name}</h3>
+                    <span
+                      className={`px-2 py-0.5 text-xs font-medium rounded ${
+                        integration.connected
+                          ? 'bg-success/15 text-success border border-success/30'
+                          : 'bg-muted text-muted-foreground border border-border'
+                      }`}
+                    >
+                      {integration.connected ? 'Connected' : 'Not Connected'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">{integration.description}</p>
+                  {integration.connected && integration.lastSynced && (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-2">
+                      <RefreshCw size={12} />
+                      Last synced: {integration.lastSynced}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-auto pt-2">
+                {integration.connected ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="w-full">
+                        Manage
+                        <ChevronDown size={14} className="ml-2" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => handleSync(integration.id)}
+                        disabled={syncing === integration.id}
+                      >
+                        <RefreshCw size={14} className={syncing === integration.id ? 'animate-spin' : ''} />
+                        <span className="ml-2">{syncing === integration.id ? 'Syncing...' : 'Sync Now'}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleViewIntegrationSettings(integration.id)}>
+                        <SettingsIcon size={14} />
+                        <span className="ml-2">Settings</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleDisconnect(integration.id)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Unlink size={14} />
+                        <span className="ml-2">Disconnect</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <Button size="sm" onClick={() => handleConnect(integration.id)} className="w-full">
+                    Connect
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {connectedCount === 0 && (
+        <div className="flex items-center gap-3 text-accent text-sm justify-center py-4">
+          <Zap size={18} />
+          <span>Connect an integration to start syncing data</span>
+        </div>
+      )}
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeSection) {
       case 'profile':
@@ -690,6 +895,8 @@ const Settings: React.FC = () => {
         return renderAppearanceSection();
       case 'privacy':
         return renderPrivacySection();
+      case 'integrations':
+        return renderIntegrationsSection();
       default:
         return null;
     }
@@ -697,36 +904,38 @@ const Settings: React.FC = () => {
 
   return (
     <PageLayout title="Settings" subtitle="Manage your account preferences">
-      <div className="flex gap-8">
-        {/* Sidebar */}
-        <nav className="w-64 flex-shrink-0">
-          <Card className="glass border-border/50 sticky top-8">
-            <CardContent className="p-4">
-              {sections.map((section) => {
-                const Icon = section.icon;
-                const isActive = activeSection === section.id;
-                return (
-                  <button
-                    key={section.id}
-                    onClick={() => setActiveSection(section.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all mb-1 ${
-                      isActive
-                        ? 'bg-primary/15 text-primary font-semibold'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                    }`}
-                  >
-                    <Icon size={18} />
-                    {section.label}
-                  </button>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </nav>
+      <div className="max-w-6xl mx-auto">
+        <div className="flex gap-8">
+          {/* Sidebar */}
+          <nav className="w-56 flex-shrink-0">
+            <Card className="glass border-border/50 sticky top-24">
+              <CardContent className="p-3">
+                {sections.map((section) => {
+                  const Icon = section.icon;
+                  const isActive = activeSection === section.id;
+                  return (
+                    <button
+                      key={section.id}
+                      onClick={() => setActiveSection(section.id)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all mb-1 ${
+                        isActive
+                          ? 'bg-primary/15 text-primary font-semibold'
+                          : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                      }`}
+                    >
+                      <Icon size={18} />
+                      {section.label}
+                    </button>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </nav>
 
-        {/* Main Content */}
-        <div className="flex-1 max-w-3xl animate-fade-in">
-          {renderContent()}
+          {/* Main Content */}
+          <div className="flex-1 min-w-0 animate-fade-in">
+            {renderContent()}
+          </div>
         </div>
       </div>
       
