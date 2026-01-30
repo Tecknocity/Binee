@@ -150,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Quick Actions */}
                 <div className="p-2 border-b border-border/50">
                   <Link
-                    to="/integrations"
+                    to="/settings?section=integrations"
                     role="menuitem"
                     onClick={() => onAccountMenuToggle(false)}
                     className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-primary/10 rounded-lg transition-colors group"
