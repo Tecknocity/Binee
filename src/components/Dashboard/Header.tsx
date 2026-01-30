@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { User, Settings, LogOut, CreditCard, Puzzle, RefreshCw, Database } from 'lucide-react';
+import { User, Settings, LogOut, CreditCard, Puzzle, RefreshCw, Database, ChevronRight } from 'lucide-react';
 import { ViewMode } from '../../types/dashboard';
 import { cn } from '@/lib/utils';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface HeaderProps {
   viewMode: ViewMode;
@@ -42,56 +43,47 @@ export const Header: React.FC<HeaderProps> = ({
   }, [handleClickOutside, handleEscapeKey]);
 
   return (
-    <header className="glass-strong sticky top-0 z-50 border-b border-primary/20 px-8 py-6">
-      <div className="flex justify-between items-center max-w-[1800px] mx-auto">
+    <header className="bg-background/95 backdrop-blur-xl sticky top-0 z-50 border-b border-border/40">
+      <div className="flex justify-between items-center max-w-[1800px] mx-auto px-6 py-4">
         {/* Logo and Title */}
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shadow-glow-sm">
-            <span className="text-white font-bold text-lg">B</span>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl gradient-primary flex items-center justify-center shadow-lg">
+            <span className="text-primary-foreground font-bold text-xl">B</span>
           </div>
           <div>
-            <h1 className="text-2xl font-bold gradient-text">
+            <h1 className="text-xl font-bold gradient-text tracking-tight">
               Business Command Center
             </h1>
-            <p className="text-muted-foreground text-sm mt-0.5">AI-powered business intelligence</p>
+            <p className="text-muted-foreground text-xs">AI-powered business intelligence</p>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
-          {/* Navigation Links */}
-          <Link
-            to="/integrations"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all duration-200 text-sm font-medium"
-          >
-            <Puzzle size={16} />
-            Integrations
-          </Link>
-
+        <div className="flex items-center gap-2">
           <button 
             onClick={onMappingClick} 
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-info/10 border border-info/30 text-info hover:bg-info/20 transition-all duration-200 text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-info/40 text-info bg-info/5 hover:bg-info/10 transition-all duration-200 text-sm font-medium"
           >
-            <Database size={16} />
+            <Database size={15} />
             Data Mapping
           </button>
 
           <button 
             onClick={onRefreshClick} 
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl gradient-primary text-white hover:opacity-90 transition-all duration-200 text-sm font-semibold shadow-glow-sm hover:shadow-glow"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg gradient-primary text-primary-foreground hover:opacity-90 transition-all duration-200 text-sm font-semibold shadow-md"
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={15} />
             Refresh Data
           </button>
 
           {/* View Mode Toggle */}
-          <div className="flex bg-secondary/50 rounded-xl p-1 ml-2">
+          <div className="flex bg-muted/50 rounded-lg p-1 ml-1">
             <button 
               onClick={() => onViewModeChange('company')} 
               className={cn(
-                "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                "px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200",
                 viewMode === 'company' 
-                  ? "gradient-primary text-white shadow-glow-sm" 
+                  ? "gradient-primary text-primary-foreground shadow-sm" 
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -100,9 +92,9 @@ export const Header: React.FC<HeaderProps> = ({
             <button 
               onClick={() => onViewModeChange('binee')} 
               className={cn(
-                "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                "px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200",
                 viewMode === 'binee' 
-                  ? "gradient-primary text-white shadow-glow-sm" 
+                  ? "gradient-primary text-primary-foreground shadow-sm" 
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -111,65 +103,113 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Account Menu */}
-          <div className="relative ml-2">
+          <div className="relative ml-1">
             <button 
               ref={accountButtonRef} 
               onClick={() => onAccountMenuToggle(!showAccountMenu)} 
               aria-expanded={showAccountMenu} 
               aria-haspopup="true" 
               aria-label="Account menu" 
-              className="w-11 h-11 rounded-full gradient-primary flex items-center justify-center transition-all duration-200 hover:shadow-glow hover:scale-105"
+              className="relative group"
             >
-              <User size={20} className="text-white" />
+              <Avatar className="w-10 h-10 ring-2 ring-primary/20 hover:ring-primary/40 transition-all duration-200">
+                <AvatarImage src="" />
+                <AvatarFallback className="gradient-primary text-primary-foreground font-semibold text-sm">
+                  JD
+                </AvatarFallback>
+              </Avatar>
+              <span className="absolute bottom-0 right-0 w-3 h-3 bg-success rounded-full border-2 border-background" />
             </button>
 
             {showAccountMenu && (
               <div 
                 ref={accountMenuRef} 
                 role="menu" 
-                className="absolute top-full right-0 mt-2 w-60 bg-card rounded-xl border border-border shadow-card animate-scale-in overflow-hidden"
+                className="absolute top-full right-0 mt-3 w-72 bg-card rounded-xl border border-border shadow-xl animate-scale-in overflow-hidden"
               >
-                <div className="px-4 py-3 border-b border-border bg-secondary/30">
-                  <div className="font-semibold text-foreground">John Doe</div>
-                  <div className="text-sm text-muted-foreground">john@company.com</div>
+                {/* User Info Header */}
+                <div className="p-4 bg-gradient-to-br from-primary/10 to-accent/10 border-b border-border/50">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="w-12 h-12 ring-2 ring-primary/30">
+                      <AvatarImage src="" />
+                      <AvatarFallback className="gradient-primary text-primary-foreground font-bold">
+                        JD
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-foreground truncate">John Doe</div>
+                      <div className="text-sm text-muted-foreground truncate">john@company.com</div>
+                    </div>
+                    <div className="flex items-center gap-1 px-2 py-1 bg-success/15 text-success text-xs font-medium rounded-full">
+                      <span className="w-1.5 h-1.5 bg-success rounded-full" />
+                      Online
+                    </div>
+                  </div>
                 </div>
 
-                <div className="py-1">
+                {/* Quick Actions */}
+                <div className="p-2 border-b border-border/50">
+                  <Link
+                    to="/integrations"
+                    role="menuitem"
+                    onClick={() => onAccountMenuToggle(false)}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-primary/10 rounded-lg transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Puzzle size={16} className="text-primary" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">Integrations</div>
+                        <div className="text-xs text-muted-foreground">Connect your tools</div>
+                      </div>
+                    </div>
+                    <ChevronRight size={16} className="text-muted-foreground group-hover:text-foreground transition-colors" />
+                  </Link>
+                </div>
+
+                {/* Menu Items */}
+                <div className="p-2">
                   <Link
                     to="/profile"
                     role="menuitem"
                     onClick={() => onAccountMenuToggle(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-foreground hover:bg-secondary/50 transition-colors text-sm"
+                    className="flex items-center gap-3 px-3 py-2.5 text-foreground hover:bg-muted rounded-lg transition-colors text-sm"
                   >
-                    <User size={16} className="text-muted-foreground" /> Profile
+                    <User size={16} className="text-muted-foreground" /> 
+                    <span>Profile</span>
                   </Link>
 
                   <Link
                     to="/settings"
                     role="menuitem"
                     onClick={() => onAccountMenuToggle(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-foreground hover:bg-secondary/50 transition-colors text-sm"
+                    className="flex items-center gap-3 px-3 py-2.5 text-foreground hover:bg-muted rounded-lg transition-colors text-sm"
                   >
-                    <Settings size={16} className="text-muted-foreground" /> Settings
+                    <Settings size={16} className="text-muted-foreground" /> 
+                    <span>Settings</span>
                   </Link>
 
                   <Link
                     to="/billing"
                     role="menuitem"
                     onClick={() => onAccountMenuToggle(false)}
-                    className="flex items-center gap-3 px-4 py-2.5 text-foreground hover:bg-secondary/50 transition-colors text-sm"
+                    className="flex items-center gap-3 px-3 py-2.5 text-foreground hover:bg-muted rounded-lg transition-colors text-sm"
                   >
-                    <CreditCard size={16} className="text-muted-foreground" /> Billing
+                    <CreditCard size={16} className="text-muted-foreground" /> 
+                    <span>Billing</span>
                   </Link>
                 </div>
 
-                <div className="border-t border-border py-1">
+                {/* Sign Out */}
+                <div className="p-2 border-t border-border/50">
                   <button
                     role="menuitem"
                     onClick={() => { onLogout(); onAccountMenuToggle(false); }}
-                    className="flex items-center gap-3 px-4 py-2.5 text-destructive hover:bg-destructive/10 transition-colors text-sm w-full"
+                    className="flex items-center gap-3 px-3 py-2.5 text-destructive hover:bg-destructive/10 rounded-lg transition-colors text-sm w-full"
                   >
-                    <LogOut size={16} /> Sign Out
+                    <LogOut size={16} /> 
+                    <span>Sign Out</span>
                   </button>
                 </div>
               </div>
