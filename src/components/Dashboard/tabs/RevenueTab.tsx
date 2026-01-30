@@ -1,7 +1,6 @@
 import React from 'react';
 import { DollarSign } from 'lucide-react';
 import { MockData, ViewMode, WidgetId } from '../../../types/dashboard';
-import { theme } from '../../../styles/theme';
 import { WidgetWrapper } from '../WidgetWrapper';
 import { RevenueTrend } from '../widgets/RevenueTrend';
 import { RevenueBySource } from '../widgets/RevenueBySource';
@@ -22,23 +21,32 @@ export const RevenueTab: React.FC<RevenueTabProps> = ({ data, viewMode, overview
   const dealCountData = viewMode === 'company' ? data.companyDealCount : data.pipeline;
 
   return (
-    <div role="tabpanel" id="revenue-panel" aria-labelledby="revenue-tab" style={{ display: 'grid', gap: theme.spacing['2xl'] }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: theme.spacing.md }}>
-        <DollarSign size={28} color={theme.colors.accent} />
+    <div role="tabpanel" id="revenue-panel" aria-labelledby="revenue-tab" className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-accent/15 flex items-center justify-center">
+          <DollarSign size={24} className="text-accent" />
+        </div>
         <div>
-          <h2 style={{ fontSize: theme.fontSize['4xl'], fontWeight: theme.fontWeight.semibold, color: theme.colors.text }}>Revenue & Pipeline</h2>
-          <p style={{ fontSize: theme.fontSize.base, color: theme.colors.textSecondary, marginTop: theme.spacing.xs }}>Financial performance and sales pipeline analytics</p>
+          <h2 className="text-2xl font-bold text-foreground">Revenue & Pipeline</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Financial performance and sales pipeline analytics</p>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: theme.spacing['xl'] }}>
-        <WidgetWrapper widgetId="revenueTrend" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
-          <RevenueTrend data={data.revenue} />
-        </WidgetWrapper>
+
+      {/* Revenue Trend + By Source */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2">
+          <WidgetWrapper widgetId="revenueTrend" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
+            <RevenueTrend data={data.revenue} />
+          </WidgetWrapper>
+        </div>
         <WidgetWrapper widgetId="revenueBySource" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
           <RevenueBySource data={data.revenueBySource} />
         </WidgetWrapper>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: theme.spacing['xl'] }}>
+
+      {/* Pipeline + Deal Count */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <WidgetWrapper widgetId="salesPipeline" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
           <SalesPipeline data={pipelineData} viewMode={viewMode} />
         </WidgetWrapper>
@@ -46,9 +54,13 @@ export const RevenueTab: React.FC<RevenueTabProps> = ({ data, viewMode, overview
           <DealCountByStage data={dealCountData} viewMode={viewMode} />
         </WidgetWrapper>
       </div>
+
+      {/* High Value Deals */}
       <WidgetWrapper widgetId="highValueDeals" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
         <HighValueDeals deals={data.highValueDeals} />
       </WidgetWrapper>
+
+      {/* Expense Breakdown */}
       <WidgetWrapper widgetId="expenseBreakdown" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
         <ExpenseBreakdown data={data.expenseBreakdown} />
       </WidgetWrapper>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { NewGoal } from '../../../types/dashboard';
-import { theme } from '../../../styles/theme';
+import { Target } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface AddGoalModalProps {
   isOpen: boolean;
@@ -30,25 +31,77 @@ export const AddGoalModal: React.FC<AddGoalModalProps> = ({ isOpen, onClose, onS
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Create New Goal">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: theme.spacing['xl'] }}>
-        {error && <div style={{ padding: theme.spacing.md, background: theme.colors.dangerLight, border: `1px solid ${theme.colors.dangerBorder}`, borderRadius: theme.borderRadius.md, color: theme.colors.danger, fontSize: theme.fontSize.base }}>{error}</div>}
-        <div>
-          <label style={{ display: 'block', fontSize: theme.fontSize.base, color: theme.colors.textSecondary, marginBottom: theme.spacing.sm }}>Goal Name</label>
-          <input type="text" value={name} onChange={(e) => { setName(e.target.value); setError(''); }} placeholder="e.g., Hit $100K MRR" style={{ width: '100%', padding: theme.spacing.md, background: theme.colors.cardInner, border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.md, color: theme.colors.text, fontSize: theme.fontSize.base }} />
+      <div className="space-y-5">
+        {/* Icon */}
+        <div className="flex justify-center">
+          <div className="w-14 h-14 rounded-2xl bg-accent/15 flex items-center justify-center">
+            <Target size={28} className="text-accent" />
+          </div>
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Goal Name */}
         <div>
-          <label style={{ display: 'block', fontSize: theme.fontSize.base, color: theme.colors.textSecondary, marginBottom: theme.spacing.sm }}>Target Value</label>
-          <input type="number" value={target} onChange={(e) => { setTarget(e.target.value); setError(''); }} placeholder="e.g., 100000" style={{ width: '100%', padding: theme.spacing.md, background: theme.colors.cardInner, border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.md, color: theme.colors.text, fontSize: theme.fontSize.base }} />
+          <label className="block text-sm font-medium text-muted-foreground mb-2">
+            Goal Name
+          </label>
+          <input 
+            type="text" 
+            value={name} 
+            onChange={(e) => { setName(e.target.value); setError(''); }} 
+            placeholder="e.g., Hit $100K MRR"
+            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          />
         </div>
+
+        {/* Target Value */}
         <div>
-          <label style={{ display: 'block', fontSize: theme.fontSize.base, color: theme.colors.textSecondary, marginBottom: theme.spacing.sm }}>Unit</label>
-          <select value={unit} onChange={(e) => setUnit(e.target.value)} style={{ width: '100%', padding: theme.spacing.md, background: theme.colors.cardInner, border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.md, color: theme.colors.text, fontSize: theme.fontSize.base }}>
+          <label className="block text-sm font-medium text-muted-foreground mb-2">
+            Target Value
+          </label>
+          <input 
+            type="number" 
+            value={target} 
+            onChange={(e) => { setTarget(e.target.value); setError(''); }} 
+            placeholder="e.g., 100000"
+            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          />
+        </div>
+
+        {/* Unit */}
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground mb-2">
+            Unit
+          </label>
+          <select 
+            value={unit} 
+            onChange={(e) => setUnit(e.target.value)}
+            className="w-full px-4 py-3 bg-background border border-border rounded-xl text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          >
             {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
         </div>
-        <div style={{ display: 'flex', gap: theme.spacing.md, justifyContent: 'flex-end', marginTop: theme.spacing.lg }}>
-          <button onClick={onClose} style={{ padding: `${theme.spacing.md} ${theme.spacing['xl']}`, background: 'transparent', border: `1px solid ${theme.colors.mutedBorder}`, borderRadius: theme.borderRadius.lg, color: theme.colors.textSecondary, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={handleSubmit} style={{ padding: `${theme.spacing.md} ${theme.spacing['xl']}`, background: theme.colors.gradient, border: 'none', borderRadius: theme.borderRadius.lg, color: theme.colors.text, fontSize: theme.fontSize.base, fontWeight: theme.fontWeight.semibold, cursor: 'pointer' }}>Create Goal</button>
+
+        {/* Actions */}
+        <div className="flex gap-3 justify-end pt-4">
+          <button 
+            onClick={onClose}
+            className="px-5 py-2.5 bg-transparent border border-border rounded-xl text-muted-foreground text-sm font-medium hover:bg-secondary/50 hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={handleSubmit}
+            className="px-5 py-2.5 gradient-primary rounded-xl text-white text-sm font-semibold hover:opacity-90 hover:shadow-glow transition-all"
+          >
+            Create Goal
+          </button>
         </div>
       </div>
     </Modal>

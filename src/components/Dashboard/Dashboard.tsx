@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { TabId, ViewMode, WidgetId, NewGoal } from '../../types/dashboard';
 import { mockData } from '../../data/mockData';
-import { theme } from '../../styles/theme';
 import { Header } from './Header';
 import { Navigation } from './Navigation';
 import { SettingsModal, MappingModal, AddGoalModal } from './modals';
@@ -59,7 +58,7 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: theme.colors.bg, color: theme.colors.text, fontFamily: 'system-ui, sans-serif' }}>
+    <div className="min-h-screen bg-background text-foreground font-sans">
       <Header
         viewMode={viewMode}
         showAccountMenu={showAccountMenu}
@@ -71,7 +70,9 @@ export const Dashboard: React.FC = () => {
         onLogout={handleLogout}
       />
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-      <main style={{ padding: theme.spacing['3xl'] }}>{renderTabContent()}</main>
+      <main className="p-8 max-w-[1800px] mx-auto animate-fade-in">
+        {renderTabContent()}
+      </main>
       <SettingsModal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
       <MappingModal isOpen={showMappingModal} onClose={() => setShowMappingModal(false)} dataMapping={mockData.dataMapping} />
       <AddGoalModal isOpen={showAddGoalModal} onClose={() => setShowAddGoalModal(false)} onSubmit={handleAddGoal} />
