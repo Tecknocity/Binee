@@ -12,8 +12,8 @@ export const AppShell: React.FC = () => {
       <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
       <div
         className={cn(
-          "transition-all duration-300",
-          sidebarCollapsed ? "ml-[68px]" : "ml-[220px]"
+          "transition-all duration-300 min-h-screen",
+          sidebarCollapsed ? "ml-[68px]" : "ml-[260px]"
         )}
       >
         <Header />
