@@ -5,6 +5,7 @@ import { mockData } from '../../data/mockData';
 import { AddGoalModal } from './modals';
 import { OverviewTab, IntelligenceTab, RevenueTab, OperationsTab, SuggestionsTab, GoalsTab } from './tabs';
 import { useViewMode } from '@/contexts/ViewModeContext';
+import { useAppearance } from '@/contexts/AppearanceContext';
 import { toast } from 'sonner';
 
 const DEFAULT_OVERVIEW_WIDGETS: WidgetId[] = ['metrics', 'aiInsights', 'revenueTrend'];
@@ -42,7 +43,8 @@ function loadOverviewWidgets(): WidgetId[] {
 
 export const Dashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const activeTab = (searchParams.get('tab') as TabId) || 'home';
+  const { defaultTab } = useAppearance();
+  const activeTab = (searchParams.get('tab') as TabId) || (defaultTab as TabId) || 'home';
   const { viewMode } = useViewMode();
   const [showAddGoalModal, setShowAddGoalModal] = useState(false);
   const [overviewWidgets, setOverviewWidgets] = useState<WidgetId[]>(loadOverviewWidgets);

@@ -243,4 +243,48 @@ html {
     from { opacity: 0; transform: scale(0.95); }
     to { opacity: 1; transform: scale(1); }
   }
+
+  /* Compact density: reduce spacing throughout the UI */
+  .density-compact .p-6 {
+    padding: 1rem;
+  }
+
+  .density-compact .p-8 {
+    padding: 1.25rem;
+  }
+
+  .density-compact .lg\:p-8 {
+    padding: 1.25rem;
+  }
+
+  .density-compact .gap-6 {
+    gap: 1rem;
+  }
+
+  .density-compact .gap-4 {
+    gap: 0.5rem;
+  }
+
+  .density-compact .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(1rem * var(--tw-space-y-reverse));
+  }
+
+  .density-compact .mb-6 {
+    margin-bottom: 1rem;
+  }
+
+  .density-compact .mb-4 {
+    margin-bottom: 0.5rem;
+  }
+
+  .density-compact .py-4 {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .density-compact .rounded-xl {
+    border-radius: 0.5rem;
+  }
 }

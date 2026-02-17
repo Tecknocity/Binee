@@ -24,12 +24,14 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewMode } from '@/contexts/ViewModeContext';
+import { useAppearance } from '@/contexts/AppearanceContext';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { TabId } from '@/types/dashboard';
 
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  autoHide?: boolean;
 }
 
 const TOOLS_NAV = [
@@ -43,11 +45,12 @@ const DATA_NAV = [
   { path: '/data-quality', label: 'Data Quality & Issues', icon: AlertCircle },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide = false }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { viewMode, setViewMode } = useViewMode();
+  const { defaultTab } = useAppearance();
   const [toolsOpen, setToolsOpen] = useState(true);
   const [dataOpen, setDataOpen] = useState(true);
   const [userPopupOpen, setUserPopupOpen] = useState(false);
@@ -109,7 +112,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       className={cn(
         "fixed left-0 top-0 h-full z-50 flex flex-col transition-all duration-300 border-r",
         "bg-sidebar border-sidebar-border",
-        collapsed ? "w-[68px]" : "w-[260px]"
+        collapsed ? "w-[68px]" : "w-[260px]",
+        autoHide && !collapsed && "shadow-2xl"
       )}
     >
       {/* Logo */}
@@ -129,20 +133,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3">
         {/* Top-level tabs: Home, Chat, Goals, Growth, Operations, Insights, Actions */}
         <div className="space-y-0.5 mb-1">
-          {renderNavItem('home', '/?tab=home', 'Home', BarChart3,
-            isDashboard && (activeTab === 'home' || !activeTab))}
-          {renderNavItem('chat', '/chat', 'Chat', MessageSquare,
-            isNavActive('/chat'))}
-          {renderNavItem('goals', '/?tab=goals', 'Goals', Target,
-            isDashboard && activeTab === 'goals')}
-          {renderNavItem('growth', '/?tab=growth', 'Growth', TrendingUp,
-            isDashboard && activeTab === 'growth')}
-          {renderNavItem('operations', '/?tab=operations', 'Operations', Briefcase,
-            isDashboard && activeTab === 'operations')}
-          {renderNavItem('insights', '/?tab=insights', 'Insights', Brain,
-            isDashboard && activeTab === 'insights')}
-          {renderNavItem('actions', '/?tab=actions', 'Actions', Lightbulb,
-            isDashboard && activeTab === 'actions')}
+          {(() => {
+            // When no tab param, use the default landing tab from appearance settings
+            const effectiveTab = activeTab || (defaultTab as TabId) || 'home';
+            return (
+              <>
+                {renderNavItem('home', '/?tab=home', 'Home', BarChart3,
+                  isDashboard && effectiveTab === 'home')}
+                {renderNavItem('chat', '/chat', 'Chat', MessageSquare,
+                  isNavActive('/chat'))}
+                {renderNavItem('goals', '/?tab=goals', 'Goals', Target,
+                  isDashboard && effectiveTab === 'goals')}
+                {renderNavItem('growth', '/?tab=growth', 'Growth', TrendingUp,
+                  isDashboard && effectiveTab === 'growth')}
+                {renderNavItem('operations', '/?tab=operations', 'Operations', Briefcase,
+                  isDashboard && effectiveTab === 'operations')}
+                {renderNavItem('insights', '/?tab=insights', 'Insights', Brain,
+                  isDashboard && effectiveTab === 'insights')}
+                {renderNavItem('actions', '/?tab=actions', 'Actions', Lightbulb,
+                  isDashboard && effectiveTab === 'actions')}
+              </>
+            );
+          })()}
         </div>
 
         {/* Divider */}
