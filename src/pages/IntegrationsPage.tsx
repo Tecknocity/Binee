@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageLayout } from '../components/Layout';
 import { IntegrationGrid, ConnectModal } from '../components/integrations';
 import { Button } from '@/components/ui/button';
 import { Plus, CheckCircle, Circle, Puzzle, Zap } from 'lucide-react';
@@ -219,7 +218,11 @@ const IntegrationsPage: React.FC = () => {
   };
 
   return (
-    <PageLayout title="Integrations" subtitle="Connect your tools to power your Business Command Center">
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Integrations</h1>
+        <p className="text-sm text-muted-foreground mt-1">Connect your tools to power your Business Command Center</p>
+      </div>
       {/* Stats Bar */}
       <div className="flex gap-4 mb-6 flex-wrap">
         <Card className="glass border-border/50">
@@ -279,7 +282,7 @@ const IntegrationsPage: React.FC = () => {
         }}
         onConfirm={handleConfirmConnect}
       />
-    </PageLayout>
+    </div>
   );
 };
 
