@@ -1,3 +1,4 @@
+import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,43 +18,86 @@ import ErrorPage from "./pages/ErrorPage";
 
 const queryClient = new QueryClient();
 
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("React Error Boundary caught:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, fontFamily: "system-ui, sans-serif", background: "#0f1117", color: "#e5e7eb", minHeight: "100vh" }}>
+          <h1 style={{ color: "#ef4444", marginBottom: 16 }}>Something went wrong</h1>
+          <pre style={{ background: "#1a1d27", padding: 16, borderRadius: 8, overflow: "auto", fontSize: 14, color: "#f87171" }}>
+            {this.state.error?.message}
+          </pre>
+          <pre style={{ background: "#1a1d27", padding: 16, borderRadius: 8, overflow: "auto", fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
+            {this.state.error?.stack}
+          </pre>
+          <button
+            onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            style={{ marginTop: 16, padding: "8px 20px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14 }}
+          >
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            {/* Onboarding - no shell */}
-            <Route path="/onboarding" element={<OnboardingPage />} />
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              {/* Onboarding - no shell */}
+              <Route path="/onboarding" element={<OnboardingPage />} />
 
-            {/* Main app with AppShell layout */}
-            <Route element={<AppShell />}>
-              <Route path="/" element={<Index />} />
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/integrations" element={<IntegrationsPage />} />
-              <Route path="/integrations/:slug" element={<IntegrationDetailPage />} />
-              <Route path="/billing" element={<BillingPage />} />
+              {/* Main app with AppShell layout */}
+              <Route element={<AppShell />}>
+                <Route path="/" element={<Index />} />
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/integrations" element={<IntegrationsPage />} />
+                <Route path="/integrations/:slug" element={<IntegrationDetailPage />} />
+                <Route path="/billing" element={<BillingPage />} />
 
-              {/* Settings with sub-routes */}
-              <Route path="/settings" element={<SettingsLayout />}>
-                <Route index element={<Navigate to="/settings/profile" replace />} />
-                <Route path="profile" element={<ProfileSection />} />
-                <Route path="security" element={<SecuritySection />} />
-                <Route path="notifications" element={<NotificationsSection />} />
-                <Route path="appearance" element={<AppearanceSection />} />
-                <Route path="data-privacy" element={<DataPrivacySection />} />
+                {/* Settings with sub-routes */}
+                <Route path="/settings" element={<SettingsLayout />}>
+                  <Route index element={<Navigate to="/settings/profile" replace />} />
+                  <Route path="profile" element={<ProfileSection />} />
+                  <Route path="security" element={<SecuritySection />} />
+                  <Route path="notifications" element={<NotificationsSection />} />
+                  <Route path="appearance" element={<AppearanceSection />} />
+                  <Route path="data-privacy" element={<DataPrivacySection />} />
+                </Route>
+
+                <Route path="/error" element={<ErrorPage />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Route>
-
-              <Route path="/error" element={<ErrorPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

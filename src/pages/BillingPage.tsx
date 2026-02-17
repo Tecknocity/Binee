@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { PageLayout } from '../components/Layout';
 import {
   CreditCard,
   Download,
@@ -243,7 +242,11 @@ const BillingPage: React.FC = () => {
   // ---- Render -------------------------------------------------------------
 
   return (
-    <PageLayout title="Billing" subtitle="Manage your subscription, usage, and payment methods">
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Billing</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage your subscription, usage, and payment methods</p>
+      </div>
       <div className="max-w-[960px] space-y-6">
         {/* ---------------------------------------------------------------- */}
         {/* Current Plan Card                                                */}
@@ -474,7 +477,7 @@ const BillingPage: React.FC = () => {
           </Table>
         </div>
       </div>
-    </PageLayout>
+    </div>
   );
 };
 
