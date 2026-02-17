@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTheme } from 'next-themes';
 
-type ThemeOption = 'dark' | 'light';
 type DensityOption = 'comfortable' | 'compact';
 type SidebarBehavior = 'expanded' | 'collapsed' | 'auto-hide';
 
 const LANDING_TABS = [
   { value: 'home', label: 'Home' },
+  { value: 'goals', label: 'Goals' },
   { value: 'growth', label: 'Growth' },
   { value: 'operations', label: 'Operations' },
   { value: 'insights', label: 'Insights' },
@@ -15,12 +16,12 @@ const LANDING_TABS = [
 ];
 
 const AppearanceSection: React.FC = () => {
-  const [theme, setTheme] = useState<ThemeOption>('dark');
+  const { theme, setTheme } = useTheme();
   const [density, setDensity] = useState<DensityOption>('comfortable');
   const [landingTab, setLandingTab] = useState('home');
   const [sidebarBehavior, setSidebarBehavior] = useState<SidebarBehavior>('expanded');
 
-  const handleThemeChange = (newTheme: ThemeOption) => {
+  const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme);
     toast.success('Settings saved!');
   };

@@ -4,14 +4,22 @@ import { Bell } from 'lucide-react';
 import { NotificationPanel } from './NotificationPanel';
 import { TabId } from '@/types/dashboard';
 
-const PAGE_TITLES: Record<string, string> = {
-  '/': 'Dashboard',
+const TAB_LABELS: Record<TabId, string> = {
+  home: 'Home',
+  goals: 'Goals',
+  growth: 'Growth',
+  operations: 'Operations',
+  insights: 'Insights',
+  actions: 'Actions',
+};
+
+const PAGE_LABELS: Record<string, string> = {
   '/chat': 'Chat',
-  '/tools/health-scorecard': 'Tools',
-  '/tools/price-architect': 'Tools',
-  '/integrations': 'Data',
-  '/data-mapping': 'Data',
-  '/data-quality': 'Data',
+  '/tools/health-scorecard': 'Business Health Scorecard',
+  '/tools/price-architect': 'Price Architect',
+  '/integrations': 'Integrations',
+  '/data-mapping': 'Data Mapping',
+  '/data-quality': 'Data Quality & Issues',
   '/settings': 'Settings',
   '/settings/profile': 'Settings',
   '/settings/security': 'Settings',
@@ -22,32 +30,17 @@ const PAGE_TITLES: Record<string, string> = {
   '/onboarding': 'Getting Started',
 };
 
-const TAB_LABELS: Record<TabId, string> = {
-  home: 'Home',
-  growth: 'Growth',
-  operations: 'Operations',
-  insights: 'Insights',
-  actions: 'Actions',
-};
-
-const PAGE_SUBTITLES: Record<string, string> = {
-  '/tools/health-scorecard': 'Business Health Scorecard',
-  '/tools/price-architect': 'Price Architect',
-  '/integrations': 'Integrations',
-  '/data-mapping': 'Data Mapping',
-  '/data-quality': 'Data Quality & Issues',
-};
-
 export const Header: React.FC = () => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [showNotifications, setShowNotifications] = React.useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  const pageTitle = PAGE_TITLES[location.pathname] || 'Binee';
   const activeTab = searchParams.get('tab') as TabId | null;
-  const tabLabel = activeTab ? TAB_LABELS[activeTab] : location.pathname === '/' ? 'Home' : null;
-  const pageSubtitle = PAGE_SUBTITLES[location.pathname] || null;
+  // For dashboard tabs, show just the tab name; for other pages, show the page label
+  const pageLabel = location.pathname === '/'
+    ? (activeTab ? TAB_LABELS[activeTab] : 'Home')
+    : (PAGE_LABELS[location.pathname] || 'Binee');
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (showNotifications && notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -63,15 +56,9 @@ export const Header: React.FC = () => {
   return (
     <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-xl border-b border-border">
       <div className="flex justify-between items-center px-6 py-3">
-        {/* Breadcrumb */}
+        {/* Page title */}
         <div className="flex items-center gap-2 text-sm">
-          <h1 className="text-base font-semibold text-foreground">{pageTitle}</h1>
-          {(tabLabel || pageSubtitle) && (
-            <>
-              <span className="text-border">/</span>
-              <span className="text-muted-foreground font-medium">{tabLabel || pageSubtitle}</span>
-            </>
-          )}
+          <h1 className="text-base font-semibold text-foreground">{pageLabel}</h1>
         </div>
 
         {/* Right actions */}
