@@ -28,22 +28,22 @@ export const OperationsTab: React.FC<OperationsTabProps> = ({ data, overviewWidg
       </div>
 
       {/* Project Health */}
-      <WidgetWrapper widgetId="projectHealth" overviewWidgets={overviewWidgets} activeTab="operations" onToggle={onToggleWidget}>
+      <WidgetWrapper widgetId="projectHealth" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
         <ProjectHealth projects={data.projects} />
       </WidgetWrapper>
 
       {/* Team Performance + Task Completion */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <WidgetWrapper widgetId="teamPerformance" overviewWidgets={overviewWidgets} activeTab="operations" onToggle={onToggleWidget}>
+        <WidgetWrapper widgetId="teamPerformance" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
           <TeamPerformance data={data.teamPerformance} />
         </WidgetWrapper>
-        <WidgetWrapper widgetId="taskCompletionTrend" overviewWidgets={overviewWidgets} activeTab="operations" onToggle={onToggleWidget}>
+        <WidgetWrapper widgetId="taskCompletionTrend" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
           <TaskCompletionTrend data={data.taskCompletionTrend} />
         </WidgetWrapper>
       </div>
 
       {/* Capacity Utilization */}
-      <WidgetWrapper widgetId="teamCapacityUtilization" overviewWidgets={overviewWidgets} activeTab="operations" onToggle={onToggleWidget}>
+      <WidgetWrapper widgetId="teamCapacityUtilization" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
         <TeamCapacityUtilization data={data.teamCapacityUtilization} />
       </WidgetWrapper>
     </div>

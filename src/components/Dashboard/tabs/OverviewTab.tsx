@@ -2,6 +2,7 @@ import React from 'react';
 import { DollarSign, TrendingUp, Users, Briefcase, Target, Plus, LayoutGrid, Link as LinkIcon, ArrowRight, Clock, AlertTriangle, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MockData, WidgetId, ViewMode } from '../../../types/dashboard';
+import { WidgetWrapper } from '../WidgetWrapper';
 import { MetricCard } from '../MetricCard';
 import { AIInsights } from '../widgets/AIInsights';
 import { RevenueTrend } from '../widgets/RevenueTrend';
@@ -19,6 +20,7 @@ import { cn } from '@/lib/utils';
 interface OverviewTabProps {
   data: MockData;
   overviewWidgets: WidgetId[];
+  onToggleWidget: (widgetId: WidgetId) => void;
   onAddGoalClick: () => void;
   viewMode?: ViewMode;
 }
@@ -52,7 +54,7 @@ const QUICK_ACTIONS = [
   { icon: Activity, color: 'text-info', bg: 'bg-info/10', title: '8 tasks overdue by 7+ days', action: 'Review operations', tab: 'operations' },
 ];
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ data, overviewWidgets, onAddGoalClick, viewMode = 'company' }) => {
+export const OverviewTab: React.FC<OverviewTabProps> = ({ data, overviewWidgets, onToggleWidget, onAddGoalClick, viewMode = 'company' }) => {
   const pipelineData = viewMode === 'company' ? data.companyPipeline : data.pipeline;
   const dealCountData = viewMode === 'company' ? data.companyDealCount : data.pipeline;
 
@@ -113,47 +115,95 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ data, overviewWidgets,
 
       {/* Metrics Section */}
       {hasMetrics && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          <MetricCard title="Cash on Hand" value={`$${(data.metrics.cash / 1000).toFixed(1)}K`} subtitle="From QuickBooks" icon={DollarSign} color="success" topBorder="success" />
-          <MetricCard title="Monthly Recurring Revenue" value={`$${(data.metrics.mrr / 1000).toFixed(0)}K`} subtitle="From Stripe" icon={TrendingUp} color="primary" topBorder="primary" />
-          <MetricCard title="Active Customers" value={data.metrics.customers} subtitle="From HubSpot" icon={Users} color="info" topBorder="info" />
-          <MetricCard title="Active Projects" value={data.metrics.projects} subtitle="From ClickUp" icon={Briefcase} color="accent" topBorder="accent" />
-        </div>
+        <WidgetWrapper widgetId="metrics" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+          <div className="glass rounded-2xl p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+              <MetricCard title="Cash on Hand" value={`$${(data.metrics.cash / 1000).toFixed(1)}K`} subtitle="From QuickBooks" icon={DollarSign} color="success" topBorder="success" />
+              <MetricCard title="Monthly Recurring Revenue" value={`$${(data.metrics.mrr / 1000).toFixed(0)}K`} subtitle="From Stripe" icon={TrendingUp} color="primary" topBorder="primary" />
+              <MetricCard title="Active Customers" value={data.metrics.customers} subtitle="From HubSpot" icon={Users} color="info" topBorder="info" />
+              <MetricCard title="Active Projects" value={data.metrics.projects} subtitle="From ClickUp" icon={Briefcase} color="accent" topBorder="accent" />
+            </div>
+          </div>
+        </WidgetWrapper>
       )}
 
       {/* AI Insights and Revenue Trend */}
       {(hasAiInsights || hasRevenueTrend) && (
         <div className={cn("grid gap-5", hasAiInsights && hasRevenueTrend ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1")}>
-          {hasAiInsights && <AIInsights predictions={data.predictions} />}
-          {hasRevenueTrend && <RevenueTrend data={data.revenue} />}
+          {hasAiInsights && (
+            <WidgetWrapper widgetId="aiInsights" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+              <AIInsights predictions={data.predictions} />
+            </WidgetWrapper>
+          )}
+          {hasRevenueTrend && (
+            <WidgetWrapper widgetId="revenueTrend" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+              <RevenueTrend data={data.revenue} />
+            </WidgetWrapper>
+          )}
         </div>
       )}
 
       {(hasRevenueBySource || hasExpenseBreakdown) && (
         <div className={cn("grid gap-5", hasRevenueBySource && hasExpenseBreakdown ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1")}>
-          {hasRevenueBySource && <RevenueBySource data={data.revenueBySource} />}
-          {hasExpenseBreakdown && <ExpenseBreakdown data={data.expenseBreakdown} />}
+          {hasRevenueBySource && (
+            <WidgetWrapper widgetId="revenueBySource" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+              <RevenueBySource data={data.revenueBySource} />
+            </WidgetWrapper>
+          )}
+          {hasExpenseBreakdown && (
+            <WidgetWrapper widgetId="expenseBreakdown" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+              <ExpenseBreakdown data={data.expenseBreakdown} />
+            </WidgetWrapper>
+          )}
         </div>
       )}
 
       {(hasSalesPipeline || hasDealCountByStage) && (
         <div className={cn("grid gap-5", hasSalesPipeline && hasDealCountByStage ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1")}>
-          {hasSalesPipeline && <SalesPipeline data={pipelineData} viewMode={viewMode} />}
-          {hasDealCountByStage && <DealCountByStage data={dealCountData} viewMode={viewMode} />}
+          {hasSalesPipeline && (
+            <WidgetWrapper widgetId="salesPipeline" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+              <SalesPipeline data={pipelineData} viewMode={viewMode} />
+            </WidgetWrapper>
+          )}
+          {hasDealCountByStage && (
+            <WidgetWrapper widgetId="dealCountByStage" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+              <DealCountByStage data={dealCountData} viewMode={viewMode} />
+            </WidgetWrapper>
+          )}
         </div>
       )}
 
-      {hasHighValueDeals && <HighValueDeals deals={data.highValueDeals} />}
-      {hasProjectHealth && <ProjectHealth projects={data.projects} />}
+      {hasHighValueDeals && (
+        <WidgetWrapper widgetId="highValueDeals" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+          <HighValueDeals deals={data.highValueDeals} />
+        </WidgetWrapper>
+      )}
+      {hasProjectHealth && (
+        <WidgetWrapper widgetId="projectHealth" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+          <ProjectHealth projects={data.projects} />
+        </WidgetWrapper>
+      )}
 
       {(hasTeamPerformance || hasTaskCompletionTrend) && (
         <div className={cn("grid gap-5", hasTeamPerformance && hasTaskCompletionTrend ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1")}>
-          {hasTeamPerformance && <TeamPerformance data={data.teamPerformance} />}
-          {hasTaskCompletionTrend && <TaskCompletionTrend data={data.taskCompletionTrend} />}
+          {hasTeamPerformance && (
+            <WidgetWrapper widgetId="teamPerformance" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+              <TeamPerformance data={data.teamPerformance} />
+            </WidgetWrapper>
+          )}
+          {hasTaskCompletionTrend && (
+            <WidgetWrapper widgetId="taskCompletionTrend" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+              <TaskCompletionTrend data={data.taskCompletionTrend} />
+            </WidgetWrapper>
+          )}
         </div>
       )}
 
-      {hasTeamCapacityUtilization && <TeamCapacityUtilization data={data.teamCapacityUtilization} />}
+      {hasTeamCapacityUtilization && (
+        <WidgetWrapper widgetId="teamCapacityUtilization" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
+          <TeamCapacityUtilization data={data.teamCapacityUtilization} />
+        </WidgetWrapper>
+      )}
 
       {/* Empty State */}
       {!hasMetrics && !hasAnyWidgets && (

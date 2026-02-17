@@ -36,32 +36,32 @@ export const RevenueTab: React.FC<RevenueTabProps> = ({ data, viewMode, overview
       {/* Revenue Trend + By Source */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2">
-          <WidgetWrapper widgetId="revenueTrend" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
+          <WidgetWrapper widgetId="revenueTrend" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
             <RevenueTrend data={data.revenue} />
           </WidgetWrapper>
         </div>
-        <WidgetWrapper widgetId="revenueBySource" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
+        <WidgetWrapper widgetId="revenueBySource" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
           <RevenueBySource data={data.revenueBySource} />
         </WidgetWrapper>
       </div>
 
       {/* Pipeline + Deal Count */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <WidgetWrapper widgetId="salesPipeline" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
+        <WidgetWrapper widgetId="salesPipeline" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
           <SalesPipeline data={pipelineData} viewMode={viewMode} />
         </WidgetWrapper>
-        <WidgetWrapper widgetId="dealCountByStage" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
+        <WidgetWrapper widgetId="dealCountByStage" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
           <DealCountByStage data={dealCountData} viewMode={viewMode} />
         </WidgetWrapper>
       </div>
 
       {/* High Value Deals */}
-      <WidgetWrapper widgetId="highValueDeals" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
+      <WidgetWrapper widgetId="highValueDeals" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
         <HighValueDeals deals={data.highValueDeals} />
       </WidgetWrapper>
 
       {/* Expense Breakdown */}
-      <WidgetWrapper widgetId="expenseBreakdown" overviewWidgets={overviewWidgets} activeTab="revenue" onToggle={onToggleWidget}>
+      <WidgetWrapper widgetId="expenseBreakdown" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
         <ExpenseBreakdown data={data.expenseBreakdown} />
       </WidgetWrapper>
     </div>

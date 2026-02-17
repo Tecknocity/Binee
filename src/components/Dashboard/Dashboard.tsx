@@ -74,7 +74,7 @@ export const Dashboard: React.FC = () => {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
-        return <OverviewTab data={mockData} overviewWidgets={overviewWidgets} onAddGoalClick={() => setShowAddGoalModal(true)} viewMode={viewMode} />;
+        return <OverviewTab data={mockData} overviewWidgets={overviewWidgets} onToggleWidget={handleToggleWidget} onAddGoalClick={() => setShowAddGoalModal(true)} viewMode={viewMode} />;
       case 'intelligence':
         return <IntelligenceTab data={mockData} overviewWidgets={overviewWidgets} onToggleWidget={handleToggleWidget} />;
       case 'revenue':
