@@ -3,20 +3,18 @@ import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-do
 import {
   ChevronLeft,
   ChevronRight,
-  Search,
   BarChart3,
   Brain,
   TrendingUp,
   Briefcase,
   Lightbulb,
   MessageSquare,
+  Target,
   HeartPulse,
   Calculator,
   Plug,
   Database,
   AlertCircle,
-  Sun,
-  Moon,
   LogOut,
   ChevronDown,
   User,
@@ -25,7 +23,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useTheme } from 'next-themes';
+import { useViewMode } from '@/contexts/ViewModeContext';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { TabId } from '@/types/dashboard';
 
@@ -49,8 +47,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { theme, setTheme } = useTheme();
-  const [searchQuery, setSearchQuery] = useState('');
+  const { viewMode, setViewMode } = useViewMode();
   const [toolsOpen, setToolsOpen] = useState(true);
   const [dataOpen, setDataOpen] = useState(true);
   const [userPopupOpen, setUserPopupOpen] = useState(false);
@@ -128,30 +125,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
         )}
       </div>
 
-      {/* Search */}
-      {!collapsed && (
-        <div className="px-4 py-3 flex-shrink-0">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-muted/60 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40 transition-all"
-            />
-          </div>
-        </div>
-      )}
-
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2">
-        {/* Top-level tabs (no section header): Home, Chat, Growth, Operations, Insights, Actions */}
+      <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3">
+        {/* Top-level tabs: Home, Chat, Goals, Growth, Operations, Insights, Actions */}
         <div className="space-y-0.5 mb-1">
           {renderNavItem('home', '/?tab=home', 'Home', BarChart3,
             isDashboard && (activeTab === 'home' || !activeTab))}
           {renderNavItem('chat', '/chat', 'Chat', MessageSquare,
             isNavActive('/chat'))}
+          {renderNavItem('goals', '/?tab=goals', 'Goals', Target,
+            isDashboard && activeTab === 'goals')}
           {renderNavItem('growth', '/?tab=growth', 'Growth', TrendingUp,
             isDashboard && activeTab === 'growth')}
           {renderNavItem('operations', '/?tab=operations', 'Operations', Briefcase,
@@ -304,27 +287,35 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
                 </button>
               </div>
 
-              {/* Dark theme toggle */}
-              <div className="px-2 pb-1">
-                <button
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
-                >
-                  <div className="flex items-center gap-3">
-                    {theme === 'dark' ? <Sun size={16} className="text-muted-foreground" /> : <Moon size={16} className="text-muted-foreground" />}
-                    <span>Dark theme</span>
-                  </div>
-                  {/* Toggle switch */}
-                  <div className={cn(
-                    "w-9 h-5 rounded-full transition-colors relative",
-                    theme === 'dark' ? "bg-primary" : "bg-muted-foreground/30"
-                  )}>
-                    <div className={cn(
-                      "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
-                      theme === 'dark' ? "translate-x-4" : "translate-x-0.5"
-                    )} />
-                  </div>
-                </button>
+              {/* Company / Binee view toggle */}
+              <div className="px-4 pb-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  View Mode
+                </div>
+                <div className="flex bg-muted/50 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setViewMode('company')}
+                    className={cn(
+                      "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all text-center",
+                      viewMode === 'company'
+                        ? "gradient-primary text-white shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Company
+                  </button>
+                  <button
+                    onClick={() => setViewMode('binee')}
+                    className={cn(
+                      "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all text-center",
+                      viewMode === 'binee'
+                        ? "gradient-primary text-white shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Binee
+                  </button>
+                </div>
               </div>
 
               {/* Sign out */}

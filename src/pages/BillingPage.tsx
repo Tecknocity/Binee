@@ -200,7 +200,7 @@ function statusBadgeClasses(status: Invoice['status']): string {
 // Component
 // ---------------------------------------------------------------------------
 
-const BillingPage: React.FC<{ embedded?: boolean }> = ({ embedded } = {}) => {
+const BillingPage: React.FC = () => {
   const [showPlans, setShowPlans] = useState(false);
 
   // ---- Handlers -----------------------------------------------------------
@@ -242,12 +242,12 @@ const BillingPage: React.FC<{ embedded?: boolean }> = ({ embedded } = {}) => {
   // ---- Render -------------------------------------------------------------
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 lg:p-8 max-w-[1800px] mx-auto animate-fade-in space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Billing</h1>
         <p className="text-sm text-muted-foreground mt-1">Manage your subscription, usage, and payment methods</p>
       </div>
-      <div className="max-w-[960px] space-y-6">
+      <div className="space-y-6">
         {/* ---------------------------------------------------------------- */}
         {/* Current Plan Card                                                */}
         {/* ---------------------------------------------------------------- */}

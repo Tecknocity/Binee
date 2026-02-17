@@ -127,6 +127,7 @@ const Settings: React.FC = () => {
 
   const tabs = [
     { value: 'home', label: 'Home' },
+    { value: 'goals', label: 'Goals' },
     { value: 'growth', label: 'Growth' },
     { value: 'operations', label: 'Operations' },
     { value: 'insights', label: 'Insights' },

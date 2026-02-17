@@ -13,6 +13,7 @@ interface NavigationProps {
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'home', label: 'Home' },
+  { id: 'goals', label: 'Goals' },
   { id: 'growth', label: 'Growth' },
   { id: 'operations', label: 'Operations' },
   { id: 'insights', label: 'Insights' },
