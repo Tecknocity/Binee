@@ -7,17 +7,18 @@ type DensityOption = 'comfortable' | 'compact';
 type SidebarBehavior = 'expanded' | 'collapsed' | 'auto-hide';
 
 const LANDING_TABS = [
-  { value: 'overview', label: 'Overview' },
-  { value: 'intelligence', label: 'Intelligence' },
+  { value: 'home', label: 'Home' },
+  { value: 'insights', label: 'Insights' },
   { value: 'revenue', label: 'Revenue' },
   { value: 'operations', label: 'Operations' },
   { value: 'goals', label: 'Goals' },
+  { value: 'actions', label: 'Actions' },
 ];
 
 const AppearanceSection: React.FC = () => {
   const [theme, setTheme] = useState<ThemeOption>('dark');
   const [density, setDensity] = useState<DensityOption>('comfortable');
-  const [landingTab, setLandingTab] = useState('overview');
+  const [landingTab, setLandingTab] = useState('home');
   const [sidebarBehavior, setSidebarBehavior] = useState<SidebarBehavior>('expanded');
 
   const handleThemeChange = (newTheme: ThemeOption) => {

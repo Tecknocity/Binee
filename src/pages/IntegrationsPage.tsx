@@ -149,7 +149,7 @@ const INTEGRATIONS: Integration[] = [
   },
 ];
 
-const IntegrationsPage: React.FC = () => {
+const IntegrationsPage: React.FC<{ embedded?: boolean }> = ({ embedded } = {}) => {
   const navigate = useNavigate();
   const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS);
   const [connectModalOpen, setConnectModalOpen] = useState(false);

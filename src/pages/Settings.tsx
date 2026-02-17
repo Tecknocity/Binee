@@ -126,13 +126,12 @@ const Settings: React.FC = () => {
   ];
 
   const tabs = [
-    { value: 'overview', label: 'Overview' },
-    { value: 'intelligence', label: 'Intelligence' },
+    { value: 'home', label: 'Home' },
+    { value: 'insights', label: 'Insights' },
     { value: 'revenue', label: 'Revenue' },
     { value: 'operations', label: 'Operations' },
     { value: 'goals', label: 'Goals' },
-    { value: 'issues', label: 'Issues' },
-    { value: 'suggestions', label: 'Suggestions' },
+    { value: 'actions', label: 'Actions' },
   ];
 
   const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {

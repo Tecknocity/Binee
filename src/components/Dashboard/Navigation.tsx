@@ -11,14 +11,13 @@ interface NavigationProps {
   onMappingClick: () => void;
 }
 
-const TABS: { id: TabId; label: string; badge?: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'intelligence', label: 'Intelligence', badge: 'AI' },
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'home', label: 'Home' },
+  { id: 'insights', label: 'Insights' },
   { id: 'revenue', label: 'Revenue' },
   { id: 'operations', label: 'Operations' },
   { id: 'goals', label: 'Goals' },
-  { id: 'issues', label: 'Issues' },
-  { id: 'suggestions', label: 'Suggestions' },
+  { id: 'actions', label: 'Actions' },
 ];
 
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange, viewMode, onViewModeChange, onMappingClick }) => {
@@ -43,16 +42,6 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange, 
                 )}
               >
                 {tab.label}
-                {tab.badge && (
-                  <span className={cn(
-                    "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-                    isActive
-                      ? "gradient-primary text-primary-foreground"
-                      : "bg-accent/15 text-accent"
-                  )}>
-                    {tab.badge}
-                  </span>
-                )}
               </button>
             );
           })}

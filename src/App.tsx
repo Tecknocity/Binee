@@ -12,6 +12,8 @@ import IntegrationsPage from "./pages/IntegrationsPage";
 import IntegrationDetailPage from "./pages/IntegrationDetailPage";
 import BillingPage from "./pages/BillingPage";
 import ChatPage from "./pages/ChatPage";
+import HealthScorecardPage from "./pages/HealthScorecardPage";
+import PriceArchitectPage from "./pages/PriceArchitectPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ErrorPage from "./pages/ErrorPage";
@@ -75,6 +77,8 @@ const App = () => (
               <Route element={<AppShell />}>
                 <Route path="/" element={<Index />} />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route path="/tools/health-scorecard" element={<HealthScorecardPage />} />
+                <Route path="/tools/price-architect" element={<PriceArchitectPage />} />
                 <Route path="/integrations" element={<IntegrationsPage />} />
                 <Route path="/integrations/:slug" element={<IntegrationDetailPage />} />
                 <Route path="/billing" element={<BillingPage />} />
