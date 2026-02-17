@@ -51,11 +51,11 @@ export const Dashboard: React.FC = () => {
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-6 lg:px-8 py-3 border-b border-border/30 bg-background/60 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-6 lg:px-8 py-3 border-b border-border bg-card/80 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowMappingModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all text-xs font-medium"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all text-xs font-medium"
           >
             <Database size={13} />
             Mapping

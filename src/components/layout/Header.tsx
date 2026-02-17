@@ -51,14 +51,14 @@ export const Header: React.FC = () => {
   }, [handleClickOutside]);
 
   return (
-    <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border/40">
+    <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-xl border-b border-border">
       <div className="flex justify-between items-center px-6 py-3">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm">
           <h1 className="text-base font-semibold text-foreground">{pageTitle}</h1>
           {tabLabel && (
             <>
-              <span className="text-muted-foreground/50">/</span>
+              <span className="text-border">/</span>
               <span className="text-muted-foreground font-medium">{tabLabel}</span>
             </>
           )}
