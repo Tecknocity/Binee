@@ -1,9 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { TabId, ViewMode, WidgetId, NewGoal } from '../../types/dashboard';
 import { mockData } from '../../data/mockData';
-import { Header } from './Header';
 import { Navigation } from './Navigation';
-import { SettingsModal, MappingModal, AddGoalModal } from './modals';
+import { MappingModal, AddGoalModal } from './modals';
 import { OverviewTab, IntelligenceTab, RevenueTab, OperationsTab, GoalsTab, IssuesTab, SuggestionsTab } from './tabs';
 
 const DEFAULT_OVERVIEW_WIDGETS: WidgetId[] = ['metrics', 'aiInsights', 'revenueTrend'];
@@ -11,8 +10,6 @@ const DEFAULT_OVERVIEW_WIDGETS: WidgetId[] = ['metrics', 'aiInsights', 'revenueT
 export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [viewMode, setViewMode] = useState<ViewMode>('company');
-  const [showAccountMenu, setShowAccountMenu] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showMappingModal, setShowMappingModal] = useState(false);
   const [showAddGoalModal, setShowAddGoalModal] = useState(false);
   const [overviewWidgets, setOverviewWidgets] = useState<WidgetId[]>(DEFAULT_OVERVIEW_WIDGETS);
@@ -23,17 +20,8 @@ export const Dashboard: React.FC = () => {
     );
   }, []);
 
-  const handleRefreshData = useCallback(() => {
-    alert('Refreshing data from all connected tools and API connections...');
-  }, []);
-
-  const handleLogout = useCallback(() => {
-    alert('Logging out...');
-  }, []);
-
   const handleAddGoal = useCallback((goal: NewGoal) => {
     console.log('New goal:', goal);
-    alert(`Goal created: ${goal.name}`);
   }, []);
 
   const renderTabContent = () => {
@@ -58,22 +46,17 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans">
-      <Header
+    <div>
+      <Navigation
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         viewMode={viewMode}
-        showAccountMenu={showAccountMenu}
         onViewModeChange={setViewMode}
-        onAccountMenuToggle={setShowAccountMenu}
-        onSettingsClick={() => setShowSettingsModal(true)}
         onMappingClick={() => setShowMappingModal(true)}
-        onRefreshClick={handleRefreshData}
-        onLogout={handleLogout}
       />
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-      <main className="p-8 max-w-[1800px] mx-auto animate-fade-in">
+      <main className="p-6 lg:p-8 max-w-[1800px] mx-auto animate-fade-in">
         {renderTabContent()}
       </main>
-      <SettingsModal isOpen={showSettingsModal} onClose={() => setShowSettingsModal(false)} />
       <MappingModal isOpen={showMappingModal} onClose={() => setShowMappingModal(false)} dataMapping={mockData.dataMapping} />
       <AddGoalModal isOpen={showAddGoalModal} onClose={() => setShowAddGoalModal(false)} onSubmit={handleAddGoal} />
     </div>
