@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { TabId, ViewMode, WidgetId, NewGoal } from '../../types/dashboard';
 import { mockData } from '../../data/mockData';
@@ -6,8 +6,40 @@ import { MappingModal, AddGoalModal } from './modals';
 import { OverviewTab, IntelligenceTab, RevenueTab, OperationsTab, GoalsTab, IssuesTab, SuggestionsTab } from './tabs';
 import { Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 const DEFAULT_OVERVIEW_WIDGETS: WidgetId[] = ['metrics', 'aiInsights', 'revenueTrend'];
+const OVERVIEW_WIDGETS_KEY = 'binee-overview-widgets';
+
+const WIDGET_LABELS: Record<WidgetId, string> = {
+  metrics: 'Metrics',
+  aiInsights: 'AI Insights',
+  revenueTrend: 'Revenue Trend',
+  revenueBySource: 'Revenue by Source',
+  expenseBreakdown: 'Expense Breakdown',
+  salesPipeline: 'Sales Pipeline',
+  dealCountByStage: 'Deal Count by Stage',
+  highValueDeals: 'High Value Deals',
+  projectHealth: 'Project Health',
+  teamPerformance: 'Team Performance',
+  taskCompletionTrend: 'Task Completion Trend',
+  teamCapacityUtilization: 'Team Capacity Utilization',
+};
+
+function loadOverviewWidgets(): WidgetId[] {
+  try {
+    const stored = localStorage.getItem(OVERVIEW_WIDGETS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load overview widgets from localStorage:', e);
+  }
+  return DEFAULT_OVERVIEW_WIDGETS;
+}
 
 export const Dashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -15,12 +47,24 @@ export const Dashboard: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('company');
   const [showMappingModal, setShowMappingModal] = useState(false);
   const [showAddGoalModal, setShowAddGoalModal] = useState(false);
-  const [overviewWidgets, setOverviewWidgets] = useState<WidgetId[]>(DEFAULT_OVERVIEW_WIDGETS);
+  const [overviewWidgets, setOverviewWidgets] = useState<WidgetId[]>(loadOverviewWidgets);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OVERVIEW_WIDGETS_KEY, JSON.stringify(overviewWidgets));
+    } catch (e) {
+      console.error('Failed to save overview widgets:', e);
+    }
+  }, [overviewWidgets]);
 
   const handleToggleWidget = useCallback((widgetId: WidgetId) => {
-    setOverviewWidgets((prev) =>
-      prev.includes(widgetId) ? prev.filter((id) => id !== widgetId) : [...prev, widgetId]
-    );
+    setOverviewWidgets((prev) => {
+      const isRemoving = prev.includes(widgetId);
+      const next = isRemoving ? prev.filter((id) => id !== widgetId) : [...prev, widgetId];
+      const label = WIDGET_LABELS[widgetId] || widgetId;
+      toast(isRemoving ? `Removed "${label}" from Overview` : `Added "${label}" to Overview`);
+      return next;
+    });
   }, []);
 
   const handleAddGoal = useCallback((goal: NewGoal) => {
