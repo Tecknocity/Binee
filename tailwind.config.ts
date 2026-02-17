@@ -81,8 +81,8 @@ export default {
         'glow-sm': '0 0 20px -5px hsl(var(--primary) / 0.2)',
         'glow': '0 0 30px -5px hsl(var(--primary) / 0.3)',
         'glow-lg': '0 0 50px -10px hsl(var(--primary) / 0.4)',
-        'card': '0 4px 20px -5px hsl(222 47% 6% / 0.5)',
-        'card-hover': '0 20px 40px -15px hsl(222 47% 6% / 0.6)',
+        'card': '0 4px 20px -5px hsl(var(--foreground) / 0.08)',
+        'card-hover': '0 12px 32px -8px hsl(var(--foreground) / 0.12)',
       },
       keyframes: {
         "accordion-down": {
