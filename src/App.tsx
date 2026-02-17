@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
+import { AppearanceProvider } from "./contexts/AppearanceContext";
 import { AppShell } from "./components/layout/AppShell";
 import Index from "./pages/Index";
 import { SettingsLayout, ProfileSection, SecuritySection, NotificationsSection, AppearanceSection, DataPrivacySection } from "./components/settings";
@@ -67,6 +68,7 @@ const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+        <AppearanceProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -103,6 +105,7 @@ const App = () => (
             </Routes>
           </BrowserRouter>
         </TooltipProvider>
+        </AppearanceProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </ErrorBoundary>

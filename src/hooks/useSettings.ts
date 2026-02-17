@@ -26,6 +26,7 @@ interface ProfileSettings {
 interface AppearanceSettings {
   density: 'comfortable' | 'compact';
   defaultTab: string;
+  sidebarBehavior: 'expanded' | 'collapsed' | 'auto-hide';
 }
 
 interface AllSettings {
@@ -58,7 +59,8 @@ const defaultSettings: AllSettings = {
   },
   appearance: {
     density: 'comfortable',
-    defaultTab: 'overview',
+    defaultTab: 'home',
+    sidebarBehavior: 'expanded',
   },
 };
 

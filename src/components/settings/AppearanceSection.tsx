@@ -1,10 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
-
-type DensityOption = 'comfortable' | 'compact';
-type SidebarBehavior = 'expanded' | 'collapsed' | 'auto-hide';
+import { useAppearance, DensityOption, SidebarBehavior } from '@/contexts/AppearanceContext';
 
 const LANDING_TABS = [
   { value: 'home', label: 'Home' },
@@ -17,9 +15,14 @@ const LANDING_TABS = [
 
 const AppearanceSection: React.FC = () => {
   const { theme, setTheme } = useTheme();
-  const [density, setDensity] = useState<DensityOption>('comfortable');
-  const [landingTab, setLandingTab] = useState('home');
-  const [sidebarBehavior, setSidebarBehavior] = useState<SidebarBehavior>('expanded');
+  const {
+    density,
+    setDensity,
+    defaultTab,
+    setDefaultTab,
+    sidebarBehavior,
+    setSidebarBehavior,
+  } = useAppearance();
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme);
@@ -182,9 +185,9 @@ const AppearanceSection: React.FC = () => {
           Choose which tab opens first when you visit the dashboard
         </p>
         <select
-          value={landingTab}
+          value={defaultTab}
           onChange={(e) => {
-            setLandingTab(e.target.value);
+            setDefaultTab(e.target.value);
             toast.success('Settings saved!');
           }}
           className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:ring-2 focus:ring-primary/50 outline-none appearance-none cursor-pointer"
