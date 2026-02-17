@@ -211,7 +211,6 @@ export interface WidgetWrapperProps {
   widgetId: WidgetId;
   children: React.ReactNode;
   overviewWidgets: WidgetId[];
-  activeTab: TabId;
   onToggle: (widgetId: WidgetId) => void;
 }
 

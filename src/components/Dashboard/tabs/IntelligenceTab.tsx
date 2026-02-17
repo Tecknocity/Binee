@@ -148,7 +148,7 @@ export const IntelligenceTab: React.FC<IntelligenceTabProps> = ({ data, overview
       </div>
 
       {/* AI Insights Widget */}
-      <WidgetWrapper widgetId="aiInsights" overviewWidgets={overviewWidgets} activeTab="intelligence" onToggle={onToggleWidget}>
+      <WidgetWrapper widgetId="aiInsights" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
         <AIInsights predictions={data.predictions} />
       </WidgetWrapper>
 
