@@ -1,23 +1,28 @@
-import React, { useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
   ChevronRight,
   Search,
   BarChart3,
   Brain,
-  DollarSign,
+  TrendingUp,
   Briefcase,
-  Target,
   Lightbulb,
   MessageSquare,
   HeartPulse,
   Calculator,
-  Settings,
+  Plug,
+  Database,
+  AlertCircle,
   Sun,
   Moon,
   LogOut,
   ChevronDown,
+  User,
+  Settings,
+  CreditCard,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
@@ -27,37 +32,80 @@ import { TabId } from '@/types/dashboard';
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
-  onOpenAccount?: (section?: string) => void;
 }
-
-const MAIN_TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: 'home', label: 'Home', icon: BarChart3 },
-  { id: 'insights', label: 'Insights', icon: Brain },
-  { id: 'revenue', label: 'Revenue', icon: DollarSign },
-  { id: 'operations', label: 'Operations', icon: Briefcase },
-  { id: 'goals', label: 'Goals', icon: Target },
-  { id: 'actions', label: 'Actions', icon: Lightbulb },
-];
 
 const TOOLS_NAV = [
   { path: '/tools/health-scorecard', label: 'Business Health Scorecard', icon: HeartPulse },
   { path: '/tools/price-architect', label: 'Price Architect', icon: Calculator },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onOpenAccount }) => {
+const DATA_NAV = [
+  { path: '/integrations', label: 'Integrations', icon: Plug },
+  { path: '/data-mapping', label: 'Data Mapping', icon: Database },
+  { path: '/data-quality', label: 'Data Quality & Issues', icon: AlertCircle },
+];
+
+export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { theme, setTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [mainOpen, setMainOpen] = useState(true);
   const [toolsOpen, setToolsOpen] = useState(true);
+  const [dataOpen, setDataOpen] = useState(true);
+  const [userPopupOpen, setUserPopupOpen] = useState(false);
+  const userPopupRef = useRef<HTMLDivElement>(null);
 
   const isDashboard = location.pathname === '/';
   const activeTab = searchParams.get('tab') as TabId | null;
 
-  const isNavActive = (path: string) => {
-    return location.pathname === path;
-  };
+  const isNavActive = (path: string) => location.pathname === path;
+
+  // Close user popup on outside click
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (userPopupOpen && userPopupRef.current && !userPopupRef.current.contains(e.target as Node)) {
+      setUserPopupOpen(false);
+    }
+  }, [userPopupOpen]);
+
+  useEffect(() => {
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [handleClickOutside]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setUserPopupOpen(false); };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  // Render a single nav link (tab or route)
+  const renderNavItem = (
+    key: string,
+    to: string,
+    label: string,
+    Icon: React.ElementType,
+    active: boolean
+  ) => (
+    <Link
+      key={key}
+      to={to}
+      className={cn(
+        "flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-200 group",
+        collapsed ? "justify-center p-2.5" : "px-3 py-2",
+        active
+          ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+      )}
+      title={collapsed ? label : undefined}
+    >
+      <Icon size={collapsed ? 20 : 17} className={cn(
+        "flex-shrink-0 transition-colors",
+        active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+      )} />
+      {!collapsed && <span className="truncate">{label}</span>}
+    </Link>
+  );
 
   return (
     <aside
@@ -98,98 +146,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onOpenAcc
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2">
-        {/* MAIN Section */}
-        <div className="mb-1">
-          {!collapsed && (
-            <button
-              onClick={() => setMainOpen(!mainOpen)}
-              className="flex items-center justify-between w-full px-2 py-1.5 mb-1"
-            >
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Main
-              </span>
-              <ChevronDown
-                size={14}
-                className={cn(
-                  "text-muted-foreground transition-transform duration-200",
-                  !mainOpen && "-rotate-90"
-                )}
-              />
-            </button>
-          )}
-
-          {collapsed ? (
-            <Link
-              to="/"
-              className={cn(
-                "flex items-center justify-center p-2.5 rounded-lg text-sm font-medium transition-all duration-200 mb-1",
-                isDashboard
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-              title="Home"
-            >
-              <BarChart3 size={20} />
-            </Link>
-          ) : (
-            mainOpen && (
-              <div className="space-y-0.5">
-                {MAIN_TABS.map((tab) => {
-                  const isActive = isDashboard && (activeTab === tab.id || (!activeTab && tab.id === 'home'));
-                  const Icon = tab.icon;
-                  return (
-                    <Link
-                      key={tab.id}
-                      to={`/?tab=${tab.id}`}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 group",
-                        isActive
-                          ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                      )}
-                    >
-                      <Icon size={17} className={cn(
-                        "flex-shrink-0 transition-colors",
-                        isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                      )} />
-                      <span className="flex-1">{tab.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )
-          )}
-        </div>
-
-        {/* Divider */}
-        <div className="mx-2 my-2 border-t border-sidebar-border" />
-
-        {/* CHAT Section */}
-        <div className="mb-1">
-          {!collapsed && (
-            <div className="px-2 py-1.5 mb-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Chat
-              </span>
-            </div>
-          )}
-          <Link
-            to="/chat"
-            className={cn(
-              "flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-200 group",
-              collapsed ? "justify-center p-2.5" : "px-3 py-2",
-              isNavActive('/chat')
-                ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            )}
-            title={collapsed ? 'Chat' : undefined}
-          >
-            <MessageSquare size={collapsed ? 20 : 17} className={cn(
-              "flex-shrink-0 transition-colors",
-              isNavActive('/chat') ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-            )} />
-            {!collapsed && <span>Chat</span>}
-          </Link>
+        {/* Top-level tabs (no section header): Home, Chat, Growth, Operations, Insights, Actions */}
+        <div className="space-y-0.5 mb-1">
+          {renderNavItem('home', '/?tab=home', 'Home', BarChart3,
+            isDashboard && (activeTab === 'home' || !activeTab))}
+          {renderNavItem('chat', '/chat', 'Chat', MessageSquare,
+            isNavActive('/chat'))}
+          {renderNavItem('growth', '/?tab=growth', 'Growth', TrendingUp,
+            isDashboard && activeTab === 'growth')}
+          {renderNavItem('operations', '/?tab=operations', 'Operations', Briefcase,
+            isDashboard && activeTab === 'operations')}
+          {renderNavItem('insights', '/?tab=insights', 'Insights', Brain,
+            isDashboard && activeTab === 'insights')}
+          {renderNavItem('actions', '/?tab=actions', 'Actions', Lightbulb,
+            isDashboard && activeTab === 'actions')}
         </div>
 
         {/* Divider */}
@@ -216,101 +186,164 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onOpenAcc
           )}
           {(collapsed || toolsOpen) && (
             <div className="space-y-0.5">
-              {TOOLS_NAV.map((item) => {
-                const isActive = isNavActive(item.path);
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-200 group",
-                      collapsed ? "justify-center p-2.5" : "px-3 py-2",
-                      isActive
-                        ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    )}
-                    title={collapsed ? item.label : undefined}
-                  >
-                    <item.icon size={collapsed ? 20 : 17} className={cn(
-                      "flex-shrink-0 transition-colors",
-                      isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                    )} />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </Link>
-                );
-              })}
+              {TOOLS_NAV.map((item) =>
+                renderNavItem(item.path, item.path, item.label, item.icon, isNavActive(item.path))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className="mx-2 my-2 border-t border-sidebar-border" />
+
+        {/* DATA Section (collapsible) */}
+        <div className="mb-1">
+          {!collapsed && (
+            <button
+              onClick={() => setDataOpen(!dataOpen)}
+              className="flex items-center justify-between w-full px-2 py-1.5 mb-1"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Data
+              </span>
+              <ChevronDown
+                size={14}
+                className={cn(
+                  "text-muted-foreground transition-transform duration-200",
+                  !dataOpen && "-rotate-90"
+                )}
+              />
+            </button>
+          )}
+          {(collapsed || dataOpen) && (
+            <div className="space-y-0.5">
+              {DATA_NAV.map((item) =>
+                renderNavItem(item.path, item.path, item.label, item.icon, isNavActive(item.path))
+              )}
             </div>
           )}
         </div>
       </nav>
 
-      {/* Bottom Section: Account icon + Theme toggle + User + Collapse */}
+      {/* Bottom Section: User profile + Collapse */}
       <div className="flex-shrink-0 border-t border-sidebar-border">
-        {/* Account icon */}
-        <div className={cn(
-          "flex items-center border-b border-sidebar-border",
-          collapsed ? "justify-center px-2 py-2" : "px-4 py-2"
-        )}>
+        {/* User profile — click opens popup */}
+        <div className={cn("relative", collapsed ? "px-2 py-3" : "px-4 py-3")} ref={userPopupRef}>
           <button
-            onClick={() => onOpenAccount?.()}
+            onClick={() => setUserPopupOpen(!userPopupOpen)}
             className={cn(
-              "flex items-center gap-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all",
-              collapsed ? "p-2" : "px-3 py-1.5 w-full text-[13px]"
+              "flex items-center w-full rounded-lg hover:bg-muted/50 transition-all",
+              collapsed ? "justify-center p-1" : "gap-3 px-1 py-1"
             )}
-            title={collapsed ? 'Account' : undefined}
           >
-            <Settings size={16} />
-            {!collapsed && <span>Account</span>}
-          </button>
-        </div>
-
-        {/* Theme toggle */}
-        <div className={cn(
-          "flex items-center border-b border-sidebar-border",
-          collapsed ? "justify-center px-2 py-2" : "px-4 py-2"
-        )}>
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className={cn(
-              "flex items-center gap-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all",
-              collapsed ? "p-2" : "px-3 py-1.5 w-full text-[13px]"
+            <Avatar className="w-8 h-8 flex-shrink-0">
+              <AvatarFallback className="gradient-primary text-white font-semibold text-xs">
+                AK
+              </AvatarFallback>
+            </Avatar>
+            {!collapsed && (
+              <div className="flex-1 min-w-0 text-left">
+                <div className="text-sm font-medium text-foreground truncate">Arman</div>
+                <div className="text-xs text-muted-foreground truncate">Tecknocity</div>
+              </div>
             )}
-            title={collapsed ? (theme === 'dark' ? 'Light mode' : 'Dark mode') : undefined}
-          >
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            {!collapsed && <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
+            {!collapsed && (
+              <ChevronDown size={14} className={cn(
+                "text-muted-foreground transition-transform duration-200 flex-shrink-0",
+                userPopupOpen && "rotate-180"
+              )} />
+            )}
           </button>
-        </div>
 
-        {/* User profile */}
-        <div className={cn(
-          "flex items-center border-b border-sidebar-border",
-          collapsed ? "justify-center px-2 py-3" : "px-4 py-3 gap-3"
-        )}>
-          <Avatar className={cn("flex-shrink-0", collapsed ? "w-8 h-8" : "w-8 h-8")}>
-            <AvatarFallback className="gradient-primary text-white font-semibold text-xs">
-              AK
-            </AvatarFallback>
-          </Avatar>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-foreground truncate">Arman Kazemi</div>
-              <div className="text-xs text-muted-foreground truncate">arman@tecknocity.com</div>
+          {/* User popup menu */}
+          {userPopupOpen && (
+            <div className={cn(
+              "absolute bg-card rounded-xl border border-border shadow-2xl overflow-hidden animate-scale-in z-[60]",
+              collapsed ? "left-[72px] bottom-0 w-72" : "left-0 bottom-full mb-2 w-full"
+            )}>
+              {/* User info header */}
+              <div className="p-4 bg-gradient-to-br from-primary/10 to-accent/10 border-b border-border/50">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                  Tecknocity
+                </div>
+                <div className="font-semibold text-foreground">Arman Kazemi</div>
+                <div className="text-sm text-muted-foreground">arman@tecknocity.com</div>
+              </div>
+
+              {/* Menu items */}
+              <div className="p-2">
+                <button
+                  onClick={() => { setUserPopupOpen(false); navigate('/settings/profile'); }}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
+                >
+                  <div className="flex items-center gap-3">
+                    <User size={16} className="text-muted-foreground" />
+                    <span>My Profile</span>
+                  </div>
+                  <ExternalLink size={12} className="text-muted-foreground" />
+                </button>
+                <button
+                  onClick={() => { setUserPopupOpen(false); navigate('/settings'); }}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
+                >
+                  <div className="flex items-center gap-3">
+                    <Settings size={16} className="text-muted-foreground" />
+                    <span>Settings</span>
+                  </div>
+                  <ExternalLink size={12} className="text-muted-foreground" />
+                </button>
+                <button
+                  onClick={() => { setUserPopupOpen(false); navigate('/billing'); }}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
+                >
+                  <div className="flex items-center gap-3">
+                    <CreditCard size={16} className="text-muted-foreground" />
+                    <span>Billing</span>
+                  </div>
+                  <ExternalLink size={12} className="text-muted-foreground" />
+                </button>
+              </div>
+
+              {/* Dark theme toggle */}
+              <div className="px-2 pb-1">
+                <button
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
+                >
+                  <div className="flex items-center gap-3">
+                    {theme === 'dark' ? <Sun size={16} className="text-muted-foreground" /> : <Moon size={16} className="text-muted-foreground" />}
+                    <span>Dark theme</span>
+                  </div>
+                  {/* Toggle switch */}
+                  <div className={cn(
+                    "w-9 h-5 rounded-full transition-colors relative",
+                    theme === 'dark' ? "bg-primary" : "bg-muted-foreground/30"
+                  )}>
+                    <div className={cn(
+                      "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
+                      theme === 'dark' ? "translate-x-4" : "translate-x-0.5"
+                    )} />
+                  </div>
+                </button>
+              </div>
+
+              {/* Sign out */}
+              <div className="p-2 border-t border-border/50">
+                <button
+                  onClick={() => setUserPopupOpen(false)}
+                  className="flex items-center gap-3 px-3 py-2.5 text-destructive hover:bg-destructive/10 rounded-lg transition-colors text-sm w-full"
+                >
+                  <LogOut size={16} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
             </div>
-          )}
-          {!collapsed && (
-            <button
-              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
-              title="Sign out"
-            >
-              <LogOut size={15} />
-            </button>
           )}
         </div>
 
         {/* Collapse toggle */}
         <div className={cn(
-          "flex items-center",
+          "flex items-center border-t border-sidebar-border",
           collapsed ? "justify-center px-2 py-2" : "px-4 py-2"
         )}>
           <button

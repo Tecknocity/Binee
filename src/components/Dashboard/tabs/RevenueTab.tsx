@@ -28,7 +28,7 @@ export const RevenueTab: React.FC<RevenueTabProps> = ({ data, viewMode, overview
           <DollarSign size={24} className="text-accent" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Revenue & Pipeline</h2>
+          <h2 className="text-2xl font-bold text-foreground">Growth & Pipeline</h2>
           <p className="text-sm text-muted-foreground mt-0.5">Financial performance and sales pipeline analytics</p>
         </div>
       </div>

@@ -181,7 +181,7 @@ export interface MockData {
   gamification: Gamification;
 }
 
-export type TabId = 'home' | 'insights' | 'revenue' | 'operations' | 'goals' | 'actions';
+export type TabId = 'home' | 'growth' | 'operations' | 'insights' | 'actions';
 export type ViewMode = 'company' | 'binee';
 
 export type WidgetId =

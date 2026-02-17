@@ -8,10 +8,9 @@ type SidebarBehavior = 'expanded' | 'collapsed' | 'auto-hide';
 
 const LANDING_TABS = [
   { value: 'home', label: 'Home' },
-  { value: 'insights', label: 'Insights' },
-  { value: 'revenue', label: 'Revenue' },
+  { value: 'growth', label: 'Growth' },
   { value: 'operations', label: 'Operations' },
-  { value: 'goals', label: 'Goals' },
+  { value: 'insights', label: 'Insights' },
   { value: 'actions', label: 'Actions' },
 ];
 
