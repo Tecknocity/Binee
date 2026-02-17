@@ -1,6 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { User, Camera, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useProfile } from '@/contexts/ProfileContext';
 
 const TIMEZONES = [
   { value: 'America/New_York', label: 'Eastern Time (ET)' },
@@ -13,19 +14,14 @@ const TIMEZONES = [
 
 const ProfileSection: React.FC = () => {
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const [avatar, setAvatar] = useState<string | null>(null);
-  const [name, setName] = useState('John Doe');
-  const [email] = useState('john@company.com');
-  const [company, setCompany] = useState('Binee Inc.');
-  const [role, setRole] = useState('CEO & Founder');
-  const [timezone, setTimezone] = useState('America/New_York');
+  const { name, email, company, role, timezone, avatar, updateProfile } = useProfile();
 
   const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setAvatar(reader.result as string);
+        updateProfile({ avatar: reader.result as string });
       };
       reader.readAsDataURL(file);
     }
@@ -95,7 +91,7 @@ const ProfileSection: React.FC = () => {
               id="profile-name"
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => updateProfile({ name: e.target.value })}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:ring-2 focus:ring-primary/50 outline-none"
             />
           </div>
@@ -129,7 +125,7 @@ const ProfileSection: React.FC = () => {
               id="profile-company"
               type="text"
               value={company}
-              onChange={(e) => setCompany(e.target.value)}
+              onChange={(e) => updateProfile({ company: e.target.value })}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:ring-2 focus:ring-primary/50 outline-none"
             />
           </div>
@@ -143,7 +139,7 @@ const ProfileSection: React.FC = () => {
               id="profile-role"
               type="text"
               value={role}
-              onChange={(e) => setRole(e.target.value)}
+              onChange={(e) => updateProfile({ role: e.target.value })}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:ring-2 focus:ring-primary/50 outline-none"
             />
           </div>
@@ -156,7 +152,7 @@ const ProfileSection: React.FC = () => {
             <select
               id="profile-timezone"
               value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
+              onChange={(e) => updateProfile({ timezone: e.target.value })}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:ring-2 focus:ring-primary/50 outline-none appearance-none cursor-pointer"
             >
               {TIMEZONES.map((tz) => (

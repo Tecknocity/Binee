@@ -25,7 +25,8 @@ import {
 import { cn } from '@/lib/utils';
 import { useViewMode } from '@/contexts/ViewModeContext';
 import { useAppearance } from '@/contexts/AppearanceContext';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useProfile } from '@/contexts/ProfileContext';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { TabId } from '@/types/dashboard';
 
 interface SidebarProps {
@@ -51,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
   const [searchParams] = useSearchParams();
   const { viewMode, setViewMode } = useViewMode();
   const { defaultTab } = useAppearance();
+  const profile = useProfile();
   const [toolsOpen, setToolsOpen] = useState(true);
   const [dataOpen, setDataOpen] = useState(true);
   const [userPopupOpen, setUserPopupOpen] = useState(false);
@@ -232,14 +234,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
             )}
           >
             <Avatar className="w-8 h-8 flex-shrink-0">
+              {profile.avatar && <AvatarImage src={profile.avatar} alt={profile.name} />}
               <AvatarFallback className="gradient-primary text-white font-semibold text-xs">
-                AK
+                {profile.initials}
               </AvatarFallback>
             </Avatar>
             {!collapsed && (
               <div className="flex-1 min-w-0 text-left">
-                <div className="text-sm font-medium text-foreground truncate">Arman</div>
-                <div className="text-xs text-muted-foreground truncate">Tecknocity</div>
+                <div className="text-sm font-medium text-foreground truncate">{profile.name.split(' ')[0]}</div>
+                <div className="text-xs text-muted-foreground truncate">{profile.company}</div>
               </div>
             )}
             {!collapsed && (
@@ -259,10 +262,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
               {/* User info header */}
               <div className="p-4 bg-gradient-to-br from-primary/10 to-accent/10 border-b border-border/50">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                  Tecknocity
+                  {profile.company}
                 </div>
-                <div className="font-semibold text-foreground">Arman Kazemi</div>
-                <div className="text-sm text-muted-foreground">arman@tecknocity.com</div>
+                <div className="font-semibold text-foreground">{profile.name}</div>
+                <div className="text-sm text-muted-foreground">{profile.email}</div>
               </div>
 
               {/* Menu items */}
