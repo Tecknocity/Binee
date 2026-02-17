@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { Bell } from 'lucide-react';
-import { UserDropdown } from './UserDropdown';
 import { NotificationPanel } from './NotificationPanel';
 import { TabId } from '@/types/dashboard';
 
@@ -10,7 +9,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/chat': 'Chat',
   '/tools/health-scorecard': 'Tools',
   '/tools/price-architect': 'Tools',
-  '/integrations': 'Integrations',
+  '/integrations': 'Data',
+  '/data-mapping': 'Data',
+  '/data-quality': 'Data',
   '/settings': 'Settings',
   '/settings/profile': 'Settings',
   '/settings/security': 'Settings',
@@ -23,16 +24,18 @@ const PAGE_TITLES: Record<string, string> = {
 
 const TAB_LABELS: Record<TabId, string> = {
   home: 'Home',
-  insights: 'Insights',
-  revenue: 'Revenue',
+  growth: 'Growth',
   operations: 'Operations',
-  goals: 'Goals',
+  insights: 'Insights',
   actions: 'Actions',
 };
 
 const PAGE_SUBTITLES: Record<string, string> = {
   '/tools/health-scorecard': 'Business Health Scorecard',
   '/tools/price-architect': 'Price Architect',
+  '/integrations': 'Integrations',
+  '/data-mapping': 'Data Mapping',
+  '/data-quality': 'Data Quality & Issues',
 };
 
 export const Header: React.FC = () => {
@@ -86,9 +89,6 @@ export const Header: React.FC = () => {
               <NotificationPanel onClose={() => setShowNotifications(false)} />
             )}
           </div>
-
-          {/* User dropdown */}
-          <UserDropdown />
         </div>
       </div>
     </header>

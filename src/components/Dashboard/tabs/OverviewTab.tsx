@@ -49,7 +49,7 @@ const HealthGauge: React.FC<{ score: number }> = ({ score }) => {
 };
 
 const QUICK_ACTIONS = [
-  { icon: AlertTriangle, color: 'text-warning', bg: 'bg-warning/10', title: '3 deals stale for 15+ days', action: 'Review pipeline', tab: 'revenue' },
+  { icon: AlertTriangle, color: 'text-warning', bg: 'bg-warning/10', title: '3 deals stale for 15+ days', action: 'Review pipeline', tab: 'growth' },
   { icon: TrendingUp, color: 'text-destructive', bg: 'bg-destructive/10', title: 'Churn rate up 2% this month', action: 'Check at-risk customers', tab: 'insights' },
   { icon: Activity, color: 'text-info', bg: 'bg-info/10', title: '8 tasks overdue by 7+ days', action: 'Review operations', tab: 'operations' },
 ];

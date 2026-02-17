@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { TabId, WidgetId, NewGoal } from '../../types/dashboard';
 import { mockData } from '../../data/mockData';
 import { AddGoalModal } from './modals';
-import { OverviewTab, IntelligenceTab, RevenueTab, OperationsTab, GoalsTab, SuggestionsTab } from './tabs';
+import { OverviewTab, IntelligenceTab, RevenueTab, OperationsTab, SuggestionsTab } from './tabs';
 import { toast } from 'sonner';
 
 const DEFAULT_OVERVIEW_WIDGETS: WidgetId[] = ['metrics', 'aiInsights', 'revenueTrend'];
@@ -71,14 +71,12 @@ export const Dashboard: React.FC = () => {
     switch (activeTab) {
       case 'home':
         return <OverviewTab data={mockData} overviewWidgets={overviewWidgets} onToggleWidget={handleToggleWidget} onAddGoalClick={() => setShowAddGoalModal(true)} viewMode="company" />;
-      case 'insights':
-        return <IntelligenceTab data={mockData} overviewWidgets={overviewWidgets} onToggleWidget={handleToggleWidget} />;
-      case 'revenue':
+      case 'growth':
         return <RevenueTab data={mockData} viewMode="company" overviewWidgets={overviewWidgets} onToggleWidget={handleToggleWidget} />;
       case 'operations':
         return <OperationsTab data={mockData} overviewWidgets={overviewWidgets} onToggleWidget={handleToggleWidget} />;
-      case 'goals':
-        return <GoalsTab goals={mockData.goals} onAddGoalClick={() => setShowAddGoalModal(true)} />;
+      case 'insights':
+        return <IntelligenceTab data={mockData} overviewWidgets={overviewWidgets} onToggleWidget={handleToggleWidget} />;
       case 'actions':
         return <SuggestionsTab suggestions={mockData.suggestions} />;
       default:
