@@ -1,10 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  MessageSquare,
-  Plug,
-  Settings,
   ChevronLeft,
   ChevronRight,
   Search,
@@ -13,9 +9,11 @@ import {
   DollarSign,
   Briefcase,
   Target,
-  AlertCircle,
   Lightbulb,
-  CreditCard,
+  MessageSquare,
+  HeartPulse,
+  Calculator,
+  Settings,
   Sun,
   Moon,
   LogOut,
@@ -29,42 +27,35 @@ import { TabId } from '@/types/dashboard';
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  onOpenAccount?: (section?: string) => void;
 }
 
-const DASHBOARD_TABS: { id: TabId; label: string; icon: React.ElementType; badge?: string }[] = [
-  { id: 'overview', label: 'Overview', icon: BarChart3 },
-  { id: 'intelligence', label: 'Intelligence', icon: Brain, badge: 'AI' },
+const MAIN_TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
+  { id: 'home', label: 'Home', icon: BarChart3 },
+  { id: 'insights', label: 'Insights', icon: Brain },
   { id: 'revenue', label: 'Revenue', icon: DollarSign },
   { id: 'operations', label: 'Operations', icon: Briefcase },
   { id: 'goals', label: 'Goals', icon: Target },
-  { id: 'issues', label: 'Issues', icon: AlertCircle },
-  { id: 'suggestions', label: 'Suggestions', icon: Lightbulb },
+  { id: 'actions', label: 'Actions', icon: Lightbulb },
 ];
 
 const TOOLS_NAV = [
-  { path: '/chat', label: 'AI Chat', icon: MessageSquare },
-  { path: '/integrations', label: 'Integrations', icon: Plug },
+  { path: '/tools/health-scorecard', label: 'Business Health Scorecard', icon: HeartPulse },
+  { path: '/tools/price-architect', label: 'Price Architect', icon: Calculator },
 ];
 
-const ACCOUNT_NAV = [
-  { path: '/settings', label: 'Settings', icon: Settings },
-  { path: '/billing', label: 'Billing', icon: CreditCard },
-];
-
-export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onOpenAccount }) => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { theme, setTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [dashboardOpen, setDashboardOpen] = useState(true);
+  const [mainOpen, setMainOpen] = useState(true);
+  const [toolsOpen, setToolsOpen] = useState(true);
 
   const isDashboard = location.pathname === '/';
   const activeTab = searchParams.get('tab') as TabId | null;
 
   const isNavActive = (path: string) => {
-    if (path === '/settings') {
-      return location.pathname.startsWith('/settings');
-    }
     return location.pathname === path;
   };
 
@@ -107,21 +98,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2">
-        {/* Dashboard Section */}
+        {/* MAIN Section */}
         <div className="mb-1">
           {!collapsed && (
             <button
-              onClick={() => setDashboardOpen(!dashboardOpen)}
+              onClick={() => setMainOpen(!mainOpen)}
               className="flex items-center justify-between w-full px-2 py-1.5 mb-1"
             >
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Dashboard
+                Main
               </span>
               <ChevronDown
                 size={14}
                 className={cn(
                   "text-muted-foreground transition-transform duration-200",
-                  !dashboardOpen && "-rotate-90"
+                  !mainOpen && "-rotate-90"
                 )}
               />
             </button>
@@ -136,15 +127,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
                   ? "bg-primary/15 text-primary"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
-              title="Dashboard"
+              title="Home"
             >
-              <LayoutDashboard size={20} />
+              <BarChart3 size={20} />
             </Link>
           ) : (
-            dashboardOpen && (
+            mainOpen && (
               <div className="space-y-0.5">
-                {DASHBOARD_TABS.map((tab) => {
-                  const isActive = isDashboard && (activeTab === tab.id || (!activeTab && tab.id === 'overview'));
+                {MAIN_TABS.map((tab) => {
+                  const isActive = isDashboard && (activeTab === tab.id || (!activeTab && tab.id === 'home'));
                   const Icon = tab.icon;
                   return (
                     <Link
@@ -162,16 +153,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
                         isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
                       )} />
                       <span className="flex-1">{tab.label}</span>
-                      {tab.badge && (
-                        <span className={cn(
-                          "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-                          isActive
-                            ? "bg-primary/20 text-primary"
-                            : "bg-accent/15 text-accent"
-                        )}>
-                          {tab.badge}
-                        </span>
-                      )}
                     </Link>
                   );
                 })}
@@ -183,84 +164,106 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
         {/* Divider */}
         <div className="mx-2 my-2 border-t border-sidebar-border" />
 
-        {/* Tools Section */}
+        {/* CHAT Section */}
         <div className="mb-1">
           {!collapsed && (
             <div className="px-2 py-1.5 mb-1">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Tools
+                Chat
               </span>
             </div>
           )}
-          <div className="space-y-0.5">
-            {TOOLS_NAV.map((item) => {
-              const isActive = isNavActive(item.path);
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-200 group",
-                    collapsed ? "justify-center p-2.5" : "px-3 py-2",
-                    isActive
-                      ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  )}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <item.icon size={collapsed ? 20 : 17} className={cn(
-                    "flex-shrink-0 transition-colors",
-                    isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                  )} />
-                  {!collapsed && <span>{item.label}</span>}
-                </Link>
-              );
-            })}
-          </div>
+          <Link
+            to="/chat"
+            className={cn(
+              "flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-200 group",
+              collapsed ? "justify-center p-2.5" : "px-3 py-2",
+              isNavActive('/chat')
+                ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            )}
+            title={collapsed ? 'Chat' : undefined}
+          >
+            <MessageSquare size={collapsed ? 20 : 17} className={cn(
+              "flex-shrink-0 transition-colors",
+              isNavActive('/chat') ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+            )} />
+            {!collapsed && <span>Chat</span>}
+          </Link>
         </div>
 
         {/* Divider */}
         <div className="mx-2 my-2 border-t border-sidebar-border" />
 
-        {/* Account Section */}
+        {/* TOOLS Section (collapsible) */}
         <div className="mb-1">
           {!collapsed && (
-            <div className="px-2 py-1.5 mb-1">
+            <button
+              onClick={() => setToolsOpen(!toolsOpen)}
+              className="flex items-center justify-between w-full px-2 py-1.5 mb-1"
+            >
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Account
+                Tools
               </span>
+              <ChevronDown
+                size={14}
+                className={cn(
+                  "text-muted-foreground transition-transform duration-200",
+                  !toolsOpen && "-rotate-90"
+                )}
+              />
+            </button>
+          )}
+          {(collapsed || toolsOpen) && (
+            <div className="space-y-0.5">
+              {TOOLS_NAV.map((item) => {
+                const isActive = isNavActive(item.path);
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-200 group",
+                      collapsed ? "justify-center p-2.5" : "px-3 py-2",
+                      isActive
+                        ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    )}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <item.icon size={collapsed ? 20 : 17} className={cn(
+                      "flex-shrink-0 transition-colors",
+                      isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                    )} />
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </Link>
+                );
+              })}
             </div>
           )}
-          <div className="space-y-0.5">
-            {ACCOUNT_NAV.map((item) => {
-              const isActive = isNavActive(item.path);
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-200 group",
-                    collapsed ? "justify-center p-2.5" : "px-3 py-2",
-                    isActive
-                      ? "bg-primary/12 text-primary dark:bg-primary/15 dark:text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  )}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <item.icon size={collapsed ? 20 : 17} className={cn(
-                    "flex-shrink-0 transition-colors",
-                    isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-                  )} />
-                  {!collapsed && <span>{item.label}</span>}
-                </Link>
-              );
-            })}
-          </div>
         </div>
       </nav>
 
-      {/* Bottom Section: Theme toggle + User + Collapse */}
+      {/* Bottom Section: Account icon + Theme toggle + User + Collapse */}
       <div className="flex-shrink-0 border-t border-sidebar-border">
+        {/* Account icon */}
+        <div className={cn(
+          "flex items-center border-b border-sidebar-border",
+          collapsed ? "justify-center px-2 py-2" : "px-4 py-2"
+        )}>
+          <button
+            onClick={() => onOpenAccount?.()}
+            className={cn(
+              "flex items-center gap-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all",
+              collapsed ? "p-2" : "px-3 py-1.5 w-full text-[13px]"
+            )}
+            title={collapsed ? 'Account' : undefined}
+          >
+            <Settings size={16} />
+            {!collapsed && <span>Account</span>}
+          </button>
+        </div>
+
         {/* Theme toggle */}
         <div className={cn(
           "flex items-center border-b border-sidebar-border",

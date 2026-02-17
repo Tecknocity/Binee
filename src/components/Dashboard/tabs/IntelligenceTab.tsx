@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, Database, Sparkles, Target, MessageSquare, ArrowRight, RefreshCw, AlertCircle, AlertTriangle, Info, Wifi } from 'lucide-react';
+import { Brain, Database, Sparkles, Target, RefreshCw, AlertCircle, AlertTriangle, Info, Wifi } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MockData, WidgetId } from '../../../types/dashboard';
 import { WidgetWrapper } from '../WidgetWrapper';
@@ -16,12 +16,6 @@ const DIAGNOSTIC_CARDS = [
   { severity: 'critical' as const, title: 'Pipeline coverage below target', metric: 'Pipeline Coverage', value: '2.8x', trend: 'down' as const, source: 'HubSpot + Stripe', action: 'Increase qualified leads to hit 3x coverage' },
   { severity: 'warning' as const, title: '3 high-value deals stuck', metric: 'Stuck Deals', value: '$115K', trend: 'flat' as const, source: 'HubSpot CRM', action: 'Schedule follow-ups for stale deals this week' },
   { severity: 'info' as const, title: 'Revenue growth accelerating', metric: 'MRR Growth', value: '12.5%', trend: 'up' as const, source: 'Stripe', action: 'Consider increasing marketing spend to capitalize' },
-];
-
-const CHAT_PREVIEW = [
-  { role: 'user' as const, text: 'What should I focus on this week?' },
-  { role: 'assistant' as const, text: 'Based on your data, I\'d prioritize: 1) Follow up on 3 stuck deals ($115K at risk), 2) Review 8 overdue tasks in ClickUp, 3) Clean up 15 deals missing amounts.' },
-  { role: 'user' as const, text: 'Which deals are at risk?' },
 ];
 
 const SEVERITY_CONFIG = {
@@ -51,8 +45,8 @@ export const IntelligenceTab: React.FC<IntelligenceTabProps> = ({ data, overview
             <Brain size={24} className="text-accent" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-foreground">AI Intelligence</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">Predictions and insights powered by AI</p>
+            <h2 className="text-2xl font-bold text-foreground">Insights</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">Predictions and insights powered by your data</p>
           </div>
         </div>
         <button
@@ -81,33 +75,6 @@ export const IntelligenceTab: React.FC<IntelligenceTabProps> = ({ data, overview
           {connectedSources} of {totalSources} data sources connected.{' '}
           <Link to="/integrations" className="text-accent hover:underline">Connect more</Link> for better insights.
         </p>
-      </div>
-
-      {/* AI Chat Preview */}
-      <div className="glass rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <MessageSquare size={18} className="text-primary" />
-            <h3 className="text-lg font-semibold text-foreground">AI Chat</h3>
-          </div>
-          <Link to="/chat" className="flex items-center gap-1 text-sm text-accent hover:underline">
-            Open full chat <ArrowRight size={14} />
-          </Link>
-        </div>
-        <div className="space-y-3 mb-4">
-          {CHAT_PREVIEW.map((msg, i) => (
-            <div key={i} className={cn("flex", msg.role === 'user' ? 'justify-end' : 'justify-start')}>
-              <div className={cn(
-                "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
-                msg.role === 'user'
-                  ? 'bg-primary/15 border border-primary/20 text-foreground rounded-br-sm'
-                  : 'bg-card border border-border text-foreground rounded-bl-sm'
-              )}>
-                {msg.text}
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* Diagnostic Cards */}
@@ -154,7 +121,7 @@ export const IntelligenceTab: React.FC<IntelligenceTabProps> = ({ data, overview
 
       {/* How It Works */}
       <div className="glass rounded-2xl p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-6">How AI Predictions Work</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-6">How Predictions Work</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {[
             { icon: Database, number: '01', title: 'Data Collection', description: 'We aggregate data from all your connected tools in real-time.' },

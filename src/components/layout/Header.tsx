@@ -7,7 +7,9 @@ import { TabId } from '@/types/dashboard';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
-  '/chat': 'AI Chat',
+  '/chat': 'Chat',
+  '/tools/health-scorecard': 'Tools',
+  '/tools/price-architect': 'Tools',
   '/integrations': 'Integrations',
   '/settings': 'Settings',
   '/settings/profile': 'Settings',
@@ -20,13 +22,17 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 const TAB_LABELS: Record<TabId, string> = {
-  overview: 'Overview',
-  intelligence: 'Intelligence',
+  home: 'Home',
+  insights: 'Insights',
   revenue: 'Revenue',
   operations: 'Operations',
   goals: 'Goals',
-  issues: 'Issues',
-  suggestions: 'Suggestions',
+  actions: 'Actions',
+};
+
+const PAGE_SUBTITLES: Record<string, string> = {
+  '/tools/health-scorecard': 'Business Health Scorecard',
+  '/tools/price-architect': 'Price Architect',
 };
 
 export const Header: React.FC = () => {
@@ -37,7 +43,8 @@ export const Header: React.FC = () => {
 
   const pageTitle = PAGE_TITLES[location.pathname] || 'Binee';
   const activeTab = searchParams.get('tab') as TabId | null;
-  const tabLabel = activeTab ? TAB_LABELS[activeTab] : location.pathname === '/' ? 'Overview' : null;
+  const tabLabel = activeTab ? TAB_LABELS[activeTab] : location.pathname === '/' ? 'Home' : null;
+  const pageSubtitle = PAGE_SUBTITLES[location.pathname] || null;
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (showNotifications && notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -56,10 +63,10 @@ export const Header: React.FC = () => {
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm">
           <h1 className="text-base font-semibold text-foreground">{pageTitle}</h1>
-          {tabLabel && (
+          {(tabLabel || pageSubtitle) && (
             <>
               <span className="text-border">/</span>
-              <span className="text-muted-foreground font-medium">{tabLabel}</span>
+              <span className="text-muted-foreground font-medium">{tabLabel || pageSubtitle}</span>
             </>
           )}
         </div>

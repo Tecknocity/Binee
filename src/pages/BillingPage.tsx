@@ -200,7 +200,7 @@ function statusBadgeClasses(status: Invoice['status']): string {
 // Component
 // ---------------------------------------------------------------------------
 
-const BillingPage: React.FC = () => {
+const BillingPage: React.FC<{ embedded?: boolean }> = ({ embedded } = {}) => {
   const [showPlans, setShowPlans] = useState(false);
 
   // ---- Handlers -----------------------------------------------------------

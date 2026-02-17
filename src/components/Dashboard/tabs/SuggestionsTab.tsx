@@ -126,8 +126,8 @@ export const SuggestionsTab: React.FC<SuggestionsTabProps> = ({ suggestions }) =
           <Lightbulb size={24} className="text-accent" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Improvement Suggestions</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">AI-powered recommendations to optimize your business</p>
+          <h2 className="text-2xl font-bold text-foreground">Actions</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Recommended next steps to optimize your business</p>
         </div>
       </div>
 

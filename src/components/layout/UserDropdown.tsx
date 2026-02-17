@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import { User, Settings, CreditCard, LogOut, ChevronRight } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useAccountPanel } from '@/contexts/AccountPanelContext';
 
 export const UserDropdown: React.FC = () => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { openAccount } = useAccountPanel();
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (open && ref.current && !ref.current.contains(e.target as Node)) {
@@ -15,9 +16,18 @@ export const UserDropdown: React.FC = () => {
 
   useEffect(() => {
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [handleClickOutside]);
+
+  const handleNavClick = (section: string) => {
+    setOpen(false);
+    openAccount(section);
+  };
 
   return (
     <div className="relative" ref={ref}>
@@ -45,39 +55,36 @@ export const UserDropdown: React.FC = () => {
 
           {/* Menu items */}
           <div className="p-2">
-            <Link
-              to="/settings/profile"
-              onClick={() => setOpen(false)}
-              className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm"
+            <button
+              onClick={() => handleNavClick('profile')}
+              className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
             >
               <div className="flex items-center gap-3">
                 <User size={16} className="text-muted-foreground" />
                 <span>Profile</span>
               </div>
               <ChevronRight size={14} className="text-muted-foreground" />
-            </Link>
-            <Link
-              to="/settings"
-              onClick={() => setOpen(false)}
-              className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm"
+            </button>
+            <button
+              onClick={() => handleNavClick('settings')}
+              className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
             >
               <div className="flex items-center gap-3">
                 <Settings size={16} className="text-muted-foreground" />
                 <span>Settings</span>
               </div>
               <ChevronRight size={14} className="text-muted-foreground" />
-            </Link>
-            <Link
-              to="/billing"
-              onClick={() => setOpen(false)}
-              className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm"
+            </button>
+            <button
+              onClick={() => handleNavClick('billing')}
+              className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
             >
               <div className="flex items-center gap-3">
                 <CreditCard size={16} className="text-muted-foreground" />
                 <span>Billing</span>
               </div>
               <ChevronRight size={14} className="text-muted-foreground" />
-            </Link>
+            </button>
           </div>
 
           {/* Sign out */}
