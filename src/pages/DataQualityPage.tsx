@@ -1,7 +1,7 @@
 import React from 'react';
 import { IssuesTab } from '../components/Dashboard/tabs/IssuesTab';
 import { mockData } from '../data/mockData';
-import { AlertCircle } from 'lucide-react';
+import { Wifi } from 'lucide-react';
 
 const DataQualityPage: React.FC = () => {
   return (
@@ -9,14 +9,14 @@ const DataQualityPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <div className="w-12 h-12 rounded-2xl bg-destructive/15 flex items-center justify-center">
-          <AlertCircle size={24} className="text-destructive" />
+          <Wifi size={24} className="text-destructive" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Data Quality & Issues</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Review and resolve data quality issues across your integrations</p>
+          <h1 className="text-2xl font-bold text-foreground">Integration Health & Issues</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Monitor connection status, API errors, and sync issues across your integrations</p>
         </div>
       </div>
-      <IssuesTab issues={mockData.issues} gamification={mockData.gamification} />
+      <IssuesTab integrationHealth={mockData.integrationHealth} />
     </div>
   );
 };

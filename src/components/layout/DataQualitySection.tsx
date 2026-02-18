@@ -5,7 +5,7 @@ import { mockData } from '../../data/mockData';
 export const DataQualitySection: React.FC = () => {
   return (
     <div>
-      <IssuesTab issues={mockData.issues} gamification={mockData.gamification} />
+      <IssuesTab integrationHealth={mockData.integrationHealth} />
     </div>
   );
 };
