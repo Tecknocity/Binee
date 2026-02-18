@@ -83,16 +83,15 @@ export const mockData: MockData = {
     { name: 'Hit $100K MRR', current: 85000, target: 100000, unit: 'USD', status: 'on-track' },
     { name: 'Reach 200 Customers', current: 127, target: 200, unit: 'customers', status: 'at-risk' },
   ],
-  issues: {
-    lastAnalyzed: '2025-01-23T02:00:00',
-    items: [
-      { category: 'Revenue', severity: 'high', title: '15 deals missing "Amount" field', impact: 'Revenue forecast unavailable without deal values', source: 'HubSpot CRM', affects: '15 records', action: 'View Records', fixAction: 'Fix in HubSpot', status: 'not-fixed' },
-      { category: 'Operations', severity: 'high', title: '3 projects not updated in 30+ days', impact: 'Projects may be stalled or abandoned', source: 'ClickUp', affects: '3 records', action: 'View Records', fixAction: 'Fix in ClickUp', status: 'not-fixed' },
-      { category: 'Revenue', severity: 'warning', title: '12 deals with no close date', impact: 'Reduces forecast accuracy to 62%', source: 'HubSpot CRM', affects: '12 records', action: 'View Records', fixAction: 'Quick Fix Guide', status: 'not-fixed' },
-      { category: 'Operations', severity: 'warning', title: '8 tasks overdue by 7+ days', impact: 'May indicate capacity or prioritization issues', source: 'ClickUp', affects: '8 records', action: 'View Records', fixAction: 'Quick Fix Guide', status: 'in-progress' },
-      { category: 'Revenue', severity: 'warning', title: '3 high-value deals stuck 20+ days', impact: 'Deals in same stage for extended period', source: 'HubSpot CRM', affects: '3 records', impactAmount: '$115K at risk', action: 'View Records', fixAction: 'Quick Fix Guide', status: 'not-fixed' },
-      { category: 'Improvements', severity: 'improvement', title: 'Add "Lost Reason" field to CRM', impact: 'Unlock win/loss analysis and pattern detection', source: 'System Recommendation', action: 'Setup Guide', fixAction: 'Skip', status: 'dismissed' },
-      { category: 'Improvements', severity: 'improvement', title: 'Enable payment tracking in QuickBooks', impact: 'Automatically track overdue invoices', source: 'QuickBooks', action: 'Setup Guide', fixAction: 'Skip', status: 'suggested' },
+  integrationHealth: {
+    lastChecked: '2026-02-17T09:15:00Z',
+    issues: [
+      { id: 'ih_1', integrationSlug: 'hubspot', integrationName: 'HubSpot', type: 'rate_limit', severity: 'critical', title: 'API rate limit exceeded', description: 'HubSpot free account is limited to 100 API calls per 10 seconds. Current usage exceeds this limit, causing sync failures. Consider upgrading to a paid HubSpot plan or reducing sync frequency.', occurredAt: '2026-02-17T08:42:00Z', status: 'active', errorCode: '429', resolution: 'Upgrade HubSpot plan or reduce sync frequency to "Every hour"' },
+      { id: 'ih_2', integrationSlug: 'quickbooks', integrationName: 'QuickBooks', type: 'auth_error', severity: 'critical', title: 'Authentication token expired', description: 'The OAuth refresh token for QuickBooks has expired. Data sync has been paused. Please reconnect QuickBooks to restore data flow.', occurredAt: '2026-02-17T07:30:00Z', status: 'active', errorCode: 'OAUTH_TOKEN_EXPIRED', resolution: 'Reconnect QuickBooks from the Integrations page' },
+      { id: 'ih_3', integrationSlug: 'clickup', integrationName: 'ClickUp', type: 'permission_error', severity: 'warning', title: 'Missing permissions for time tracking', description: 'The connected ClickUp account does not have permission to access time tracking data. Time-related metrics will be unavailable until permissions are granted.', occurredAt: '2026-02-16T14:20:00Z', status: 'active', errorCode: 'OAUTH_SCOPE_INSUFFICIENT', resolution: 'Re-authorize ClickUp with time tracking permissions enabled' },
+      { id: 'ih_4', integrationSlug: 'stripe', integrationName: 'Stripe', type: 'sync_failure', severity: 'warning', title: 'Partial sync failure on subscription data', description: '12 subscription records failed to sync due to a temporary Stripe API outage. The system will retry automatically on the next sync cycle.', occurredAt: '2026-02-17T06:00:00Z', status: 'acknowledged', errorCode: '503', resolution: 'Will retry automatically. If issue persists, check Stripe status page.' },
+      { id: 'ih_5', integrationSlug: 'hubspot', integrationName: 'HubSpot', type: 'config_warning', severity: 'info', title: 'Custom properties not mapped', description: '5 custom deal properties in HubSpot are not mapped to Binee fields. These properties will be ignored during sync until mapped in Data Mapping.', occurredAt: '2026-02-15T10:00:00Z', status: 'active', resolution: 'Map custom properties in the Data Mapping page' },
+      { id: 'ih_6', integrationSlug: 'clickup', integrationName: 'ClickUp', type: 'api_error', severity: 'info', title: 'Webhook delivery failures detected', description: '3 webhook events from ClickUp failed to deliver in the last 24 hours. Real-time task updates may be delayed. Falling back to polling-based sync.', occurredAt: '2026-02-16T22:15:00Z', status: 'resolved', errorCode: 'WEBHOOK_DELIVERY_FAILED', resolution: 'Webhook endpoint has been reset. Monitoring for recurrence.' },
     ],
   },
   suggestions: [
@@ -166,9 +165,5 @@ export const mockData: MockData = {
         { order: 6, theirStatus: 'Archived', ourStatus: 'Completed' },
       ],
     },
-  },
-  gamification: {
-    totalScore: 68,
-    pointsToNextLevel: 12,
   },
 };

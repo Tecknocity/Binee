@@ -83,25 +83,27 @@ export interface Goal {
   status: 'on-track' | 'at-risk';
 }
 
-export type IssueSeverity = 'high' | 'warning' | 'improvement';
-export type IssueStatus = 'not-fixed' | 'in-progress' | 'dismissed' | 'suggested';
+export type IssueSeverity = 'critical' | 'warning' | 'info';
+export type IssueStatus = 'active' | 'acknowledged' | 'resolved';
+export type IssueType = 'auth_error' | 'rate_limit' | 'sync_failure' | 'permission_error' | 'api_error' | 'connection_lost' | 'config_warning';
 
-export interface Issue {
-  category: string;
+export interface IntegrationHealthIssue {
+  id: string;
+  integrationSlug: string;
+  integrationName: string;
+  type: IssueType;
   severity: IssueSeverity;
   title: string;
-  impact: string;
-  source: string;
-  affects?: string;
-  action: string;
-  fixAction: string;
+  description: string;
+  occurredAt: string;
   status: IssueStatus;
-  impactAmount?: string;
+  errorCode?: string;
+  resolution?: string;
 }
 
-export interface IssuesData {
-  lastAnalyzed: string;
-  items: Issue[];
+export interface IntegrationHealthData {
+  lastChecked: string;
+  issues: IntegrationHealthIssue[];
 }
 
 export interface Suggestion {
@@ -153,10 +155,6 @@ export interface DataMapping {
   };
 }
 
-export interface Gamification {
-  totalScore: number;
-  pointsToNextLevel: number;
-}
 
 export interface MockData {
   metrics: Metrics;
@@ -171,14 +169,13 @@ export interface MockData {
   taskCompletionTrend: TaskTrend[];
   teamCapacityUtilization: CapacityUtilization[];
   goals: Goal[];
-  issues: IssuesData;
+  integrationHealth: IntegrationHealthData;
   suggestions: Suggestion[];
   pipeline: PipelineStage[];
   companyPipeline: PipelineStage[];
   companyDealCount: PipelineStage[];
   highValueDeals: HighValueDeal[];
   dataMapping: DataMapping;
-  gamification: Gamification;
 }
 
 export type TabId = 'home' | 'goals' | 'growth' | 'operations' | 'insights' | 'actions';
