@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AlertCircle, AlertTriangle, Info, CheckCircle2, Clock, Filter, Check, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { IntegrationHealthData, IntegrationHealthIssue } from '../../../types/dashboard';
 import { cn } from '@/lib/utils';
-import { useIntegrations } from '@/contexts/IntegrationContext';
+import { mockIntegrations } from '@/data/mock/integrations';
 
 interface IssuesTabProps {
   integrationHealth: IntegrationHealthData;
@@ -95,9 +95,8 @@ const IssueCard: React.FC<IssueCardProps> = ({ issue, onAcknowledge, onResolve }
 export const IssuesTab: React.FC<IssuesTabProps> = ({ integrationHealth }) => {
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const { integrations } = useIntegrations();
 
-  const connectedIntegrations = integrations.filter(i => i.isConnected);
+  const connectedIntegrations = mockIntegrations.filter(i => i.isConnected);
 
   const filteredIssues = integrationHealth.issues.filter(issue => {
     if (severityFilter !== 'all' && issue.severity !== severityFilter) return false;
