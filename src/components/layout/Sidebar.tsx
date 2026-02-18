@@ -15,6 +15,7 @@ import {
   Plug,
   Database,
   AlertCircle,
+  Shield,
   LogOut,
   ChevronDown,
   User,
@@ -44,6 +45,7 @@ const DATA_NAV = [
   { path: '/integrations', label: 'Integrations', icon: Plug },
   { path: '/data-mapping', label: 'Data Mapping', icon: Database },
   { path: '/data-quality', label: 'Data Quality & Issues', icon: AlertCircle },
+  { path: '/rules', label: 'Rules', icon: Shield },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide = false }) => {
