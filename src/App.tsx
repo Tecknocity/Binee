@@ -18,6 +18,7 @@ import HealthScorecardPage from "./pages/HealthScorecardPage";
 import PriceArchitectPage from "./pages/PriceArchitectPage";
 import DataMappingPage from "./pages/DataMappingPage";
 import DataQualityPage from "./pages/DataQualityPage";
+import RulesPage from "./pages/RulesPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ErrorPage from "./pages/ErrorPage";
@@ -89,6 +90,7 @@ const App = () => (
                 <Route path="/integrations/:slug" element={<IntegrationDetailPage />} />
                 <Route path="/data-mapping" element={<DataMappingPage />} />
                 <Route path="/data-quality" element={<DataQualityPage />} />
+                <Route path="/rules" element={<RulesPage />} />
                 <Route path="/billing" element={<BillingPage />} />
 
                 {/* Settings with sub-routes */}
