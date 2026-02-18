@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, AlertTriangle, Info, CheckCircle2, Clock, Filter, Check, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info, CheckCircle2, Clock, Filter, Check, WifiOff, RefreshCw } from 'lucide-react';
 import { IntegrationHealthData, IntegrationHealthIssue } from '../../../types/dashboard';
 import { cn } from '@/lib/utils';
 import { mockIntegrations } from '@/data/mock/integrations';
@@ -122,17 +122,6 @@ export const IssuesTab: React.FC<IssuesTabProps> = ({ integrationHealth }) => {
 
   return (
     <div role="tabpanel" id="issues-panel" className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-accent/15 flex items-center justify-center">
-          <Wifi size={24} className="text-accent" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Integration Health</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Monitor connection status and resolve integration errors</p>
-        </div>
-      </div>
-
       {/* Connection Status Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {integrationStatuses.map(integration => (
