@@ -17,10 +17,14 @@ import {
   CreditCard,
   Database,
   ExternalLink,
+  Plus,
+  Search,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppearance } from '@/contexts/AppearanceContext';
 import { useProfile } from '@/contexts/ProfileContext';
+import { useChat } from '@/contexts/ChatContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { TabId } from '@/types/dashboard';
 
@@ -30,19 +34,46 @@ interface SidebarProps {
   autoHide?: boolean;
 }
 
+// Group conversations by relative date
+function groupByDate(conversations: { id: string; title: string; updatedAt: string }[]) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const weekAgo = new Date(today.getTime() - 7 * 86400000);
+
+  const groups: { label: string; items: typeof conversations }[] = [
+    { label: 'Today', items: [] },
+    { label: 'Yesterday', items: [] },
+    { label: 'Last 7 days', items: [] },
+    { label: 'Older', items: [] },
+  ];
+
+  for (const conv of conversations) {
+    const d = new Date(conv.updatedAt);
+    if (d >= today) groups[0].items.push(conv);
+    else if (d >= yesterday) groups[1].items.push(conv);
+    else if (d >= weekAgo) groups[2].items.push(conv);
+    else groups[3].items.push(conv);
+  }
+
+  return groups.filter((g) => g.items.length > 0);
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide = false }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { defaultTab } = useAppearance();
   const profile = useProfile();
+  const chat = useChat();
   const [userPopupOpen, setUserPopupOpen] = useState(false);
   const userPopupRef = useRef<HTMLDivElement>(null);
+  const [dashboardOpen, setDashboardOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(true);
 
   const isDashboard = location.pathname === '/';
+  const isOnChat = location.pathname.startsWith('/chat');
   const activeTab = searchParams.get('tab') as TabId | null;
-
-  const isNavActive = (path: string) => location.pathname === path;
 
   // Close user popup on outside click
   const handleClickOutside = useCallback((e: MouseEvent) => {
@@ -61,6 +92,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
   }, []);
+
+  const handleNewChat = () => {
+    const id = chat.createConversation();
+    navigate(`/chat/${id}`);
+  };
+
+  const handleSelectChat = (convId: string) => {
+    chat.setActiveConversationId(convId);
+    navigate(`/chat/${convId}`);
+  };
 
   // Render a single nav link (tab or route)
   const renderNavItem = (
@@ -90,6 +131,41 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
     </Link>
   );
 
+  // Section header (collapsible toggle)
+  const renderSectionHeader = (
+    label: string,
+    Icon: React.ElementType,
+    isOpen: boolean,
+    onToggleSection: () => void
+  ) => (
+    <button
+      onClick={collapsed ? undefined : onToggleSection}
+      className={cn(
+        "flex items-center w-full text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 transition-colors",
+        collapsed ? "justify-center py-2" : "gap-2 px-3 py-2 hover:text-muted-foreground"
+      )}
+      title={collapsed ? label : undefined}
+    >
+      {collapsed ? (
+        <Icon size={16} className="text-muted-foreground/50" />
+      ) : (
+        <>
+          <ChevronDown
+            size={12}
+            className={cn(
+              "transition-transform duration-200 flex-shrink-0",
+              !isOpen && "-rotate-90"
+            )}
+          />
+          <span>{label}</span>
+        </>
+      )}
+    </button>
+  );
+
+  const effectiveTab = activeTab || (defaultTab as TabId) || 'home';
+  const chatGroups = groupByDate(chat.filteredConversations);
+
   return (
     <aside
       className={cn(
@@ -113,32 +189,105 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3">
-        {/* Top-level tabs: Home, Chat, Goals, Growth, Operations, Insights, Actions */}
-        <div className="space-y-0.5 mb-1">
-          {(() => {
-            // When no tab param, use the default landing tab from appearance settings
-            const effectiveTab = activeTab || (defaultTab as TabId) || 'home';
-            return (
-              <>
-                {renderNavItem('home', '/?tab=home', 'Home', BarChart3,
-                  isDashboard && effectiveTab === 'home')}
-                {renderNavItem('chat', '/chat', 'Chat', MessageSquare,
-                  isNavActive('/chat'))}
-                {renderNavItem('goals', '/?tab=goals', 'Goals', Target,
-                  isDashboard && effectiveTab === 'goals')}
-                {renderNavItem('growth', '/?tab=growth', 'Growth', TrendingUp,
-                  isDashboard && effectiveTab === 'growth')}
-                {renderNavItem('operations', '/?tab=operations', 'Operations', Briefcase,
-                  isDashboard && effectiveTab === 'operations')}
-                {renderNavItem('insights', '/?tab=insights', 'Insights', Brain,
-                  isDashboard && effectiveTab === 'insights')}
-                {renderNavItem('actions', '/?tab=actions', 'Actions', Lightbulb,
-                  isDashboard && effectiveTab === 'actions')}
-              </>
-            );
-          })()}
+      <nav className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 flex flex-col min-h-0">
+        {/* ──────────────── Dashboard Section ──────────────── */}
+        {renderSectionHeader('Dashboard', BarChart3, dashboardOpen, () => setDashboardOpen(!dashboardOpen))}
+        {(dashboardOpen || collapsed) && (
+          <div className="space-y-0.5 mb-2">
+            {renderNavItem('home', '/?tab=home', 'Home', BarChart3,
+              isDashboard && effectiveTab === 'home')}
+            {renderNavItem('goals', '/?tab=goals', 'Goals', Target,
+              isDashboard && effectiveTab === 'goals')}
+            {renderNavItem('growth', '/?tab=growth', 'Growth', TrendingUp,
+              isDashboard && effectiveTab === 'growth')}
+            {renderNavItem('operations', '/?tab=operations', 'Operations', Briefcase,
+              isDashboard && effectiveTab === 'operations')}
+            {renderNavItem('insights', '/?tab=insights', 'Insights', Brain,
+              isDashboard && effectiveTab === 'insights')}
+            {renderNavItem('actions', '/?tab=actions', 'Actions', Lightbulb,
+              isDashboard && effectiveTab === 'actions')}
+          </div>
+        )}
+
+        {/* ──────────────── AI Chat Section ──────────────── */}
+        <div className="mt-1">
+          {renderSectionHeader('AI Chat', MessageSquare, chatOpen, () => setChatOpen(!chatOpen))}
         </div>
+
+        {(chatOpen || collapsed) && (
+          <div className="flex flex-col min-h-0 flex-1">
+            {/* New Chat button */}
+            {collapsed ? (
+              <button
+                onClick={handleNewChat}
+                className="flex justify-center p-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
+                title="New Chat"
+              >
+                <Plus size={20} />
+              </button>
+            ) : (
+              <button
+                onClick={handleNewChat}
+                className="flex items-center gap-2 mx-0 px-3 py-2 mb-2 text-[13px] font-medium text-primary bg-primary/10 hover:bg-primary/15 rounded-lg transition-colors"
+              >
+                <Plus size={15} />
+                <span>New Chat</span>
+              </button>
+            )}
+
+            {/* Search (expanded only) */}
+            {!collapsed && (
+              <div className="relative mb-2">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+                <input
+                  type="text"
+                  placeholder="Search chats..."
+                  value={chat.searchQuery}
+                  onChange={(e) => chat.setSearchQuery(e.target.value)}
+                  className="w-full bg-muted/30 border border-border/40 rounded-lg py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/40 focus:bg-muted/50 transition-colors"
+                />
+              </div>
+            )}
+
+            {/* Conversation list */}
+            {!collapsed && (
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 min-h-0">
+                {chatGroups.map((group) => (
+                  <div key={group.label}>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 px-2 mb-1">
+                      {group.label}
+                    </div>
+                    <div className="space-y-0.5">
+                      {group.items.map((conv) => {
+                        const isActive = isOnChat && chat.activeConversationId === conv.id;
+                        return (
+                          <button
+                            key={conv.id}
+                            onClick={() => handleSelectChat(conv.id)}
+                            className={cn(
+                              "w-full text-left px-3 py-2 rounded-lg text-[13px] truncate transition-all duration-150",
+                              isActive
+                                ? "bg-primary/12 text-primary font-medium"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                            )}
+                            title={conv.title}
+                          >
+                            {conv.title}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {chatGroups.length === 0 && chat.searchQuery && (
+                  <div className="text-xs text-muted-foreground/50 text-center py-4">
+                    No chats found
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* Bottom Section: User profile + Collapse */}
