@@ -109,7 +109,7 @@ All mock data lives in `src/data/mock/` and is re-exported from `src/data/mockDa
 | Path | Page | Description |
 |---|---|---|
 | `/` | Index | Main dashboard with tabbed widgets |
-| `/chat` | ChatPage | AI chat interface |
+| `/chat` | ChatPage | Chat interface |
 | `/integrations/:slug` | IntegrationDetailPage | Single integration detail |
 | `/billing` | BillingPage | Subscription/billing management |
 | `/data-management` | DataManagementPage | Data management with tabs: Integrations, Issues, Rules |
