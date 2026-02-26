@@ -4,3 +4,4 @@ export { default as SecuritySection } from './SecuritySection';
 export { default as NotificationsSection } from './NotificationsSection';
 export { default as AppearanceSection } from './AppearanceSection';
 export { default as DataPrivacySection } from './DataPrivacySection';
+export { default as DataSection } from './DataSection';
