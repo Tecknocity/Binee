@@ -39,7 +39,7 @@ export const Header: React.FC = () => {
       return activeTab ? TAB_LABELS[activeTab] : 'Home';
     }
     if (location.pathname.startsWith('/chat')) {
-      return 'AI Chat';
+      return 'Chat';
     }
     return PAGE_LABELS[location.pathname] || 'Binee';
   };

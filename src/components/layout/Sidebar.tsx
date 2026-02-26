@@ -209,9 +209,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
           </div>
         )}
 
-        {/* ──────────────── AI Chat Section ──────────────── */}
+        {/* ──────────────── Chat Section ──────────────── */}
         <div className="mt-1">
-          {renderSectionHeader('AI Chat', MessageSquare, chatOpen, () => setChatOpen(!chatOpen))}
+          {renderSectionHeader('Chat', MessageSquare, chatOpen, () => setChatOpen(!chatOpen))}
         </div>
 
         {(chatOpen || collapsed) && (
