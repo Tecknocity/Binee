@@ -1,24 +1,24 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Send,
   Copy,
   Check,
   ThumbsUp,
   ThumbsDown,
-  MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
   Sparkles,
   TrendingUp,
   AlertTriangle,
   DollarSign,
   Target,
+  Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useChat } from '@/contexts/ChatContext';
+import { ChatMessage } from '@/types/chat';
 
 // ---------------------------------------------------------------------------
-// Types
+// Constants
 // ---------------------------------------------------------------------------
 
 interface MockResponse {
@@ -26,30 +26,9 @@ interface MockResponse {
   suggestedFollowups: string[];
 }
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'ai';
-  content: string;
-  timestamp: Date;
-  suggestedFollowups?: string[];
-  feedback?: 'up' | 'down' | null;
-  copiedAt?: number | null;
-}
-
-interface ConversationSummary {
-  id: string;
-  title: string;
-  date: string;
-  preview: string;
-}
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const MOCK_RESPONSES: MockResponse[] = [
   {
-    text: `Your overall business health score is **82/100** — that's in the **healthy** range! Here's the breakdown:\n- Revenue Growth: **\\u219112.5%** MoM — Strong\n- Pipeline Coverage: **2.8x** — Adequate (aim for 3x+)\n- Team Utilization: **78%** — Good\n- Cash Runway: **14 months** — Comfortable\n\nThe main area needing attention is pipeline coverage — you're slightly below the 3x benchmark.`,
+    text: `Your overall business health score is **82/100** — that's in the **healthy** range! Here's the breakdown:\n- Revenue Growth: **\u219112.5%** MoM — Strong\n- Pipeline Coverage: **2.8x** — Adequate (aim for 3x+)\n- Team Utilization: **78%** — Good\n- Cash Runway: **14 months** — Comfortable\n\nThe main area needing attention is pipeline coverage — you're slightly below the 3x benchmark.`,
     suggestedFollowups: [
       'How can I improve pipeline coverage?',
       'Show me revenue trends',
@@ -65,7 +44,7 @@ const MOCK_RESPONSES: MockResponse[] = [
     ],
   },
   {
-    text: `Your current cash runway is **14 months** based on:\n- Cash on hand: **$247,500**\n- Monthly burn rate: **$17,500** (avg of last 3 months)\n- MRR: **$32,450** \\u219112.5%\n\nAt your current growth rate, you'll become cash-flow positive in approximately **4 months**. Your runway is extending by ~0.5 months each month due to revenue growth outpacing expenses.`,
+    text: `Your current cash runway is **14 months** based on:\n- Cash on hand: **$247,500**\n- Monthly burn rate: **$17,500** (avg of last 3 months)\n- MRR: **$32,450** \u219112.5%\n\nAt your current growth rate, you'll become cash-flow positive in approximately **4 months**. Your runway is extending by ~0.5 months each month due to revenue growth outpacing expenses.`,
     suggestedFollowups: [
       'Show expense breakdown',
       "What's my path to profitability?",
@@ -81,7 +60,7 @@ const MOCK_RESPONSES: MockResponse[] = [
     ],
   },
   {
-    text: `Great question! Based on your connected data from **HubSpot**, **Stripe**, **QuickBooks**, and **ClickUp**:\n\nYour business is performing **above average** in most areas. Key highlights:\n- **MRR**: $32,450 (\\u219112.5% MoM)\n- **Customer count**: 127 (\\u21915 this month)\n- **Active projects**: 12 (3 on track, 1 at risk)\n- **Team utilization**: 78%\n\nI'd recommend focusing on improving your pipeline coverage from 2.8x to 3x+ to ensure sustained growth.`,
+    text: `Great question! Based on your connected data from **HubSpot**, **Stripe**, **QuickBooks**, and **ClickUp**:\n\nYour business is performing **above average** in most areas. Key highlights:\n- **MRR**: $32,450 (\u219112.5% MoM)\n- **Customer count**: 127 (\u21915 this month)\n- **Active projects**: 12 (3 on track, 1 at risk)\n- **Team utilization**: 78%\n\nI'd recommend focusing on improving your pipeline coverage from 2.8x to 3x+ to ensure sustained growth.`,
     suggestedFollowups: [
       'Set a goal for pipeline coverage',
       'Show me customer trends',
@@ -113,33 +92,6 @@ const STARTER_QUESTIONS = [
   },
 ];
 
-const MOCK_CONVERSATIONS: ConversationSummary[] = [
-  {
-    id: 'conv-1',
-    title: 'Business Health Review',
-    date: 'Today',
-    preview: 'Your health score is 82/100...',
-  },
-  {
-    id: 'conv-2',
-    title: 'Pipeline Risk Analysis',
-    date: 'Yesterday',
-    preview: '3 deals at risk worth $115K...',
-  },
-  {
-    id: 'conv-3',
-    title: 'Cash Flow Projection',
-    date: 'Feb 14',
-    preview: '14 months runway, cash-flow positive in 4...',
-  },
-  {
-    id: 'conv-4',
-    title: 'Weekly Focus Areas',
-    date: 'Feb 12',
-    preview: 'Follow up on stuck deals, review overdue tasks...',
-  },
-];
-
 // ---------------------------------------------------------------------------
 // Markdown-like renderer (lightweight, no dependency)
 // ---------------------------------------------------------------------------
@@ -153,9 +105,7 @@ function renderFormattedText(text: string): React.ReactNode[] {
       elements.push(<br key={`br-${lineIdx}`} />);
     }
 
-    // Detect ordered list items: "1. **...**"
     const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
-    // Detect unordered list items: "- ..."
     const unorderedMatch = line.match(/^-\s+(.*)$/);
 
     if (orderedMatch) {
@@ -183,7 +133,6 @@ function renderFormattedText(text: string): React.ReactNode[] {
 }
 
 function renderInline(text: string): React.ReactNode[] {
-  // Handle **bold** segments
   const parts: React.ReactNode[] = [];
   const regex = /\*\*(.+?)\*\*/g;
   let lastIndex = 0;
@@ -214,7 +163,6 @@ function renderInline(text: string): React.ReactNode[] {
 
 const TypingIndicator: React.FC = () => (
   <div className="flex items-start gap-3 mr-auto max-w-[80%] animate-fade-in">
-    {/* Avatar */}
     <div className="w-8 h-8 rounded-xl gradient-primary flex items-center justify-center flex-shrink-0 shadow-md mt-1">
       <Sparkles size={14} className="text-white" />
     </div>
@@ -233,26 +181,53 @@ const TypingIndicator: React.FC = () => (
 // ---------------------------------------------------------------------------
 
 const ChatPage: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { chatId } = useParams<{ chatId: string }>();
+  const navigate = useNavigate();
+  const chatCtx = useChat();
+
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [responseIndex, setResponseIndex] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
+  // Sync URL param with active conversation
+  useEffect(() => {
+    if (chatId && chatId !== chatCtx.activeConversationId) {
+      // If this conversation exists, select it
+      const exists = chatCtx.conversations.find((c) => c.id === chatId);
+      if (exists) {
+        chatCtx.setActiveConversationId(chatId);
+      } else {
+        // If no matching conversation, create a new one and redirect
+        const newId = chatCtx.createConversation();
+        navigate(`/chat/${newId}`, { replace: true });
+      }
+    } else if (!chatId) {
+      // /chat with no id — create new conversation
+      const newId = chatCtx.createConversation();
+      navigate(`/chat/${newId}`, { replace: true });
+    }
+  }, [chatId]);
+
+  const conversation = chatCtx.activeConversation;
+  const messages = conversation?.messages;
+  const messageCount = messages?.length || 0;
+
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  }, [messageCount, isTyping]);
 
-  // Focus input on mount
+  // Focus input on mount / conversation change
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+  }, [chatId]);
 
   // -----------------------------------------------------------------------
   // Handlers
@@ -261,25 +236,23 @@ const ChatPage: React.FC = () => {
   const handleSendMessage = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isTyping) return;
+      if (!trimmed || isTyping || !conversation) return;
 
       const userMsg: ChatMessage = {
         id: `msg-${Date.now()}-user`,
         role: 'user',
         content: trimmed,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, userMsg]);
+      chatCtx.addMessage(conversation.id, userMsg);
       setInputValue('');
       setIsTyping(true);
 
-      // Reset textarea height
       if (inputRef.current) {
         inputRef.current.style.height = 'auto';
       }
 
-      // Simulate AI response after 1.5s
       const currentIdx = responseIndex;
       setTimeout(() => {
         const mockResp = MOCK_RESPONSES[currentIdx % MOCK_RESPONSES.length];
@@ -287,17 +260,16 @@ const ChatPage: React.FC = () => {
           id: `msg-${Date.now()}-ai`,
           role: 'ai',
           content: mockResp.text,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
           suggestedFollowups: mockResp.suggestedFollowups,
           feedback: null,
-          copiedAt: null,
         };
-        setMessages((prev) => [...prev, aiMsg]);
+        chatCtx.addMessage(conversation.id, aiMsg);
         setIsTyping(false);
         setResponseIndex((prev) => prev + 1);
       }, 1500);
     },
-    [isTyping, responseIndex]
+    [isTyping, responseIndex, conversation, chatCtx]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -318,342 +290,278 @@ const ChatPage: React.FC = () => {
   };
 
   const handleFeedback = (msgId: string, type: 'up' | 'down') => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msgId ? { ...m, feedback: m.feedback === type ? null : type } : m
-      )
-    );
+    // Feedback is visual-only for now (local state on the rendered messages)
+    // In production this would call an API
   };
 
   const handleStarterClick = (text: string) => {
     handleSendMessage(text);
   };
 
-  const handleNewChat = () => {
-    setMessages([]);
-    setResponseIndex(0);
-    setIsTyping(false);
-    setInputValue('');
-    inputRef.current?.focus();
-  };
-
   const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);
-    // Auto-resize textarea
     const el = e.target;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  };
+
+  const startRename = () => {
+    if (!conversation) return;
+    setRenameValue(conversation.title);
+    setIsRenaming(true);
+  };
+
+  const submitRename = () => {
+    if (conversation && renameValue.trim()) {
+      chatCtx.renameConversation(conversation.id, renameValue.trim());
+    }
+    setIsRenaming(false);
   };
 
   // -----------------------------------------------------------------------
   // Render helpers
   // -----------------------------------------------------------------------
 
-  const formatTime = (date: Date) =>
-    date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatTime = (ts: string) =>
+    new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const isEmpty = messages.length === 0;
+  const isEmpty = messageCount === 0;
 
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
 
   return (
-    <div className="flex h-[calc(100vh-0px)] bg-background text-foreground overflow-hidden">
-      {/* ============================================================== */}
-      {/* Conversation History Sidebar                                    */}
-      {/* ============================================================== */}
-      <aside
-        className={cn(
-          'flex-shrink-0 bg-card/50 backdrop-blur-xl border-r border-border/40 flex flex-col transition-all duration-300 overflow-hidden',
-          sidebarOpen ? 'w-[280px]' : 'w-0'
-        )}
-      >
-        {/* Sidebar header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-border/30 min-w-[280px]">
-          <h2 className="text-sm font-semibold text-foreground tracking-tight">Conversations</h2>
-          <button
-            onClick={handleNewChat}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors"
-          >
-            <Plus size={14} />
-            New
-          </button>
-        </div>
-
-        {/* Conversation list */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2 space-y-1 min-w-[280px]">
-          {MOCK_CONVERSATIONS.map((conv, idx) => (
-            <button
-              key={conv.id}
-              className={cn(
-                'w-full text-left px-3 py-2.5 rounded-lg transition-colors group',
-                idx === 0
-                  ? 'bg-primary/10 border border-primary/20'
-                  : 'hover:bg-muted/50'
-              )}
-            >
-              <div className="flex items-center justify-between mb-0.5">
-                <span
-                  className={cn(
-                    'text-sm font-medium truncate',
-                    idx === 0 ? 'text-primary' : 'text-foreground'
-                  )}
-                >
-                  {conv.title}
-                </span>
-                <span className="text-[10px] text-muted-foreground flex-shrink-0 ml-2">
-                  {conv.date}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground truncate">{conv.preview}</p>
-            </button>
-          ))}
-        </div>
-
-        {/* Sidebar footer */}
-        <div className="px-4 py-3 border-t border-border/30 min-w-[280px]">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Sparkles size={12} className="text-primary" />
-            <span>Powered by Binee AI</span>
+    <div className="flex flex-col h-[calc(100vh-57px)] bg-background text-foreground overflow-hidden">
+      {/* Chat header bar */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 bg-background/80 backdrop-blur-xl flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg gradient-primary flex items-center justify-center shadow-sm">
+            <Sparkles size={14} className="text-white" />
           </div>
-        </div>
-      </aside>
-
-      {/* ============================================================== */}
-      {/* Main Chat Area                                                  */}
-      {/* ============================================================== */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Chat header bar */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 bg-background/80 backdrop-blur-xl flex-shrink-0">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-          >
-            {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg gradient-primary flex items-center justify-center shadow-sm">
-              <Sparkles size={14} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold text-foreground leading-tight">Binee AI Assistant</h1>
-              <p className="text-[11px] text-muted-foreground leading-tight">
-                Ask anything about your business data
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* ============================================================ */}
-        {/* Messages container                                            */}
-        {/* ============================================================ */}
-        <div
-          ref={chatContainerRef}
-          className="flex-1 overflow-y-auto custom-scrollbar"
-        >
-          <div className="max-w-3xl mx-auto px-4 py-6">
-            {/* -------------------------------------------------------- */}
-            {/* Empty state: starter questions                            */}
-            {/* -------------------------------------------------------- */}
-            {isEmpty && !isTyping && (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in">
-                {/* Hero */}
-                <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center shadow-glow mb-6">
-                  <Sparkles size={28} className="text-white" />
-                </div>
-                <h2 className="text-xl font-bold text-foreground mb-1">
-                  How can I help you today?
-                </h2>
-                <p className="text-sm text-muted-foreground mb-8 text-center max-w-md">
-                  I can analyze your business data from HubSpot, Stripe, QuickBooks, and ClickUp to give you actionable insights.
-                </p>
-
-                {/* Starter question cards */}
-                <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
-                  {STARTER_QUESTIONS.map((q) => (
-                    <button
-                      key={q.text}
-                      onClick={() => handleStarterClick(q.text)}
-                      className="flex flex-col items-start gap-2 p-4 bg-card border border-border hover:border-primary/40 hover:bg-primary/5 rounded-xl transition-all duration-200 text-left group card-hover"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center transition-colors">
-                        <q.icon size={16} className="text-primary" />
-                      </div>
-                      <span className="text-sm font-medium text-foreground leading-snug">
-                        {q.text}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground leading-snug">
-                        {q.description}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+          <div>
+            {isRenaming ? (
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={submitRename}
+                onKeyDown={(e) => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') setIsRenaming(false); }}
+                className="text-sm font-semibold text-foreground bg-transparent border-b border-primary outline-none leading-tight"
+              />
+            ) : (
+              <div className="flex items-center gap-1.5 group">
+                <h1 className="text-sm font-semibold text-foreground leading-tight">
+                  {conversation?.title || 'Binee AI Assistant'}
+                </h1>
+                {conversation && (
+                  <button
+                    onClick={startRename}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-foreground transition-all"
+                    title="Rename chat"
+                  >
+                    <Pencil size={11} />
+                  </button>
+                )}
               </div>
             )}
-
-            {/* -------------------------------------------------------- */}
-            {/* Messages                                                  */}
-            {/* -------------------------------------------------------- */}
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={cn(
-                  'mb-5 flex animate-slide-up',
-                  msg.role === 'user' ? 'justify-end' : 'justify-start'
-                )}
-              >
-                {/* AI avatar */}
-                {msg.role === 'ai' && (
-                  <div className="w-8 h-8 rounded-xl gradient-primary flex items-center justify-center flex-shrink-0 shadow-md mt-1 mr-3">
-                    <Sparkles size={14} className="text-white" />
-                  </div>
-                )}
-
-                <div
-                  className={cn(
-                    'max-w-[80%] group',
-                    msg.role === 'user' ? 'ml-auto' : 'mr-auto'
-                  )}
-                >
-                  {/* Bubble */}
-                  <div
-                    className={cn(
-                      'px-4 py-3 text-sm leading-relaxed',
-                      msg.role === 'user'
-                        ? 'bg-primary/15 border border-primary/20 rounded-2xl rounded-br-sm text-foreground'
-                        : 'bg-card border border-border rounded-2xl rounded-bl-sm text-foreground/90'
-                    )}
-                  >
-                    {msg.role === 'ai' ? (
-                      <div className="space-y-1">{renderFormattedText(msg.content)}</div>
-                    ) : (
-                      msg.content
-                    )}
-                  </div>
-
-                  {/* AI message meta row */}
-                  {msg.role === 'ai' && (
-                    <div className="flex items-center gap-1 mt-1.5 px-1">
-                      {/* Timestamp / source */}
-                      <span className="text-[10px] text-muted-foreground mr-auto">
-                        Data as of {formatTime(msg.timestamp)}
-                      </span>
-
-                      {/* Copy */}
-                      <button
-                        onClick={() => handleCopy(msg.id, msg.content)}
-                        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-                        title="Copy response"
-                      >
-                        {copiedId === msg.id ? (
-                          <Check size={13} className="text-success" />
-                        ) : (
-                          <Copy size={13} />
-                        )}
-                      </button>
-
-                      {/* Thumbs up */}
-                      <button
-                        onClick={() => handleFeedback(msg.id, 'up')}
-                        className={cn(
-                          'p-1 rounded-md transition-colors',
-                          msg.feedback === 'up'
-                            ? 'text-success bg-success/10'
-                            : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted/50'
-                        )}
-                        title="Helpful"
-                      >
-                        <ThumbsUp size={13} />
-                      </button>
-
-                      {/* Thumbs down */}
-                      <button
-                        onClick={() => handleFeedback(msg.id, 'down')}
-                        className={cn(
-                          'p-1 rounded-md transition-colors',
-                          msg.feedback === 'down'
-                            ? 'text-destructive bg-destructive/10'
-                            : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted/50'
-                        )}
-                        title="Not helpful"
-                      >
-                        <ThumbsDown size={13} />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* User message timestamp */}
-                  {msg.role === 'user' && (
-                    <div className="flex justify-end mt-1 px-1">
-                      <span className="text-[10px] text-muted-foreground">
-                        {formatTime(msg.timestamp)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Suggested follow-ups */}
-                  {msg.role === 'ai' && msg.suggestedFollowups && msg.suggestedFollowups.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3 px-1">
-                      {msg.suggestedFollowups.map((q) => (
-                        <button
-                          key={q}
-                          onClick={() => handleSendMessage(q)}
-                          disabled={isTyping}
-                          className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {q}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* Typing indicator */}
-            {isTyping && <TypingIndicator />}
-
-            {/* Scroll anchor */}
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-
-        {/* ============================================================ */}
-        {/* Input bar                                                     */}
-        {/* ============================================================ */}
-        <div className="sticky bottom-0 border-t border-border bg-card/80 backdrop-blur-xl px-4 py-3 flex-shrink-0">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex items-end gap-2 bg-background border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 rounded-xl px-3 py-2 transition-all duration-200">
-              <textarea
-                ref={inputRef}
-                value={inputValue}
-                onChange={handleTextareaInput}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask anything about your business..."
-                rows={1}
-                disabled={isTyping}
-                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 resize-none outline-none max-h-40 py-1 disabled:opacity-50"
-              />
-              <button
-                onClick={() => handleSendMessage(inputValue)}
-                disabled={!inputValue.trim() || isTyping}
-                className={cn(
-                  'flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 flex-shrink-0',
-                  inputValue.trim() && !isTyping
-                    ? 'gradient-primary text-white shadow-sm hover:shadow-md'
-                    : 'bg-muted text-muted-foreground cursor-not-allowed'
-                )}
-                title="Send message"
-              >
-                <Send size={15} />
-              </button>
-            </div>
-            <p className="text-[10px] text-muted-foreground/50 text-center mt-1.5">
-              Press Enter to send &middot; Shift+Enter for new line &middot; Binee AI may produce inaccurate information
+            <p className="text-[11px] text-muted-foreground leading-tight">
+              Ask anything about your business data
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* Messages container                                            */}
+      {/* ============================================================ */}
+      <div
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto custom-scrollbar"
+      >
+        <div className="max-w-3xl mx-auto px-4 py-6">
+          {/* Empty state: starter questions */}
+          {isEmpty && !isTyping && (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in">
+              <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center shadow-glow mb-6">
+                <Sparkles size={28} className="text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-foreground mb-1">
+                How can I help you today?
+              </h2>
+              <p className="text-sm text-muted-foreground mb-8 text-center max-w-md">
+                I can analyze your business data from HubSpot, Stripe, QuickBooks, and ClickUp to give you actionable insights.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+                {STARTER_QUESTIONS.map((q) => (
+                  <button
+                    key={q.text}
+                    onClick={() => handleStarterClick(q.text)}
+                    className="flex flex-col items-start gap-2 p-4 bg-card border border-border hover:border-primary/40 hover:bg-primary/5 rounded-xl transition-all duration-200 text-left group card-hover"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center transition-colors">
+                      <q.icon size={16} className="text-primary" />
+                    </div>
+                    <span className="text-sm font-medium text-foreground leading-snug">
+                      {q.text}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground leading-snug">
+                      {q.description}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
+          {(messages || []).map((msg) => (
+            <div
+              key={msg.id}
+              className={cn(
+                'mb-5 flex animate-slide-up',
+                msg.role === 'user' ? 'justify-end' : 'justify-start'
+              )}
+            >
+              {msg.role === 'ai' && (
+                <div className="w-8 h-8 rounded-xl gradient-primary flex items-center justify-center flex-shrink-0 shadow-md mt-1 mr-3">
+                  <Sparkles size={14} className="text-white" />
+                </div>
+              )}
+
+              <div
+                className={cn(
+                  'max-w-[80%] group',
+                  msg.role === 'user' ? 'ml-auto' : 'mr-auto'
+                )}
+              >
+                <div
+                  className={cn(
+                    'px-4 py-3 text-sm leading-relaxed',
+                    msg.role === 'user'
+                      ? 'bg-primary/15 border border-primary/20 rounded-2xl rounded-br-sm text-foreground'
+                      : 'bg-card border border-border rounded-2xl rounded-bl-sm text-foreground/90'
+                  )}
+                >
+                  {msg.role === 'ai' ? (
+                    <div className="space-y-1">{renderFormattedText(msg.content)}</div>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+
+                {msg.role === 'ai' && (
+                  <div className="flex items-center gap-1 mt-1.5 px-1">
+                    <span className="text-[10px] text-muted-foreground mr-auto">
+                      Data as of {formatTime(msg.timestamp)}
+                    </span>
+
+                    <button
+                      onClick={() => handleCopy(msg.id, msg.content)}
+                      className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
+                      title="Copy response"
+                    >
+                      {copiedId === msg.id ? (
+                        <Check size={13} className="text-success" />
+                      ) : (
+                        <Copy size={13} />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => handleFeedback(msg.id, 'up')}
+                      className={cn(
+                        'p-1 rounded-md transition-colors',
+                        msg.feedback === 'up'
+                          ? 'text-success bg-success/10'
+                          : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted/50'
+                      )}
+                      title="Helpful"
+                    >
+                      <ThumbsUp size={13} />
+                    </button>
+
+                    <button
+                      onClick={() => handleFeedback(msg.id, 'down')}
+                      className={cn(
+                        'p-1 rounded-md transition-colors',
+                        msg.feedback === 'down'
+                          ? 'text-destructive bg-destructive/10'
+                          : 'text-muted-foreground/60 hover:text-foreground hover:bg-muted/50'
+                      )}
+                      title="Not helpful"
+                    >
+                      <ThumbsDown size={13} />
+                    </button>
+                  </div>
+                )}
+
+                {msg.role === 'user' && (
+                  <div className="flex justify-end mt-1 px-1">
+                    <span className="text-[10px] text-muted-foreground">
+                      {formatTime(msg.timestamp)}
+                    </span>
+                  </div>
+                )}
+
+                {msg.role === 'ai' && msg.suggestedFollowups && msg.suggestedFollowups.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3 px-1">
+                    {msg.suggestedFollowups.map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => handleSendMessage(q)}
+                        disabled={isTyping}
+                        className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {isTyping && <TypingIndicator />}
+
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* Input bar                                                     */}
+      {/* ============================================================ */}
+      <div className="sticky bottom-0 border-t border-border bg-card/80 backdrop-blur-xl px-4 py-3 flex-shrink-0">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-end gap-2 bg-background border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 rounded-xl px-3 py-2 transition-all duration-200">
+            <textarea
+              ref={inputRef}
+              value={inputValue}
+              onChange={handleTextareaInput}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask anything about your business..."
+              rows={1}
+              disabled={isTyping}
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 resize-none outline-none max-h-40 py-1 disabled:opacity-50"
+            />
+            <button
+              onClick={() => handleSendMessage(inputValue)}
+              disabled={!inputValue.trim() || isTyping}
+              className={cn(
+                'flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 flex-shrink-0',
+                inputValue.trim() && !isTyping
+                  ? 'gradient-primary text-white shadow-sm hover:shadow-md'
+                  : 'bg-muted text-muted-foreground cursor-not-allowed'
+              )}
+              title="Send message"
+            >
+              <Send size={15} />
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground/50 text-center mt-1.5">
+            Press Enter to send &middot; Shift+Enter for new line &middot; Binee AI may produce inaccurate information
+          </p>
         </div>
       </div>
     </div>

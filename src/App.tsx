@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AppearanceProvider } from "./contexts/AppearanceContext";
 import { ProfileProvider } from "./contexts/ProfileContext";
+import { ChatProvider } from "./contexts/ChatContext";
 import { AppShell } from "./components/layout/AppShell";
 import Index from "./pages/Index";
 import { SettingsLayout, ProfileSection, SecuritySection, NotificationsSection, AppearanceSection, DataPrivacySection } from "./components/settings";
@@ -67,6 +68,7 @@ const App = () => (
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
         <AppearanceProvider>
         <ProfileProvider>
+        <ChatProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -79,6 +81,7 @@ const App = () => (
               <Route element={<AppShell />}>
                 <Route path="/" element={<Index />} />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route path="/chat/:chatId" element={<ChatPage />} />
                 <Route path="/integrations/:slug" element={<IntegrationDetailPage />} />
                 <Route path="/billing" element={<BillingPage />} />
                 <Route path="/data-management" element={<DataManagementPage />} />
@@ -99,6 +102,7 @@ const App = () => (
             </Routes>
           </BrowserRouter>
         </TooltipProvider>
+        </ChatProvider>
         </ProfileProvider>
         </AppearanceProvider>
       </ThemeProvider>

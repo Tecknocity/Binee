@@ -34,9 +34,16 @@ export const Header: React.FC = () => {
 
   const activeTab = searchParams.get('tab') as TabId | null;
   // For dashboard tabs, show just the tab name; for other pages, show the page label
-  const pageLabel = location.pathname === '/'
-    ? (activeTab ? TAB_LABELS[activeTab] : 'Home')
-    : (PAGE_LABELS[location.pathname] || 'Binee');
+  const getPageLabel = () => {
+    if (location.pathname === '/') {
+      return activeTab ? TAB_LABELS[activeTab] : 'Home';
+    }
+    if (location.pathname.startsWith('/chat')) {
+      return 'AI Chat';
+    }
+    return PAGE_LABELS[location.pathname] || 'Binee';
+  };
+  const pageLabel = getPageLabel();
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (showNotifications && notifRef.current && !notifRef.current.contains(e.target as Node)) {
