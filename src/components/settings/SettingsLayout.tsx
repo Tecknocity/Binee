@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { User, Shield, Bell, Palette, Database, Plug } from 'lucide-react';
+import { User, Shield, Bell, Palette, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SECTIONS = [
@@ -9,7 +9,6 @@ const SECTIONS = [
   { path: '/settings/notifications', label: 'Notifications', icon: Bell },
   { path: '/settings/appearance', label: 'Appearance', icon: Palette },
   { path: '/settings/data-privacy', label: 'Data & Privacy', icon: Database },
-  { path: '/settings/data', label: 'Data', icon: Plug },
 ];
 
 const SettingsLayout: React.FC = () => {

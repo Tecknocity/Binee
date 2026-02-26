@@ -3,7 +3,6 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { cn } from '@/lib/utils';
-import { ViewModeProvider } from '@/contexts/ViewModeContext';
 import { useAppearance } from '@/contexts/AppearanceContext';
 
 export const AppShell: React.FC = () => {
@@ -53,33 +52,31 @@ export const AppShell: React.FC = () => {
       : 'ml-[260px]';
 
   return (
-    <ViewModeProvider>
-      <div className={cn(
-        "min-h-screen bg-background text-foreground",
-        density === 'compact' && 'density-compact'
-      )}>
-        <div
-          onMouseEnter={handleSidebarMouseEnter}
-          onMouseLeave={handleSidebarMouseLeave}
-        >
-          <Sidebar
-            collapsed={effectiveCollapsed}
-            onToggle={handleToggle}
-            autoHide={isAutoHide}
-          />
-        </div>
-        <div
-          className={cn(
-            "transition-all duration-300 min-h-screen",
-            contentMargin
-          )}
-        >
-          <Header />
-          <main className="animate-fade-in">
-            <Outlet />
-          </main>
-        </div>
+    <div className={cn(
+      "min-h-screen bg-background text-foreground",
+      density === 'compact' && 'density-compact'
+    )}>
+      <div
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
+      >
+        <Sidebar
+          collapsed={effectiveCollapsed}
+          onToggle={handleToggle}
+          autoHide={isAutoHide}
+        />
       </div>
-    </ViewModeProvider>
+      <div
+        className={cn(
+          "transition-all duration-300 min-h-screen",
+          contentMargin
+        )}
+      >
+        <Header />
+        <main className="animate-fade-in">
+          <Outlet />
+        </main>
+      </div>
+    </div>
   );
 };

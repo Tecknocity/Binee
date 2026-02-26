@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { IntegrationDetail, DataMappingInterface } from '../components/integrations';
+import { IntegrationDetail } from '../components/integrations';
 import type { Integration } from '@/data/mock/integrations';
 
 const INTEGRATIONS: Integration[] = [
@@ -147,7 +147,7 @@ const INTEGRATIONS: Integration[] = [
 ];
 
 const IntegrationDetailPage: React.FC = () => {
-  const { slug, view } = useParams<{ slug: string; view?: string }>();
+  const { slug } = useParams<{ slug: string }>();
   const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS);
 
   const integration = integrations.find((i) => i.slug === slug) || null;
@@ -180,9 +180,7 @@ const IntegrationDetailPage: React.FC = () => {
 
   const pageTitle = integration ? integration.name : 'Integration Details';
   const pageSubtitle = integration
-    ? view === 'mapping'
-      ? 'Data Mapping Configuration'
-      : 'Manage connection and sync settings'
+    ? 'Manage connection and sync settings'
     : 'Integration not found';
 
   return (
@@ -191,18 +189,11 @@ const IntegrationDetailPage: React.FC = () => {
         <h1 className="text-2xl font-bold text-foreground">{pageTitle}</h1>
         <p className="text-sm text-muted-foreground mt-1">{pageSubtitle}</p>
       </div>
-      {view === 'mapping' && integration ? (
-        <DataMappingInterface
-          slug={integration.slug}
-          integrationName={integration.name}
-        />
-      ) : (
-        <IntegrationDetail
-          integration={integration}
-          onDisconnect={handleDisconnect}
-          onSync={handleSync}
-        />
-      )}
+      <IntegrationDetail
+        integration={integration}
+        onDisconnect={handleDisconnect}
+        onSync={handleSync}
+      />
     </div>
   );
 };

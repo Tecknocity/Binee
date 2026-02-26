@@ -130,32 +130,6 @@ export interface HighValueDeal {
   status: 'Active' | 'Stuck';
 }
 
-export interface StageMapping {
-  order: number;
-  theirStage: string;
-  ourStage: string;
-}
-
-export interface StatusMapping {
-  order: number;
-  theirStatus: string;
-  ourStatus: string;
-}
-
-export interface DataMapping {
-  crm: {
-    mapped: boolean;
-    lastUpdated: string;
-    stages: StageMapping[];
-  };
-  projectManagement: {
-    mapped: boolean;
-    lastUpdated: string;
-    statuses: StatusMapping[];
-  };
-}
-
-
 export interface MockData {
   metrics: Metrics;
   revenue: RevenueData[];
@@ -172,15 +146,10 @@ export interface MockData {
   integrationHealth: IntegrationHealthData;
   suggestions: Suggestion[];
   pipeline: PipelineStage[];
-  companyPipeline: PipelineStage[];
-  companyDealCount: PipelineStage[];
   highValueDeals: HighValueDeal[];
-  dataMapping: DataMapping;
 }
 
 export type TabId = 'home' | 'goals' | 'growth' | 'operations' | 'insights' | 'actions';
-export type ViewMode = 'company' | 'binee';
-
 export type WidgetId =
   | 'metrics'
   | 'aiInsights'

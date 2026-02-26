@@ -5,7 +5,6 @@ import {
   Settings,
   CreditCard,
   Plug,
-  Database,
   AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,11 +14,10 @@ import NotificationsSection from '../settings/NotificationsSection';
 import AppearanceSection from '../settings/AppearanceSection';
 import DataPrivacySection from '../settings/DataPrivacySection';
 import IntegrationsPage from '../../pages/IntegrationsPage';
-import { DataMappingSection } from './DataMappingSection';
 import { DataQualitySection } from './DataQualitySection';
 import BillingPage from '../../pages/BillingPage';
 
-export type AccountSection = 'profile' | 'settings' | 'billing' | 'integrations' | 'data-mapping' | 'data-quality';
+export type AccountSection = 'profile' | 'settings' | 'billing' | 'integrations' | 'data-quality';
 
 interface AccountPanelProps {
   isOpen: boolean;
@@ -39,7 +37,6 @@ const ACCOUNT_NAV: { id: AccountSection; label: string; icon: React.ElementType 
   { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'integrations', label: 'Integrations', icon: Plug },
-  { id: 'data-mapping', label: 'Data Mapping', icon: Database },
   { id: 'data-quality', label: 'Data Quality & Issues', icon: AlertCircle },
 ];
 
@@ -118,8 +115,6 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ isOpen, onClose, ini
         return <BillingPage embedded />;
       case 'integrations':
         return <IntegrationsPage embedded />;
-      case 'data-mapping':
-        return <DataMappingSection />;
       case 'data-quality':
         return <DataQualitySection />;
       default:

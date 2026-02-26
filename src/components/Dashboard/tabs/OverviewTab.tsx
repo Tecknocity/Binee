@@ -1,7 +1,7 @@
 import React from 'react';
 import { DollarSign, TrendingUp, Users, Briefcase, Target, Plus, LayoutGrid, Link as LinkIcon, ArrowRight, Clock, AlertTriangle, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { MockData, WidgetId, ViewMode } from '../../../types/dashboard';
+import { MockData, WidgetId } from '../../../types/dashboard';
 import { WidgetWrapper } from '../WidgetWrapper';
 import { MetricCard } from '../MetricCard';
 import { AIInsights } from '../widgets/AIInsights';
@@ -22,7 +22,6 @@ interface OverviewTabProps {
   overviewWidgets: WidgetId[];
   onToggleWidget: (widgetId: WidgetId) => void;
   onAddGoalClick: () => void;
-  viewMode?: ViewMode;
 }
 
 const HealthGauge: React.FC<{ score: number }> = ({ score }) => {
@@ -54,9 +53,9 @@ const QUICK_ACTIONS = [
   { icon: Activity, color: 'text-info', bg: 'bg-info/10', title: '8 tasks overdue by 7+ days', action: 'Review operations', tab: 'operations' },
 ];
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ data, overviewWidgets, onToggleWidget, onAddGoalClick, viewMode = 'company' }) => {
-  const pipelineData = viewMode === 'company' ? data.companyPipeline : data.pipeline;
-  const dealCountData = viewMode === 'company' ? data.companyDealCount : data.pipeline;
+export const OverviewTab: React.FC<OverviewTabProps> = ({ data, overviewWidgets, onToggleWidget, onAddGoalClick }) => {
+  const pipelineData = data.pipeline;
+  const dealCountData = data.pipeline;
 
   const hasMetrics = overviewWidgets.includes('metrics');
   const hasAiInsights = overviewWidgets.includes('aiInsights');
@@ -162,12 +161,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ data, overviewWidgets,
         <div className={cn("grid gap-5", hasSalesPipeline && hasDealCountByStage ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1")}>
           {hasSalesPipeline && (
             <WidgetWrapper widgetId="salesPipeline" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
-              <SalesPipeline data={pipelineData} viewMode={viewMode} />
+              <SalesPipeline data={pipelineData} />
             </WidgetWrapper>
           )}
           {hasDealCountByStage && (
             <WidgetWrapper widgetId="dealCountByStage" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
-              <DealCountByStage data={dealCountData} viewMode={viewMode} />
+              <DealCountByStage data={dealCountData} />
             </WidgetWrapper>
           )}
         </div>

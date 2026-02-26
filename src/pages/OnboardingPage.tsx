@@ -27,17 +27,6 @@ interface IntegrationCard {
   initial: string;
 }
 
-interface SourceMapping {
-  source: string;
-  binee: string;
-}
-
-interface ToolMappingConfig {
-  label: string;
-  mappings: SourceMapping[];
-  bineeOptions: string[];
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -45,7 +34,7 @@ interface ToolMappingConfig {
 const INDUSTRIES: Industry[] = ['SaaS', 'E-commerce', 'Agency', 'Consulting', 'Other'];
 const COMPANY_SIZES: CompanySize[] = ['Just me', '2-10', '11-50', '50+'];
 
-const STEP_LABELS = ['Welcome', 'Connect Tools', 'Map Data', 'Ready'] as const;
+const STEP_LABELS = ['Welcome', 'Connect Tools', 'Ready'] as const;
 
 const INTEGRATIONS: IntegrationCard[] = [
   {
@@ -98,89 +87,20 @@ const INTEGRATIONS: IntegrationCard[] = [
   },
 ];
 
-const TOOL_MAPPINGS: Record<string, ToolMappingConfig> = {
-  hubspot: {
-    label: 'HubSpot CRM Stages',
-    mappings: [
-      { source: 'Appointment Scheduled', binee: 'Qualified' },
-      { source: 'Qualified to Buy', binee: 'Qualified' },
-      { source: 'Presentation Scheduled', binee: 'Proposal' },
-      { source: 'Decision Maker Bought-In', binee: 'Negotiation' },
-      { source: 'Contract Sent', binee: 'Negotiation' },
-      { source: 'Closed Won', binee: 'Won' },
-      { source: 'Closed Lost', binee: 'Lost' },
-    ],
-    bineeOptions: ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost'],
-  },
-  stripe: {
-    label: 'Stripe Payment Statuses',
-    mappings: [
-      { source: 'Incomplete', binee: 'Pending' },
-      { source: 'Active', binee: 'Active' },
-      { source: 'Past Due', binee: 'At Risk' },
-      { source: 'Canceled', binee: 'Churned' },
-    ],
-    bineeOptions: ['Pending', 'Active', 'At Risk', 'Churned'],
-  },
-  quickbooks: {
-    label: 'QuickBooks Invoice Statuses',
-    mappings: [
-      { source: 'Draft', binee: 'Pending' },
-      { source: 'Sent', binee: 'Outstanding' },
-      { source: 'Overdue', binee: 'At Risk' },
-      { source: 'Paid', binee: 'Collected' },
-    ],
-    bineeOptions: ['Pending', 'Outstanding', 'At Risk', 'Collected'],
-  },
-  clickup: {
-    label: 'ClickUp Task Statuses',
-    mappings: [
-      { source: 'To Do', binee: 'Planned' },
-      { source: 'In Progress', binee: 'Active' },
-      { source: 'Review', binee: 'Active' },
-      { source: 'Complete', binee: 'Completed' },
-    ],
-    bineeOptions: ['Planned', 'Active', 'On Hold', 'Completed', 'Cancelled'],
-  },
-  gmail: {
-    label: 'Gmail Labels',
-    mappings: [
-      { source: 'Inbox', binee: 'Unprocessed' },
-      { source: 'Starred', binee: 'Important' },
-      { source: 'Sent', binee: 'Sent' },
-    ],
-    bineeOptions: ['Unprocessed', 'Important', 'Sent', 'Archived'],
-  },
-  'google-calendar': {
-    label: 'Calendar Event Types',
-    mappings: [
-      { source: 'Meeting', binee: 'Internal Meeting' },
-      { source: 'External', binee: 'Client Meeting' },
-      { source: 'Focus Time', binee: 'Deep Work' },
-    ],
-    bineeOptions: ['Internal Meeting', 'Client Meeting', 'Deep Work', 'Admin'],
-  },
-};
-
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
 /** Progress indicator at the top of the wizard */
-const ProgressIndicator: React.FC<{ currentStep: number; connectedToolIds: string[] }> = ({
+const ProgressIndicator: React.FC<{ currentStep: number }> = ({
   currentStep,
-  connectedToolIds,
 }) => {
-  // If no tools connected, step 3 (Map Data) is skipped so adjust visual
-  const skipMapStep = connectedToolIds.length === 0;
-
   return (
     <div className="flex items-center justify-center gap-0 mb-10">
       {STEP_LABELS.map((label, idx) => {
         const stepNum = idx + 1;
         const isCompleted = currentStep > stepNum;
         const isActive = currentStep === stepNum;
-        const isSkipped = skipMapStep && stepNum === 3;
 
         return (
           <React.Fragment key={label}>
@@ -189,11 +109,9 @@ const ProgressIndicator: React.FC<{ currentStep: number; connectedToolIds: strin
               <div
                 className={cn(
                   'h-[2px] w-10 md:w-16 transition-colors duration-300',
-                  isSkipped
-                    ? 'bg-border/40'
-                    : currentStep > idx
-                      ? 'bg-success'
-                      : 'bg-border',
+                  currentStep > idx
+                    ? 'bg-success'
+                    : 'bg-border',
                 )}
               />
             )}
@@ -203,7 +121,6 @@ const ProgressIndicator: React.FC<{ currentStep: number; connectedToolIds: strin
               <div
                 className={cn(
                   'w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300',
-                  isSkipped && 'opacity-40',
                   isCompleted && 'bg-success text-success-foreground',
                   isActive && 'gradient-primary text-white shadow-glow-sm',
                   !isCompleted && !isActive && 'bg-muted text-muted-foreground border border-border',
@@ -214,7 +131,6 @@ const ProgressIndicator: React.FC<{ currentStep: number; connectedToolIds: strin
               <span
                 className={cn(
                   'text-[11px] font-medium transition-colors duration-300 whitespace-nowrap',
-                  isSkipped && 'opacity-40',
                   isActive ? 'text-foreground' : 'text-muted-foreground',
                 )}
               >
@@ -478,124 +394,15 @@ const StepConnectTools: React.FC<Step2Props> = ({
 };
 
 // ---------------------------------------------------------------------------
-// Step 3: Data Mapping
+// Step 3: Dashboard Ready
 // ---------------------------------------------------------------------------
 
 interface Step3Props {
-  connectedIds: string[];
-  mappings: Record<string, SourceMapping[]>;
-  onMappingChange: (toolId: string, index: number, newBinee: string) => void;
-  onContinue: () => void;
-}
-
-const StepDataMapping: React.FC<Step3Props> = ({
-  connectedIds,
-  mappings,
-  onMappingChange,
-  onContinue,
-}) => {
-  const [editingCell, setEditingCell] = useState<{ toolId: string; index: number } | null>(null);
-
-  return (
-    <div className="animate-fade-in">
-      <h2 className="text-3xl font-bold text-foreground mb-2">Map your data to Binee</h2>
-      <p className="text-muted-foreground text-base mb-8">
-        We'll use smart defaults — you can customize later.
-      </p>
-
-      <div className="space-y-6 mb-8">
-        {connectedIds.map((toolId) => {
-          const config = TOOL_MAPPINGS[toolId];
-          if (!config) return null;
-          const currentMappings = mappings[toolId] || config.mappings;
-
-          return (
-            <div key={toolId} className="bg-background/50 rounded-xl border border-border/50 overflow-hidden">
-              {/* Tool heading */}
-              <div className="px-4 py-3 border-b border-border/50 bg-muted/30">
-                <h4 className="text-sm font-semibold text-foreground">{config.label}</h4>
-              </div>
-
-              {/* Column headers */}
-              <div className="grid grid-cols-[1fr_40px_1fr] gap-3 px-4 py-2.5 border-b border-border/50 text-xs text-muted-foreground uppercase tracking-wide">
-                <div>Source Stage</div>
-                <div />
-                <div>Binee Stage</div>
-              </div>
-
-              {/* Rows */}
-              {currentMappings.map((m, idx) => (
-                <div
-                  key={idx}
-                  className="grid grid-cols-[1fr_40px_1fr] gap-3 px-4 py-2.5 border-b border-border/50 last:border-b-0 items-center"
-                >
-                  <div className="text-sm text-foreground">{m.source}</div>
-                  <div className="text-muted-foreground text-center">→</div>
-                  <div className="relative">
-                    <button
-                      onClick={() =>
-                        setEditingCell(
-                          editingCell?.toolId === toolId && editingCell?.index === idx
-                            ? null
-                            : { toolId, index: idx },
-                        )
-                      }
-                      className="flex items-center justify-between gap-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-lg text-primary text-sm font-medium w-full hover:bg-primary/20 transition-colors"
-                    >
-                      <span className="truncate">{m.binee}</span>
-                      <ChevronDown size={14} className="shrink-0" />
-                    </button>
-
-                    {editingCell?.toolId === toolId && editingCell?.index === idx && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-card z-50 overflow-hidden animate-scale-in">
-                        {config.bineeOptions.map((opt) => (
-                          <div
-                            key={opt}
-                            onClick={() => {
-                              onMappingChange(toolId, idx, opt);
-                              setEditingCell(null);
-                            }}
-                            className={cn(
-                              'px-3 py-2 text-sm cursor-pointer transition-colors',
-                              m.binee === opt
-                                ? 'bg-primary/15 text-primary'
-                                : 'text-foreground hover:bg-secondary/50',
-                            )}
-                          >
-                            {opt}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-
-      <button
-        onClick={onContinue}
-        className="w-full gradient-primary text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 hover:shadow-glow transition-all"
-      >
-        Continue
-        <ArrowRight size={18} />
-      </button>
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// Step 4: Dashboard Ready
-// ---------------------------------------------------------------------------
-
-interface Step4Props {
   connectedCount: number;
   onGo: () => void;
 }
 
-const StepReady: React.FC<Step4Props> = ({ connectedCount, onGo }) => {
+const StepReady: React.FC<Step3Props> = ({ connectedCount, onGo }) => {
   // Estimate of metrics based on connected tools
   const metricsCount = connectedCount * 4;
 
@@ -681,9 +488,6 @@ const OnboardingPage: React.FC = () => {
   const [connectedToolIds, setConnectedToolIds] = useState<string[]>([]);
   const [connectingId, setConnectingId] = useState<string | null>(null);
 
-  // Step 3 state – mapping overrides keyed by toolId
-  const [mappingOverrides, setMappingOverrides] = useState<Record<string, SourceMapping[]>>({});
-
   // ---------------------------------------------------------------------------
   // Handlers
   // ---------------------------------------------------------------------------
@@ -695,40 +499,16 @@ const OnboardingPage: React.FC = () => {
       setTimeout(() => {
         setConnectedToolIds((prev) => [...prev, id]);
         setConnectingId(null);
-        // Initialise mapping overrides from defaults
-        const config = TOOL_MAPPINGS[id];
-        if (config) {
-          setMappingOverrides((prev) => ({
-            ...prev,
-            [id]: [...config.mappings],
-          }));
-        }
       }, 1500);
     },
     [connectedToolIds, connectingId],
   );
 
-  const handleMappingChange = useCallback(
-    (toolId: string, index: number, newBinee: string) => {
-      setMappingOverrides((prev) => {
-        const current = prev[toolId] ? [...prev[toolId]] : [...(TOOL_MAPPINGS[toolId]?.mappings || [])];
-        current[index] = { ...current[index], binee: newBinee };
-        return { ...prev, [toolId]: current };
-      });
-    },
-    [],
-  );
-
   const goToStep = useCallback(
     (step: number) => {
-      // If advancing from step 2 with no tools, skip step 3
-      if (step === 3 && connectedToolIds.length === 0) {
-        setCurrentStep(4);
-        return;
-      }
       setCurrentStep(step);
     },
-    [connectedToolIds],
+    [],
   );
 
   // ---------------------------------------------------------------------------
@@ -761,15 +541,6 @@ const OnboardingPage: React.FC = () => {
         );
       case 3:
         return (
-          <StepDataMapping
-            connectedIds={connectedToolIds}
-            mappings={mappingOverrides}
-            onMappingChange={handleMappingChange}
-            onContinue={() => goToStep(4)}
-          />
-        );
-      case 4:
-        return (
           <StepReady
             connectedCount={connectedToolIds.length}
             onGo={() => navigate('/')}
@@ -784,7 +555,7 @@ const OnboardingPage: React.FC = () => {
     <div className="min-h-screen bg-background flex flex-col items-center py-12 px-4">
       {/* Progress indicator */}
       <div className="w-full max-w-2xl">
-        <ProgressIndicator currentStep={currentStep} connectedToolIds={connectedToolIds} />
+        <ProgressIndicator currentStep={currentStep} />
       </div>
 
       {/* Step content card */}
