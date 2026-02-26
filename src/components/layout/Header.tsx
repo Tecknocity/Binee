@@ -15,17 +15,13 @@ const TAB_LABELS: Record<TabId, string> = {
 
 const PAGE_LABELS: Record<string, string> = {
   '/chat': 'Chat',
-  '/tools/health-scorecard': 'Business Health Scorecard',
-  '/tools/price-architect': 'Price Architect',
-  '/integrations': 'Integrations',
-  '/data-mapping': 'Data Mapping',
-  '/data-quality': 'Data Quality & Issues',
   '/settings': 'Settings',
   '/settings/profile': 'Settings',
   '/settings/security': 'Settings',
   '/settings/notifications': 'Settings',
   '/settings/appearance': 'Settings',
   '/settings/data-privacy': 'Settings',
+  '/settings/data': 'Settings',
   '/billing': 'Billing',
   '/onboarding': 'Getting Started',
 };

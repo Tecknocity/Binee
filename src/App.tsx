@@ -9,16 +9,10 @@ import { AppearanceProvider } from "./contexts/AppearanceContext";
 import { ProfileProvider } from "./contexts/ProfileContext";
 import { AppShell } from "./components/layout/AppShell";
 import Index from "./pages/Index";
-import { SettingsLayout, ProfileSection, SecuritySection, NotificationsSection, AppearanceSection, DataPrivacySection } from "./components/settings";
-import IntegrationsPage from "./pages/IntegrationsPage";
+import { SettingsLayout, ProfileSection, SecuritySection, NotificationsSection, AppearanceSection, DataPrivacySection, DataSection } from "./components/settings";
 import IntegrationDetailPage from "./pages/IntegrationDetailPage";
 import BillingPage from "./pages/BillingPage";
 import ChatPage from "./pages/ChatPage";
-import HealthScorecardPage from "./pages/HealthScorecardPage";
-import PriceArchitectPage from "./pages/PriceArchitectPage";
-import DataMappingPage from "./pages/DataMappingPage";
-import DataQualityPage from "./pages/DataQualityPage";
-import RulesPage from "./pages/RulesPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ErrorPage from "./pages/ErrorPage";
@@ -84,13 +78,7 @@ const App = () => (
               <Route element={<AppShell />}>
                 <Route path="/" element={<Index />} />
                 <Route path="/chat" element={<ChatPage />} />
-                <Route path="/tools/health-scorecard" element={<HealthScorecardPage />} />
-                <Route path="/tools/price-architect" element={<PriceArchitectPage />} />
-                <Route path="/integrations" element={<IntegrationsPage />} />
                 <Route path="/integrations/:slug" element={<IntegrationDetailPage />} />
-                <Route path="/data-mapping" element={<DataMappingPage />} />
-                <Route path="/data-quality" element={<DataQualityPage />} />
-                <Route path="/rules" element={<RulesPage />} />
                 <Route path="/billing" element={<BillingPage />} />
 
                 {/* Settings with sub-routes */}
@@ -101,6 +89,7 @@ const App = () => (
                   <Route path="notifications" element={<NotificationsSection />} />
                   <Route path="appearance" element={<AppearanceSection />} />
                   <Route path="data-privacy" element={<DataPrivacySection />} />
+                  <Route path="data" element={<DataSection />} />
                 </Route>
 
                 <Route path="/error" element={<ErrorPage />} />

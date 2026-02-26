@@ -10,12 +10,6 @@ import {
   Lightbulb,
   MessageSquare,
   Target,
-  HeartPulse,
-  Calculator,
-  Plug,
-  Database,
-  AlertCircle,
-  Shield,
   LogOut,
   ChevronDown,
   User,
@@ -36,18 +30,6 @@ interface SidebarProps {
   autoHide?: boolean;
 }
 
-const TOOLS_NAV = [
-  { path: '/tools/health-scorecard', label: 'Business Health Scorecard', icon: HeartPulse },
-  { path: '/tools/price-architect', label: 'Price Architect', icon: Calculator },
-];
-
-const DATA_NAV = [
-  { path: '/integrations', label: 'Integrations', icon: Plug },
-  { path: '/data-mapping', label: 'Data Mapping', icon: Database },
-  { path: '/data-quality', label: 'Data Quality & Issues', icon: AlertCircle },
-  { path: '/rules', label: 'Rules', icon: Shield },
-];
-
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide = false }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -55,8 +37,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
   const { viewMode, setViewMode } = useViewMode();
   const { defaultTab } = useAppearance();
   const profile = useProfile();
-  const [toolsOpen, setToolsOpen] = useState(true);
-  const [dataOpen, setDataOpen] = useState(true);
   const [userPopupOpen, setUserPopupOpen] = useState(false);
   const userPopupRef = useRef<HTMLDivElement>(null);
 
@@ -159,68 +139,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
               </>
             );
           })()}
-        </div>
-
-        {/* Divider */}
-        <div className="mx-2 my-2 border-t border-sidebar-border" />
-
-        {/* TOOLS Section (collapsible) */}
-        <div className="mb-1">
-          {!collapsed && (
-            <button
-              onClick={() => setToolsOpen(!toolsOpen)}
-              className="flex items-center justify-between w-full px-2 py-1.5 mb-1"
-            >
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Tools
-              </span>
-              <ChevronDown
-                size={14}
-                className={cn(
-                  "text-muted-foreground transition-transform duration-200",
-                  !toolsOpen && "-rotate-90"
-                )}
-              />
-            </button>
-          )}
-          {(collapsed || toolsOpen) && (
-            <div className="space-y-0.5">
-              {TOOLS_NAV.map((item) =>
-                renderNavItem(item.path, item.path, item.label, item.icon, isNavActive(item.path))
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Divider */}
-        <div className="mx-2 my-2 border-t border-sidebar-border" />
-
-        {/* DATA Section (collapsible) */}
-        <div className="mb-1">
-          {!collapsed && (
-            <button
-              onClick={() => setDataOpen(!dataOpen)}
-              className="flex items-center justify-between w-full px-2 py-1.5 mb-1"
-            >
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Data
-              </span>
-              <ChevronDown
-                size={14}
-                className={cn(
-                  "text-muted-foreground transition-transform duration-200",
-                  !dataOpen && "-rotate-90"
-                )}
-              />
-            </button>
-          )}
-          {(collapsed || dataOpen) && (
-            <div className="space-y-0.5">
-              {DATA_NAV.map((item) =>
-                renderNavItem(item.path, item.path, item.label, item.icon, isNavActive(item.path))
-              )}
-            </div>
-          )}
         </div>
       </nav>
 
