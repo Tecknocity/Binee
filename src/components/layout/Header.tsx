@@ -21,8 +21,8 @@ const PAGE_LABELS: Record<string, string> = {
   '/settings/notifications': 'Settings',
   '/settings/appearance': 'Settings',
   '/settings/data-privacy': 'Settings',
-  '/settings/data': 'Settings',
   '/billing': 'Billing',
+  '/data-management': 'Data Management',
   '/onboarding': 'Getting Started',
 };
 

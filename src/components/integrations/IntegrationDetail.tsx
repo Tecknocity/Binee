@@ -11,7 +11,6 @@ import {
   Database,
   Clock,
   User,
-  MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -289,18 +288,6 @@ export const IntegrationDetail: React.FC<IntegrationDetailProps> = ({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="pt-6">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  navigate(`/integrations/${integration.slug}/mapping`)
-                }
-              >
-                <MapPin size={14} className="mr-2" />
-                Data Mapping
-              </Button>
             </div>
           </div>
         </div>

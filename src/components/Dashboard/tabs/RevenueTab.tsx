@@ -1,6 +1,6 @@
 import React from 'react';
 import { DollarSign } from 'lucide-react';
-import { MockData, ViewMode, WidgetId } from '../../../types/dashboard';
+import { MockData, WidgetId } from '../../../types/dashboard';
 import { WidgetWrapper } from '../WidgetWrapper';
 import { RevenueTrend } from '../widgets/RevenueTrend';
 import { RevenueBySource } from '../widgets/RevenueBySource';
@@ -11,14 +11,13 @@ import { HighValueDeals } from '../widgets/HighValueDeals';
 
 interface RevenueTabProps {
   data: MockData;
-  viewMode: ViewMode;
   overviewWidgets: WidgetId[];
   onToggleWidget: (widgetId: WidgetId) => void;
 }
 
-export const RevenueTab: React.FC<RevenueTabProps> = ({ data, viewMode, overviewWidgets, onToggleWidget }) => {
-  const pipelineData = viewMode === 'company' ? data.companyPipeline : data.pipeline;
-  const dealCountData = viewMode === 'company' ? data.companyDealCount : data.pipeline;
+export const RevenueTab: React.FC<RevenueTabProps> = ({ data, overviewWidgets, onToggleWidget }) => {
+  const pipelineData = data.pipeline;
+  const dealCountData = data.pipeline;
 
   return (
     <div role="tabpanel" id="revenue-panel" aria-labelledby="revenue-tab" className="space-y-8">
@@ -48,10 +47,10 @@ export const RevenueTab: React.FC<RevenueTabProps> = ({ data, viewMode, overview
       {/* Pipeline + Deal Count */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <WidgetWrapper widgetId="salesPipeline" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
-          <SalesPipeline data={pipelineData} viewMode={viewMode} />
+          <SalesPipeline data={pipelineData} />
         </WidgetWrapper>
         <WidgetWrapper widgetId="dealCountByStage" overviewWidgets={overviewWidgets} onToggle={onToggleWidget}>
-          <DealCountByStage data={dealCountData} viewMode={viewMode} />
+          <DealCountByStage data={dealCountData} />
         </WidgetWrapper>
       </div>
 

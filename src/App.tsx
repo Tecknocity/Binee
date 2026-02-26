@@ -9,7 +9,8 @@ import { AppearanceProvider } from "./contexts/AppearanceContext";
 import { ProfileProvider } from "./contexts/ProfileContext";
 import { AppShell } from "./components/layout/AppShell";
 import Index from "./pages/Index";
-import { SettingsLayout, ProfileSection, SecuritySection, NotificationsSection, AppearanceSection, DataPrivacySection, DataSection } from "./components/settings";
+import { SettingsLayout, ProfileSection, SecuritySection, NotificationsSection, AppearanceSection, DataPrivacySection } from "./components/settings";
+import DataManagementPage from "./pages/DataManagementPage";
 import IntegrationDetailPage from "./pages/IntegrationDetailPage";
 import BillingPage from "./pages/BillingPage";
 import ChatPage from "./pages/ChatPage";
@@ -80,6 +81,7 @@ const App = () => (
                 <Route path="/chat" element={<ChatPage />} />
                 <Route path="/integrations/:slug" element={<IntegrationDetailPage />} />
                 <Route path="/billing" element={<BillingPage />} />
+                <Route path="/data-management" element={<DataManagementPage />} />
 
                 {/* Settings with sub-routes */}
                 <Route path="/settings" element={<SettingsLayout />}>
@@ -89,7 +91,6 @@ const App = () => (
                   <Route path="notifications" element={<NotificationsSection />} />
                   <Route path="appearance" element={<AppearanceSection />} />
                   <Route path="data-privacy" element={<DataPrivacySection />} />
-                  <Route path="data" element={<DataSection />} />
                 </Route>
 
                 <Route path="/error" element={<ErrorPage />} />

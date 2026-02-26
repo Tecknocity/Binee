@@ -1,11 +1,10 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer } from 'recharts';
 import { GitBranch } from 'lucide-react';
-import { PipelineStage, ViewMode } from '../../../types/dashboard';
+import { PipelineStage } from '../../../types/dashboard';
 
 interface SalesPipelineProps {
   data: PipelineStage[];
-  viewMode: ViewMode;
 }
 
 const tooltipStyle = {
@@ -15,9 +14,7 @@ const tooltipStyle = {
   boxShadow: '0 10px 40px -10px hsl(222 47% 6% / 0.6)',
 };
 
-export const SalesPipeline: React.FC<SalesPipelineProps> = ({ data, viewMode }) => {
-  const isCompanyView = viewMode === 'company';
-  
+export const SalesPipeline: React.FC<SalesPipelineProps> = ({ data }) => {
   return (
     <div className="glass rounded-2xl p-6 card-hover">
       <div className="flex items-center gap-3 mb-6">
@@ -26,26 +23,23 @@ export const SalesPipeline: React.FC<SalesPipelineProps> = ({ data, viewMode }) 
         </div>
         <div>
           <h3 className="text-lg font-semibold text-foreground">
-            Sales Pipeline 
-            <span className="text-sm text-muted-foreground font-normal ml-2">
-              ({isCompanyView ? 'Company' : 'Binee'})
-            </span>
+            Sales Pipeline
           </h3>
           <p className="text-xs text-muted-foreground">Value by stage</p>
         </div>
       </div>
-      
+
       <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: isCompanyView ? 60 : 20 }}>
+        <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(217 33% 20%)" vertical={false} />
-          <XAxis 
-            dataKey="stage" 
-            stroke="hsl(215 20% 65%)" 
+          <XAxis
+            dataKey="stage"
+            stroke="hsl(215 20% 65%)"
             fontSize={11}
             tickLine={false}
             axisLine={false}
-            angle={isCompanyView ? -45 : 0} 
-            textAnchor={isCompanyView ? 'end' : 'middle'}
+            angle={0}
+            textAnchor="middle"
           />
           <YAxis 
             stroke="hsl(215 20% 65%)"

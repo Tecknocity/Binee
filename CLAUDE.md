@@ -112,12 +112,12 @@ All mock data lives in `src/data/mock/` and is re-exported from `src/data/mockDa
 | `/chat` | ChatPage | AI chat interface |
 | `/integrations/:slug` | IntegrationDetailPage | Single integration detail |
 | `/billing` | BillingPage | Subscription/billing management |
-| `/settings/*` | SettingsLayout | Settings sub-routes (profile, security, notifications, appearance, data-privacy, data) |
-| `/settings/data` | DataSection | Data management with tabs: Integrations, Data Mapping, Issues, Rules |
+| `/data-management` | DataManagementPage | Data management with tabs: Integrations, Issues, Rules |
+| `/settings/*` | SettingsLayout | Settings sub-routes (profile, security, notifications, appearance, data-privacy) |
 | `/onboarding` | OnboardingPage | Multi-step setup wizard (no AppShell) |
 
 ### Sidebar Navigation
-The sidebar contains only the main dashboard tabs: Home, Chat, Goals, Growth, Operations, Insights, Actions. Data management (integrations, mapping, issues, rules) lives under Settings > Data.
+The sidebar contains the main dashboard tabs: Home, Chat, Goals, Growth, Operations, Insights, Actions. The user popup menu (click profile) has: My Profile, Settings, Billing, Data Management, Sign Out.
 
 ## Development Guidelines
 

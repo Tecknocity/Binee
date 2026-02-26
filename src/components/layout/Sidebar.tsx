@@ -15,10 +15,10 @@ import {
   User,
   Settings,
   CreditCard,
+  Database,
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useViewMode } from '@/contexts/ViewModeContext';
 import { useAppearance } from '@/contexts/AppearanceContext';
 import { useProfile } from '@/contexts/ProfileContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -34,7 +34,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { viewMode, setViewMode } = useViewMode();
   const { defaultTab } = useAppearance();
   const profile = useProfile();
   const [userPopupOpen, setUserPopupOpen] = useState(false);
@@ -220,37 +219,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, autoHide 
                   </div>
                   <ExternalLink size={12} className="text-muted-foreground" />
                 </button>
-              </div>
-
-              {/* Company / Binee view toggle */}
-              <div className="px-4 pb-3">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  View Mode
-                </div>
-                <div className="flex bg-muted/50 rounded-lg p-0.5">
-                  <button
-                    onClick={() => setViewMode('company')}
-                    className={cn(
-                      "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all text-center",
-                      viewMode === 'company'
-                        ? "gradient-primary text-white shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Company
-                  </button>
-                  <button
-                    onClick={() => setViewMode('binee')}
-                    className={cn(
-                      "flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all text-center",
-                      viewMode === 'binee'
-                        ? "gradient-primary text-white shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Binee
-                  </button>
-                </div>
+                <button
+                  onClick={() => { setUserPopupOpen(false); navigate('/data-management'); }}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-foreground hover:bg-muted/50 rounded-lg transition-colors text-sm w-full"
+                >
+                  <div className="flex items-center gap-3">
+                    <Database size={16} className="text-muted-foreground" />
+                    <span>Data Management</span>
+                  </div>
+                  <ExternalLink size={12} className="text-muted-foreground" />
+                </button>
               </div>
 
               {/* Sign out */}

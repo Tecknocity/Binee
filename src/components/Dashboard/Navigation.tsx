@@ -1,14 +1,10 @@
 import React from 'react';
-import { Database } from 'lucide-react';
-import { TabId, ViewMode } from '../../types/dashboard';
+import { TabId } from '../../types/dashboard';
 import { cn } from '@/lib/utils';
 
 interface NavigationProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
-  onMappingClick: () => void;
 }
 
 const TABS: { id: TabId; label: string }[] = [
@@ -20,7 +16,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'actions', label: 'Actions' },
 ];
 
-export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange, viewMode, onViewModeChange, onMappingClick }) => {
+export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }) => {
   return (
     <nav className="bg-background/80 backdrop-blur-lg sticky top-[57px] z-30 border-b border-border/30">
       <div className="flex justify-between items-center max-w-[1800px] mx-auto px-6">
@@ -47,40 +43,6 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange, 
           })}
         </div>
 
-        {/* Right controls */}
-        <div className="hidden md:flex items-center gap-2 ml-4 flex-shrink-0">
-          <button
-            onClick={onMappingClick}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-info/40 text-info bg-info/5 hover:bg-info/10 transition-all text-xs font-medium"
-          >
-            <Database size={13} />
-            Mapping
-          </button>
-          <div className="flex bg-muted/50 rounded-lg p-0.5">
-            <button
-              onClick={() => onViewModeChange('company')}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                viewMode === 'company'
-                  ? "gradient-primary text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Company
-            </button>
-            <button
-              onClick={() => onViewModeChange('binee')}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                viewMode === 'binee'
-                  ? "gradient-primary text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Binee
-            </button>
-          </div>
-        </div>
       </div>
     </nav>
   );

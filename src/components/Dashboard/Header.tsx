@@ -1,23 +1,18 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { User, Settings, LogOut, CreditCard, Puzzle, RefreshCw, Database, ChevronRight } from 'lucide-react';
-import { ViewMode } from '../../types/dashboard';
-import { cn } from '@/lib/utils';
+import { User, Settings, LogOut, CreditCard, Puzzle, RefreshCw, ChevronRight } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface HeaderProps {
-  viewMode: ViewMode;
   showAccountMenu: boolean;
-  onViewModeChange: (mode: ViewMode) => void;
   onAccountMenuToggle: (show: boolean) => void;
   onSettingsClick: () => void;
-  onMappingClick: () => void;
   onRefreshClick: () => void;
   onLogout: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  viewMode, showAccountMenu, onViewModeChange, onAccountMenuToggle, onSettingsClick, onMappingClick, onRefreshClick, onLogout,
+  showAccountMenu, onAccountMenuToggle, onSettingsClick, onRefreshClick, onLogout,
 }) => {
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
@@ -60,47 +55,13 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          <button 
-            onClick={onMappingClick} 
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-info/40 text-info bg-info/5 hover:bg-info/10 transition-all duration-200 text-sm font-medium"
-          >
-            <Database size={15} />
-            Data Mapping
-          </button>
-
-          <button 
-            onClick={onRefreshClick} 
+          <button
+            onClick={onRefreshClick}
             className="flex items-center gap-2 px-4 py-2 rounded-lg gradient-primary text-primary-foreground hover:opacity-90 transition-all duration-200 text-sm font-semibold shadow-md"
           >
             <RefreshCw size={15} />
             Refresh Data
           </button>
-
-          {/* View Mode Toggle */}
-          <div className="flex bg-muted/50 rounded-lg p-1 ml-1">
-            <button 
-              onClick={() => onViewModeChange('company')} 
-              className={cn(
-                "px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200",
-                viewMode === 'company' 
-                  ? "gradient-primary text-primary-foreground shadow-sm" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Company View
-            </button>
-            <button 
-              onClick={() => onViewModeChange('binee')} 
-              className={cn(
-                "px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200",
-                viewMode === 'binee' 
-                  ? "gradient-primary text-primary-foreground shadow-sm" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Binee View
-            </button>
-          </div>
 
           {/* Account Menu */}
           <div className="relative ml-1">
