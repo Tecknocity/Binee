@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { SetupPlan, ExecutionProgress, ExecutionResult, ManualStep } from '@/lib/setup/session';
 import { executeSetupPlan } from '@/lib/setup/session';
 import { generateDefaultPlan } from '@/lib/setup/planner';
+import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,10 +17,12 @@ export interface SetupChatMessage {
   timestamp: Date;
 }
 
-export type SetupStep = 1 | 2 | 3 | 4;
+export type SetupStep = 0 | 1 | 2 | 3 | 4;
 
 export interface UseSetupReturn {
   currentStep: SetupStep;
+  clickUpConnected: boolean;
+  clickUpLoading: boolean;
   businessDescription: string;
   chatMessages: SetupChatMessage[];
   proposedPlan: SetupPlan | null;
@@ -28,6 +31,8 @@ export interface UseSetupReturn {
   manualSteps: ManualStep[];
   isExecuting: boolean;
   isSending: boolean;
+  handleClickUpConnect: () => void;
+  refreshClickUpStatus: () => Promise<void>;
   sendMessage: (msg: string) => void;
   selectTemplate: (template: string) => void;
   approvePlan: () => void;
@@ -59,7 +64,10 @@ const WELCOME_MESSAGE: SetupChatMessage = {
 // ---------------------------------------------------------------------------
 
 export function useSetup(): UseSetupReturn {
-  const [currentStep, setCurrentStep] = useState<SetupStep>(1);
+  const clickUp = useClickUpStatus();
+
+  // Start at step 0 (connect) if ClickUp is not connected, otherwise step 1 (describe)
+  const [currentStep, setCurrentStep] = useState<SetupStep>(0);
   const [businessDescription, setBusinessDescription] = useState('');
   const [chatMessages, setChatMessages] = useState<SetupChatMessage[]>([WELCOME_MESSAGE]);
   const [proposedPlan, setProposedPlan] = useState<SetupPlan | null>(null);
@@ -69,6 +77,23 @@ export function useSetup(): UseSetupReturn {
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
+
+  // Auto-advance from step 0 to step 1 once ClickUp is connected
+  useEffect(() => {
+    if (!clickUp.loading && clickUp.connected && currentStep === 0) {
+      // Brief delay so the user sees the "connected" confirmation
+      const timer = setTimeout(() => setCurrentStep(1), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [clickUp.connected, clickUp.loading, currentStep]);
+
+  const handleClickUpConnect = useCallback(() => {
+    window.location.href = '/api/clickup/auth';
+  }, []);
+
+  const refreshClickUpStatus = useCallback(async () => {
+    await clickUp.refetch();
+  }, [clickUp]);
 
   const addMessage = useCallback((role: 'user' | 'assistant', content: string) => {
     const msg: SetupChatMessage = {
@@ -203,7 +228,7 @@ export function useSetup(): UseSetupReturn {
   }, []);
 
   const restartSetup = useCallback(() => {
-    setCurrentStep(1);
+    setCurrentStep(clickUp.connected ? 1 : 0);
     setBusinessDescription('');
     setChatMessages([WELCOME_MESSAGE]);
     setProposedPlan(null);
@@ -213,7 +238,7 @@ export function useSetup(): UseSetupReturn {
     setIsExecuting(false);
     setIsSending(false);
     setMessageCount(0);
-  }, []);
+  }, [clickUp.connected]);
 
   const goToDashboard = useCallback(() => {
     // In a real app, this would use router.push('/')
@@ -222,6 +247,8 @@ export function useSetup(): UseSetupReturn {
 
   return {
     currentStep,
+    clickUpConnected: clickUp.connected,
+    clickUpLoading: clickUp.loading,
     businessDescription,
     chatMessages,
     proposedPlan,
@@ -230,6 +257,8 @@ export function useSetup(): UseSetupReturn {
     manualSteps,
     isExecuting,
     isSending,
+    handleClickUpConnect,
+    refreshClickUpStatus,
     sendMessage: enhancedSendMessage,
     selectTemplate,
     approvePlan,

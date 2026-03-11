@@ -80,7 +80,10 @@ export async function handleChatMessage(
   // 4. Build context
   const context = await buildContext(workspace_id, user_id, conversation_id);
 
-  // 5. Build system prompt based on task type
+  // 5. Determine if ClickUp is connected — controls tool availability
+  const clickUpConnected = context.workspace.clickup_connected;
+
+  // 6. Build system prompt based on task type
   let systemPrompt: string;
   switch (classification.taskType) {
     case 'setup_planning':
@@ -93,7 +96,7 @@ export async function handleChatMessage(
       systemPrompt = buildSystemPrompt(context);
   }
 
-  // 6. Build message history for the API
+  // 7. Build message history for the API
   const messages: Anthropic.MessageParam[] = [
     // Include conversation history
     ...context.conversationHistory.map((msg) => ({
@@ -104,7 +107,12 @@ export async function handleChatMessage(
     { role: 'user' as const, content: message },
   ];
 
-  // 7. Call Anthropic API with tool use loop
+  // 8. Call Anthropic API with tool use loop
+  // Only provide tools when ClickUp is connected — this enforces at the API level
+  // that the AI cannot call workspace tools without a connection.
+  // Chat still works standalone for general conversations (credits are consumed).
+  const toolsForApi = clickUpConnected ? BINEE_TOOLS : [];
+
   const allToolCalls: ToolCallResult[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -115,7 +123,7 @@ export async function handleChatMessage(
       model: routing.modelId,
       max_tokens: 4096,
       system: systemPrompt,
-      tools: BINEE_TOOLS,
+      ...(toolsForApi.length > 0 ? { tools: toolsForApi } : {}),
       messages,
     });
 
@@ -178,7 +186,7 @@ export async function handleChatMessage(
     }
   }
 
-  // 8. Deduct credits
+  // 9. Deduct credits (always deducted — chat works standalone, tokens are consumed)
   await supabase.rpc('deduct_credits', {
     p_workspace_id: workspace_id,
     p_user_id: user_id,
@@ -187,7 +195,7 @@ export async function handleChatMessage(
     p_metadata: { task_type: classification.taskType, model: routing.modelId },
   });
 
-  // 9. Save message and response to the database
+  // 10. Save message and response to the database
   await saveConversationMessages(
     supabase,
     conversation_id,
@@ -203,7 +211,7 @@ export async function handleChatMessage(
     classification.taskType,
   );
 
-  // 10. Return the response
+  // 11. Return the response
   return {
     content: finalContent,
     model_used: routing.modelId,
