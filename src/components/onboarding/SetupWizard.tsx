@@ -2,6 +2,7 @@
 
 import { Check } from 'lucide-react';
 import { useSetup } from '@/hooks/useSetup';
+import { ClickUpConnectStep } from './ClickUpConnectStep';
 import { BusinessChatStep } from './BusinessChatStep';
 import { StructurePreview } from './StructurePreview';
 import { ExecutionProgress } from './ExecutionProgress';
@@ -9,6 +10,7 @@ import { ManualStepsGuide } from './ManualStepsGuide';
 import { SetupComplete } from './SetupComplete';
 
 const STEPS = [
+  { label: 'Connect', number: 0 },
   { label: 'Describe', number: 1 },
   { label: 'Review', number: 2 },
   { label: 'Build', number: 3 },
@@ -26,7 +28,7 @@ export default function SetupWizard() {
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col">
       {/* Step indicator */}
-      <div className="w-full max-w-2xl mx-auto px-6 pt-8 pb-4">
+      <div className="w-full max-w-3xl mx-auto px-6 pt-8 pb-4">
         <div className="flex items-center justify-between">
           {STEPS.map((step, i) => {
             const isActive = setup.currentStep === step.number;
@@ -45,7 +47,7 @@ export default function SetupWizard() {
                       ${!isActive && !isDone ? 'bg-surface border border-border text-text-muted' : ''}
                     `}
                   >
-                    {isDone ? <Check className="w-4 h-4" /> : step.number}
+                    {isDone ? <Check className="w-4 h-4" /> : step.number + 1}
                   </div>
                   <span
                     className={`mt-1.5 text-xs font-medium ${
@@ -74,6 +76,15 @@ export default function SetupWizard() {
 
       {/* Step content */}
       <div className="flex-1 flex flex-col">
+        {setup.currentStep === 0 && (
+          <ClickUpConnectStep
+            connected={setup.clickUpConnected}
+            loading={setup.clickUpLoading}
+            onConnect={setup.handleClickUpConnect}
+            onRefresh={setup.refreshClickUpStatus}
+          />
+        )}
+
         {setup.currentStep === 1 && (
           <BusinessChatStep
             messages={setup.chatMessages}
