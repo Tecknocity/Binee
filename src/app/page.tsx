@@ -1,8 +1,5 @@
-export default function Home() {
-  return (
-    <div>
-      <h1>Binee API</h1>
-      <p>API server is running. See /api/* for endpoints.</p>
-    </div>
-  );
+import { redirect } from 'next/navigation';
+
+export default function RootPage() {
+  redirect('/chat');
 }

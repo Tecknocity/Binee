@@ -8,7 +8,7 @@ import { performInitialSync } from "@/lib/clickup/sync";
 import { registerWebhooks } from "@/lib/clickup/webhooks";
 import { ClickUpClient } from "@/lib/clickup/client";
 
-const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3001";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 /**
  * GET /api/clickup/callback
@@ -34,14 +34,14 @@ export async function GET(request: NextRequest) {
   // Handle OAuth errors
   if (error) {
     console.error("[OAuth] ClickUp authorization error:", error);
-    const redirectUrl = new URL("/settings/integrations", FRONTEND_URL);
+    const redirectUrl = new URL("/settings/integrations", APP_URL);
     redirectUrl.searchParams.set("error", "clickup_auth_denied");
     return NextResponse.redirect(redirectUrl.toString());
   }
 
   // Validate required parameters
   if (!code || !state) {
-    const redirectUrl = new URL("/settings/integrations", FRONTEND_URL);
+    const redirectUrl = new URL("/settings/integrations", APP_URL);
     redirectUrl.searchParams.set("error", "clickup_missing_params");
     return NextResponse.redirect(redirectUrl.toString());
   }
@@ -98,12 +98,12 @@ export async function GET(request: NextRequest) {
     });
 
     // Step 7: Redirect to settings with success
-    const redirectUrl = new URL("/settings/integrations", FRONTEND_URL);
+    const redirectUrl = new URL("/settings/integrations", APP_URL);
     redirectUrl.searchParams.set("success", "clickup_connected");
     return NextResponse.redirect(redirectUrl.toString());
   } catch (err) {
     console.error("[OAuth] Callback processing error:", err);
-    const redirectUrl = new URL("/settings/integrations", FRONTEND_URL);
+    const redirectUrl = new URL("/settings/integrations", APP_URL);
     redirectUrl.searchParams.set("error", "clickup_connection_failed");
     return NextResponse.redirect(redirectUrl.toString());
   }
