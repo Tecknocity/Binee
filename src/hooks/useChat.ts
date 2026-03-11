@@ -262,8 +262,9 @@ export function useChat(conversationId: string | null) {
   }, []);
 
   const sendMessage = useCallback(
-    async (content: string) => {
-      if (!conversationId || !content.trim()) return;
+    async (content: string, overrideConversationId?: string) => {
+      const effectiveId = overrideConversationId || conversationId;
+      if (!effectiveId || !content.trim()) return;
 
       const userMessage: ChatMessage = {
         id: `msg-${Date.now()}`,
@@ -283,7 +284,7 @@ export function useChat(conversationId: string | null) {
           body: JSON.stringify({
             workspace_id: 'ws-mock-001',
             user_id: 'user-mock-001',
-            conversation_id: conversationId,
+            conversation_id: effectiveId,
             message: content.trim(),
           }),
         });

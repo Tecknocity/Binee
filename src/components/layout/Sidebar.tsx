@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
@@ -32,25 +32,132 @@ const navSections = [
   { href: '/setup', label: 'Setup', icon: Wrench },
 ];
 
+// ---------------------------------------------------------------------------
+// Search Dialog
+// ---------------------------------------------------------------------------
+
+function SearchDialog({
+  open,
+  onClose,
+  conversations,
+  onSelectConversation,
+}: {
+  open: boolean;
+  onClose: () => void;
+  conversations: Conversation[];
+  onSelectConversation: (id: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Focus input when opened
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return conversations;
+    const q = query.toLowerCase();
+    return conversations.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.lastMessage.toLowerCase().includes(q)
+    );
+  }, [conversations, query]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Dialog */}
+      <div
+        ref={dialogRef}
+        className="relative w-full max-w-lg mx-4 bg-navy-dark border border-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+      >
+        {/* Search input */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50">
+          <Search className="w-4 h-4 text-text-muted shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search chats and projects"
+            className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+          />
+          <button
+            onClick={onClose}
+            className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Results */}
+        <div className="max-h-[50vh] overflow-y-auto py-1">
+          {filtered.length > 0 ? (
+            filtered.map((conv) => (
+              <button
+                key={conv.id}
+                onClick={() => {
+                  onSelectConversation(conv.id);
+                  onClose();
+                }}
+                className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-surface-hover transition-colors"
+              >
+                <MessageSquare className="w-4 h-4 text-text-muted shrink-0" />
+                <span className="text-sm text-text-primary truncate flex-1">
+                  {conv.title}
+                </span>
+                <span className="text-xs text-text-muted shrink-0">
+                  {formatRelativeDate(conv.updatedAt)}
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm text-text-muted">
+                {query ? 'No results found' : 'No chats yet'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function formatRelativeDate(date: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 1) return 'Just now';
   if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'Yesterday';
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Morning';
-  if (hour < 17) return 'Afternoon';
-  return 'Evening';
 }
 
 export default function Sidebar() {
@@ -59,6 +166,7 @@ export default function Sidebar() {
   const { user, workspace, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -80,9 +188,21 @@ export default function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  // Cmd+K / Ctrl+K to open search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
   const handleNewChat = () => {
-    createConversation();
-    router.push('/chat');
+    setActiveConversation(null);
+    router.push('/chat?new=1');
     setMobileOpen(false);
   };
 
@@ -115,14 +235,13 @@ export default function Sidebar() {
           <Plus className="w-4 h-4" />
           New chat
         </button>
-        <Link
-          href="/chats"
-          onClick={() => setMobileOpen(false)}
+        <button
+          onClick={() => setSearchOpen(true)}
           className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
         >
           <Search className="w-4 h-4" />
           Search
-        </Link>
+        </button>
       </div>
 
       {/* Divider */}
@@ -327,6 +446,14 @@ export default function Sidebar() {
 
         {sidebarContent}
       </aside>
+
+      {/* Search popup */}
+      <SearchDialog
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        conversations={conversations}
+        onSelectConversation={handleSelectConversation}
+      />
     </>
   );
 }

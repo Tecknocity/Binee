@@ -60,9 +60,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
 
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    MOCK_CONVERSATIONS[0]?.id ?? null,
-  );
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isLoading] = useState(false);
 
   const createConversation = useCallback(() => {
