@@ -1,21 +1,32 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { PanelLeftOpen, X } from 'lucide-react';
+import { useCallback, useEffect } from 'react';
 import { useConversations } from '@/hooks/useConversations';
 import { useChat } from '@/hooks/useChat';
-import ConversationList from './ConversationList';
+import { useAuth } from '@/components/auth/AuthProvider';
 import MessageThread from './MessageThread';
 import ChatInput from './ChatInput';
-import EmptyState from './EmptyState';
+import { Hexagon } from 'lucide-react';
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Morning';
+  if (hour < 17) return 'Afternoon';
+  return 'Evening';
+}
+
+const SUGGESTED_PROMPTS = [
+  { text: 'Show me all overdue tasks', icon: '🔴' },
+  { text: "Summarize this week's progress", icon: '📊' },
+  { text: 'What are the top priorities for today?', icon: '🎯' },
+  { text: 'Create a task for the next sprint', icon: '✏️' },
+];
 
 export default function ChatPage() {
+  const { user } = useAuth();
   const {
-    conversations,
     activeConversationId,
     createConversation,
-    deleteConversation,
-    setActiveConversation,
   } = useConversations();
 
   const {
@@ -26,36 +37,9 @@ export default function ChatPage() {
     loadConversation,
   } = useChat(activeConversationId);
 
-  // Mobile sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Load messages when active conversation changes
   useEffect(() => {
     loadConversation(activeConversationId);
   }, [activeConversationId, loadConversation]);
-
-  const handleSelectConversation = useCallback(
-    (id: string) => {
-      setActiveConversation(id);
-      setSidebarOpen(false);
-    },
-    [setActiveConversation],
-  );
-
-  const handleCreateConversation = useCallback(() => {
-    createConversation();
-    setSidebarOpen(false);
-  }, [createConversation]);
-
-  const handleSuggestedPrompt = useCallback(
-    (prompt: string) => {
-      if (!activeConversationId) {
-        createConversation();
-      }
-      sendMessage(prompt);
-    },
-    [activeConversationId, createConversation, sendMessage],
-  );
 
   const handleSend = useCallback(
     (content: string) => {
@@ -63,6 +47,16 @@ export default function ChatPage() {
         createConversation();
       }
       sendMessage(content);
+    },
+    [activeConversationId, createConversation, sendMessage],
+  );
+
+  const handleSuggestedPrompt = useCallback(
+    (prompt: string) => {
+      if (!activeConversationId) {
+        createConversation();
+      }
+      sendMessage(prompt);
     },
     [activeConversationId, createConversation, sendMessage],
   );
@@ -78,85 +72,64 @@ export default function ChatPage() {
   );
 
   const hasMessages = messages.length > 0;
+  const firstName = user?.display_name?.split(' ')[0] || 'there';
 
   return (
-    <div className="flex h-screen overflow-hidden bg-navy-base">
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar — conversation list */}
-      <aside
-        className={`
-          fixed inset-y-0 left-0 z-40 w-72 bg-navy-dark border-r border-border/50
-          transform transition-transform duration-200 ease-out
-          lg:static lg:translate-x-0 lg:z-auto
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}
-      >
-        {/* Mobile close */}
-        <div className="flex items-center justify-between px-4 pt-4 lg:hidden">
-          <span className="text-sm font-medium text-text-primary">Chats</span>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <ConversationList
-          conversations={conversations}
-          activeId={activeConversationId}
-          onSelect={handleSelectConversation}
-          onCreate={handleCreateConversation}
-          onDelete={deleteConversation}
-        />
-      </aside>
-
-      {/* Main chat area */}
-      <main className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <div className="flex items-center gap-3 px-4 h-12 border-b border-border/50 shrink-0 bg-navy-base/50 backdrop-blur-sm">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted lg:hidden"
-          >
-            <PanelLeftOpen className="w-4 h-4" />
-          </button>
-          <h2 className="text-sm font-medium text-text-primary truncate">
-            {activeConversationId
-              ? conversations.find((c) => c.id === activeConversationId)?.title ?? 'New conversation'
-              : 'Start a conversation'}
-          </h2>
-        </div>
-
-        {/* Messages or empty state */}
-        {hasMessages ? (
+    <div className="flex flex-col h-screen overflow-hidden bg-navy-base">
+      {hasMessages ? (
+        <>
           <MessageThread
             messages={messages}
             isLoading={isLoading}
             onConfirmAction={handleConfirmAction}
             onCancelAction={handleCancelAction}
           />
-        ) : (
-          <EmptyState
-            variant="no-conversations"
-            onSuggestedPrompt={handleSuggestedPrompt}
+          <ChatInput
+            onSend={handleSend}
+            disabled={isLoading}
+            placeholder={!activeConversationId ? 'Start a new conversation...' : undefined}
           />
-        )}
+        </>
+      ) : (
+        <>
+          {/* Claude-style welcome */}
+          <div className="flex-1 flex flex-col items-center justify-center px-6">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center">
+                <Hexagon className="w-5 h-5 text-accent" />
+              </div>
+              <h1 className="text-2xl font-light text-text-primary">
+                {getGreeting()}, {firstName}
+              </h1>
+            </div>
 
-        {/* Input — always visible */}
-        <ChatInput
-          onSend={handleSend}
-          disabled={isLoading}
-          placeholder={!activeConversationId ? 'Start a new conversation...' : undefined}
-        />
-      </main>
+            {/* Chat input - centered, hero style */}
+            <div className="w-full max-w-2xl mb-8">
+              <div className="relative">
+                <ChatInput
+                  onSend={handleSend}
+                  disabled={isLoading}
+                  placeholder="Start a new chat..."
+                />
+              </div>
+            </div>
+
+            {/* Suggested prompts as pills */}
+            <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
+              {SUGGESTED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt.text}
+                  onClick={() => handleSuggestedPrompt(prompt.text)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-surface border border-border hover:border-accent/30 hover:bg-surface-hover transition-all duration-150 text-sm text-text-secondary hover:text-text-primary"
+                >
+                  <span>{prompt.icon}</span>
+                  <span>{prompt.text}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
