@@ -1,58 +1,61 @@
-import React from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
-import { User, Shield, Bell, Palette, Database } from 'lucide-react';
+'use client';
+
+import { useState } from 'react';
+import { User, Users, Plug, CreditCard } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ProfileSettings from '@/components/settings/ProfileSettings';
+import TeamSettings from '@/components/settings/TeamSettings';
+import IntegrationSettings from '@/components/settings/IntegrationSettings';
+import BillingSettings from '@/components/settings/BillingSettings';
 
-const SECTIONS = [
-  { path: '/settings/profile', label: 'Profile', icon: User },
-  { path: '/settings/security', label: 'Security', icon: Shield },
-  { path: '/settings/notifications', label: 'Notifications', icon: Bell },
-  { path: '/settings/appearance', label: 'Appearance', icon: Palette },
-  { path: '/settings/data-privacy', label: 'Data & Privacy', icon: Database },
-];
+const tabs = [
+  { id: 'profile', label: 'Profile', icon: User },
+  { id: 'team', label: 'Team', icon: Users },
+  { id: 'integrations', label: 'Integrations', icon: Plug },
+  { id: 'billing', label: 'Billing', icon: CreditCard },
+] as const;
 
-const SettingsLayout: React.FC = () => {
+type TabId = (typeof tabs)[number]['id'];
+
+export default function SettingsLayout() {
+  const [activeTab, setActiveTab] = useState<TabId>('profile');
+
   return (
-    <div className="text-foreground">
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex flex-col md:flex-row gap-8">
-          {/* Sidebar Navigation */}
-          <nav className="w-full md:w-60 flex-shrink-0">
-            <div className="bg-card rounded-xl border border-border p-2 md:sticky md:top-28">
-              {/* Horizontal scroll on mobile, vertical list on desktop */}
-              <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-x-visible pb-1 md:pb-0">
-                {SECTIONS.map((section) => {
-                  const Icon = section.icon;
-                  return (
-                    <NavLink
-                      key={section.path}
-                      to={section.path}
-                      className={({ isActive }) =>
-                        cn(
-                          'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
-                          isActive
-                            ? 'bg-primary/15 text-primary font-semibold'
-                            : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                        )
-                      }
-                    >
-                      <Icon size={18} className="flex-shrink-0" />
-                      {section.label}
-                    </NavLink>
-                  );
-                })}
-              </div>
-            </div>
-          </nav>
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-text-primary">Settings</h1>
+        <p className="text-text-secondary mt-1">Manage your workspace settings and preferences</p>
+      </div>
 
-          {/* Content Area */}
-          <div className="flex-1 min-w-0">
-            <Outlet />
-          </div>
-        </div>
+      {/* Tab navigation */}
+      <div className="flex gap-1 border-b border-border mb-8 overflow-x-auto">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                activeTab === tab.id
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border-light'
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab content */}
+      <div className="max-w-3xl">
+        {activeTab === 'profile' && <ProfileSettings />}
+        {activeTab === 'team' && <TeamSettings />}
+        {activeTab === 'integrations' && <IntegrationSettings />}
+        {activeTab === 'billing' && <BillingSettings />}
       </div>
     </div>
   );
-};
-
-export default SettingsLayout;
+}
