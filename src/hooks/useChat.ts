@@ -27,6 +27,14 @@ export interface ActionConfirmationData {
   confirmed: boolean | null; // null = pending
 }
 
+export interface DashboardChoiceData {
+  id: string;
+  type: 'new_dashboard' | 'existing_dashboard';
+  label: string;
+  dashboardName?: string;
+  dashboardId?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -35,6 +43,8 @@ export interface ChatMessage {
   creditsConsumed?: number;
   toolCalls?: ToolCallDisplay[];
   actionConfirmation?: ActionConfirmationData;
+  dashboardChoices?: DashboardChoiceData[];
+  selectedDashboardChoice?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +244,88 @@ function getMockMessages(conversationId: string): ChatMessage[] {
         creditsConsumed: 1,
       },
     ],
+    'conv-5': [
+      {
+        id: 'msg-5-1',
+        role: 'user',
+        content: 'Hey Binee, create a dashboard for me to track all overdue tasks by team in October.',
+        timestamp: new Date('2026-03-11T11:00:00'),
+      },
+      {
+        id: 'msg-5-2',
+        role: 'assistant',
+        content: "I can build that for you! I'll create a dashboard with overdue task tracking broken down by team for October.\n\nWould you like me to create a **new dashboard** for this, or **add widgets to an existing dashboard**?",
+        timestamp: new Date('2026-03-11T11:00:03'),
+        creditsConsumed: 1,
+        toolCalls: [
+          {
+            id: 'tc-5-1',
+            tool_name: 'list_dashboards',
+            description: 'Checking existing dashboards...',
+            status: 'success',
+            result: 'Found 2 dashboards: Project Overview, Sprint Tracker',
+          },
+        ],
+        dashboardChoices: [
+          {
+            id: 'dc-new',
+            type: 'new_dashboard',
+            label: 'Create a new dashboard',
+          },
+          {
+            id: 'dc-proj',
+            type: 'existing_dashboard',
+            label: 'Add to existing dashboard',
+            dashboardName: 'Project Overview',
+            dashboardId: 'dash-1',
+          },
+          {
+            id: 'dc-sprint',
+            type: 'existing_dashboard',
+            label: 'Add to existing dashboard',
+            dashboardName: 'Sprint Tracker',
+            dashboardId: 'dash-2',
+          },
+        ],
+        selectedDashboardChoice: 'dc-new',
+      },
+      {
+        id: 'msg-5-3',
+        role: 'user',
+        content: 'Create a new dashboard for this.',
+        timestamp: new Date('2026-03-11T11:00:10'),
+      },
+      {
+        id: 'msg-5-4',
+        role: 'assistant',
+        content: 'I\'ve created your **"October Overdue Tasks"** dashboard with the following widgets:\n\n- **Overdue by Team** — Bar chart comparing overdue task counts across teams\n- **Total Overdue** — Summary card showing 23 overdue tasks in October\n- **Overdue Tasks Detail** — Table listing each overdue task with assignee, team, and days overdue\n\nYou can view it on the **Dashboards** page. Want me to add anything else to this dashboard?',
+        timestamp: new Date('2026-03-11T11:00:15'),
+        creditsConsumed: 3,
+        toolCalls: [
+          {
+            id: 'tc-5-2',
+            tool_name: 'create_dashboard_widget',
+            description: 'Creating bar chart: Overdue by Team...',
+            status: 'success',
+            result: 'Widget created on "October Overdue Tasks" dashboard',
+          },
+          {
+            id: 'tc-5-3',
+            tool_name: 'create_dashboard_widget',
+            description: 'Creating summary card: Total Overdue...',
+            status: 'success',
+            result: 'Widget created',
+          },
+          {
+            id: 'tc-5-4',
+            tool_name: 'create_dashboard_widget',
+            description: 'Creating table: Overdue Tasks Detail...',
+            status: 'success',
+            result: 'Widget created',
+          },
+        ],
+      },
+    ],
   };
 
   return mocks[conversationId] ?? [];
@@ -357,12 +449,24 @@ export function useChat(conversationId: string | null) {
     );
   }, []);
 
+  const selectDashboardChoice = useCallback((messageId: string, choiceId: string) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === messageId) {
+          return { ...msg, selectedDashboardChoice: choiceId };
+        }
+        return msg;
+      }),
+    );
+  }, []);
+
   return {
     messages,
     isLoading,
     error,
     sendMessage,
     confirmAction,
+    selectDashboardChoice,
     loadConversation,
     totalCreditsConsumed: totalCredits.current,
   };

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, MoreVertical, Trash2, GripVertical, LayoutDashboard } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Plus, MoreVertical, Trash2, GripVertical, LayoutDashboard, Sparkles } from 'lucide-react';
 import { useDashboard } from '@/hooks/useDashboard';
 import DashboardSelector from './DashboardSelector';
 import AddWidgetDialog from './AddWidgetDialog';
+import DashboardChatPanel from './DashboardChatPanel';
 import BarChartWidget from './widgets/BarChartWidget';
 import LineChartWidget from './widgets/LineChartWidget';
 import SummaryCardWidget from './widgets/SummaryCardWidget';
@@ -101,11 +102,18 @@ export default function DashboardPage() {
   } = useDashboard();
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   // Split widgets into summary vs charts/tables for layout
   const summaryWidgets = widgets.filter((w) => w.type === 'summary');
   const chartWidgets = widgets.filter((w) => w.type === 'bar' || w.type === 'line');
   const tableWidgets = widgets.filter((w) => w.type === 'table');
+
+  const handleDashboardUpdated = useCallback(() => {
+    // In production, this would refetch dashboard data from Supabase.
+    // For now with mock data, this is a placeholder for the refresh mechanism.
+    // The panel notifies us when widgets are created/updated/deleted via AI.
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -115,13 +123,22 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-semibold text-text-primary">Dashboards</h1>
           <p className="text-sm text-text-secondary mt-1">Track your workspace metrics and performance</p>
         </div>
-        <button
-          onClick={() => setAddDialogOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Widget
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAiPanelOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border hover:border-accent/40 hover:bg-surface-hover text-text-secondary hover:text-text-primary text-sm font-medium transition-all group"
+          >
+            <Sparkles className="w-4 h-4 text-accent group-hover:text-accent" />
+            Build with AI
+          </button>
+          <button
+            onClick={() => setAddDialogOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Widget
+          </button>
+        </div>
       </div>
 
       {/* Dashboard selector */}
@@ -174,15 +191,24 @@ export default function DashboardPage() {
           </div>
           <h3 className="text-lg font-semibold text-text-primary mb-2">Build your dashboard</h3>
           <p className="text-sm text-text-secondary mb-6 max-w-sm">
-            Add widgets to visualize your workspace data with charts, metrics, and tables. Start by adding your first widget.
+            Add widgets to visualize your workspace data with charts, metrics, and tables. Start by adding your first widget or let AI build it for you.
           </p>
-          <button
-            onClick={() => setAddDialogOpen(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Your First Widget
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setAiPanelOpen(true)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-surface border border-accent/30 hover:bg-surface-hover text-text-primary text-sm font-medium transition-all group"
+            >
+              <Sparkles className="w-4 h-4 text-accent" />
+              Build with AI
+            </button>
+            <button
+              onClick={() => setAddDialogOpen(true)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Widget Manually
+            </button>
+          </div>
         </div>
       )}
 
@@ -196,6 +222,15 @@ export default function DashboardPage() {
             config: config.config,
           });
         }}
+      />
+
+      {/* AI Chat Side Panel */}
+      <DashboardChatPanel
+        open={aiPanelOpen}
+        onClose={() => setAiPanelOpen(false)}
+        dashboardId={activeDashboard?.id ?? ''}
+        dashboardName={activeDashboard?.name ?? 'My Dashboard'}
+        onDashboardUpdated={handleDashboardUpdated}
       />
     </div>
   );

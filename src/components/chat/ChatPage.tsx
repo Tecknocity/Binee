@@ -4,6 +4,7 @@ import { useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useConversations } from '@/hooks/useConversations';
 import { useChat } from '@/hooks/useChat';
+import type { DashboardChoiceData } from '@/hooks/useChat';
 import { useAuth } from '@/components/auth/AuthProvider';
 import MessageThread from './MessageThread';
 import ChatInput from './ChatInput';
@@ -20,7 +21,7 @@ const SUGGESTED_PROMPTS = [
   { text: 'Show me all overdue tasks', icon: '🔴' },
   { text: "Summarize this week's progress", icon: '📊' },
   { text: 'What are the top priorities for today?', icon: '🎯' },
-  { text: 'Create a task for the next sprint', icon: '✏️' },
+  { text: 'Build a dashboard for team performance', icon: '📈' },
 ];
 
 export default function ChatPage() {
@@ -52,6 +53,7 @@ export default function ChatPage() {
     isLoading,
     sendMessage,
     confirmAction,
+    selectDashboardChoice,
     loadConversation,
   } = useChat(effectiveConversationId);
 
@@ -90,6 +92,19 @@ export default function ChatPage() {
     [confirmAction],
   );
 
+  const handleDashboardChoice = useCallback(
+    (messageId: string, choice: DashboardChoiceData) => {
+      selectDashboardChoice(messageId, choice.id);
+      // Send the user's choice as a follow-up message so AI can act on it
+      if (choice.type === 'new_dashboard') {
+        handleSend('Create a new dashboard for this.');
+      } else if (choice.dashboardName) {
+        handleSend(`Add it to the "${choice.dashboardName}" dashboard.`);
+      }
+    },
+    [selectDashboardChoice, handleSend],
+  );
+
   const hasMessages = messages.length > 0;
   const firstName = user?.display_name?.split(' ')[0] || 'there';
 
@@ -102,6 +117,7 @@ export default function ChatPage() {
             isLoading={isLoading}
             onConfirmAction={handleConfirmAction}
             onCancelAction={handleCancelAction}
+            onDashboardChoice={handleDashboardChoice}
           />
           <ChatInput
             onSend={handleSend}

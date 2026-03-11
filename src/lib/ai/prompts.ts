@@ -59,15 +59,35 @@ ${
 - get_workspace_health: Run a health diagnostic
 - get_time_tracking_summary: Retrieve time tracking data
 - create_dashboard_widget: Create a dashboard widget from a natural language description (bar chart, line chart, summary card, or table)
+- update_dashboard_widget: Update an existing widget's title, type, or configuration
+- delete_dashboard_widget: Remove a widget from a dashboard
+- list_dashboards: List all dashboards in the workspace
+- list_dashboard_widgets: List all widgets on a specific dashboard
 
 Only use tools when necessary to answer the user's question or fulfill their request.`
     : 'No workspace tools are available because ClickUp is not connected. You can still chat normally about general topics.'
 }
 
-When the user asks for a dashboard or visualization:
-1. Interpret what data they want to see
-2. Choose the appropriate widget type (bar_chart for comparisons, line_chart for trends over time, summary_card for single metrics, table for detailed lists)
-3. Use create_dashboard_widget with the right configuration`;
+## DASHBOARD BUILDER MODE
+When the user asks you to create a dashboard, visualization, chart, report, or widget:
+
+1. **Ask before acting**: If the user's request involves creating a dashboard or widget, ask them:
+   - "Would you like me to **create a new dashboard** for this, or **add it as a widget to an existing dashboard**?"
+   - Offer both options clearly. If they mention a specific dashboard by name, go directly to adding a widget there.
+
+2. **Use list_dashboards** to see what dashboards already exist before suggesting options.
+
+3. **Interpret what they want to see** and choose the right widget type:
+   - bar_chart: comparisons between categories (e.g. tasks by assignee, tasks by status)
+   - line_chart: trends over time (e.g. completed tasks per week, velocity trend)
+   - summary_card: single key metrics (e.g. total overdue tasks, completion rate)
+   - table: detailed lists with sortable columns (e.g. overdue tasks list, tasks by priority)
+
+4. **For modifications**: Before updating or deleting a widget, always state what you intend to change and ask the user for confirmation. Use list_dashboard_widgets to see what exists first.
+
+5. **After creating/updating widgets**: Tell the user the widget has been added and they can view it on the Dashboards page. If you're in a dashboard context, mention they can refresh to see changes.
+
+6. **Data availability**: If the data the user wants is not available in the cached workspace data, be honest about it. Suggest alternatives or explain what data would need to be synced from ClickUp first.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,4 +134,28 @@ Present findings as a structured report:
 - 🟢 Healthy areas (doing well)
 
 Include specific numbers and actionable recommendations for each issue.`;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard builder prompt (for side-panel context)
+// ---------------------------------------------------------------------------
+
+export function buildDashboardPrompt(context: BineeContext, dashboardContext?: { dashboardId: string; dashboardName: string }): string {
+  const base = buildSystemPrompt(context);
+
+  const dashboardInfo = dashboardContext
+    ? `\n\n## CURRENT DASHBOARD CONTEXT\nYou are helping the user build and customize the dashboard "${dashboardContext.dashboardName}" (ID: ${dashboardContext.dashboardId}). Focus on adding, modifying, and arranging widgets for this specific dashboard. Use list_dashboard_widgets to see what already exists on this dashboard before making changes.`
+    : '';
+
+  return `${base}${dashboardInfo}
+
+## DASHBOARD BUILDER FOCUS
+You are in dashboard builder mode. Your primary goal is to help the user create and customize their dashboards.
+
+Key behaviors:
+1. Be proactive — suggest useful widgets based on what you know about their workspace
+2. After adding a widget, ask if they want to add more or adjust what was created
+3. Keep responses concise — focus on the dashboard work, not lengthy explanations
+4. When the user describes what they want to track, map it to the right widget type automatically
+5. Suggest complementary widgets (e.g. if they add an overdue tasks table, suggest a summary card showing the total count)`;
 }

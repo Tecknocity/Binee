@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { ChatMessage as ChatMessageType } from '@/hooks/useChat';
+import type { ChatMessage as ChatMessageType, DashboardChoiceData } from '@/hooks/useChat';
 import ChatMessage from './ChatMessage';
 
 interface MessageThreadProps {
@@ -10,6 +10,7 @@ interface MessageThreadProps {
   isLoading: boolean;
   onConfirmAction: (id: string) => void;
   onCancelAction: (id: string) => void;
+  onDashboardChoice?: (messageId: string, choice: DashboardChoiceData) => void;
 }
 
 export default function MessageThread({
@@ -17,6 +18,7 @@ export default function MessageThread({
   isLoading,
   onConfirmAction,
   onCancelAction,
+  onDashboardChoice,
 }: MessageThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -35,6 +37,7 @@ export default function MessageThread({
             message={msg}
             onConfirmAction={onConfirmAction}
             onCancelAction={onCancelAction}
+            onDashboardChoice={onDashboardChoice}
           />
         ))}
 
