@@ -29,10 +29,9 @@ export async function buildContext(
 ): Promise<BineeContext> {
   const supabase = getSupabaseAdmin();
 
-  // Fetch workspace, user, summary, activity, and conversation history in parallel
   const [
     workspaceResult,
-    userResult,
+    memberResult,
     workspaceSummary,
     recentActivity,
     conversationHistory,
@@ -44,7 +43,7 @@ export async function buildContext(
       .single(),
     supabase
       .from('workspace_members')
-      .select('user_id, role, profiles(display_name, email)')
+      .select('user_id, role, email, display_name')
       .eq('workspace_id', workspaceId)
       .eq('user_id', userId)
       .single(),
@@ -57,23 +56,19 @@ export async function buildContext(
     throw new Error(`Workspace not found: ${workspaceResult.error?.message}`);
   }
 
-  if (userResult.error || !userResult.data) {
-    throw new Error(`User not found in workspace: ${userResult.error?.message}`);
+  if (memberResult.error || !memberResult.data) {
+    throw new Error(`User not found in workspace: ${memberResult.error?.message}`);
   }
 
   const workspace = workspaceResult.data;
-  const member = userResult.data;
-  // profiles is joined — handle both array and object shapes from Supabase
-  const profile = Array.isArray(member.profiles)
-    ? member.profiles[0]
-    : member.profiles;
+  const member = memberResult.data;
 
   return {
     user: {
       id: userId,
-      display_name: profile?.display_name ?? 'Unknown',
+      display_name: member.display_name ?? 'Unknown',
       role: member.role as 'admin' | 'member',
-      email: profile?.email ?? '',
+      email: member.email ?? '',
     },
     workspace: {
       id: workspace.id,
@@ -101,10 +96,10 @@ export async function buildWorkspaceSummary(
   const [tasksResult, membersResult, listsResult] = await Promise.all([
     supabase
       .from('cached_tasks')
-      .select('id, status, assignee_name, due_date', { count: 'exact' })
+      .select('id, status, assignees, due_date', { count: 'exact' })
       .eq('workspace_id', workspaceId),
     supabase
-      .from('cached_members')
+      .from('cached_team_members')
       .select('id', { count: 'exact' })
       .eq('workspace_id', workspaceId),
     supabase
@@ -117,7 +112,6 @@ export async function buildWorkspaceSummary(
   const totalMembers = membersResult.count ?? 0;
   const totalLists = listsResult.count ?? 0;
 
-  // Compute overdue count
   const now = new Date().toISOString();
   const tasks = tasksResult.data ?? [];
   const overdueTasks = tasks.filter(
@@ -128,8 +122,10 @@ export async function buildWorkspaceSummary(
       t.status !== 'complete',
   );
 
-  // Compute unassigned count
-  const unassignedTasks = tasks.filter((t) => !t.assignee_name);
+  // Unassigned: empty or null assignees jsonb array
+  const unassignedTasks = tasks.filter(
+    (t) => !t.assignees || (Array.isArray(t.assignees) && t.assignees.length === 0),
+  );
 
   // Status distribution
   const statusCounts: Record<string, number> = {};
@@ -166,17 +162,16 @@ export async function buildRecentActivity(
 
   const { data: events, error } = await supabase
     .from('webhook_events')
-    .select('event_type, payload, received_at')
+    .select('event_type, payload, created_at')
     .eq('workspace_id', workspaceId)
-    .gte('received_at', twentyFourHoursAgo)
-    .order('received_at', { ascending: false })
+    .gte('created_at', twentyFourHoursAgo)
+    .order('created_at', { ascending: false })
     .limit(20);
 
   if (error || !events || events.length === 0) {
     return 'No recent activity in the last 24 hours.';
   }
 
-  // Summarize events by type
   const eventCounts: Record<string, number> = {};
   for (const event of events) {
     const type = event.event_type ?? 'unknown';

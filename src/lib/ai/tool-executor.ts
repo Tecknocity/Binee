@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { ClickUpClient } from '@/lib/clickup/client';
+import { runHealthCheck } from '@/lib/health/checker';
 
 // ---------------------------------------------------------------------------
 // Supabase admin client (server-side only)
@@ -39,6 +40,8 @@ export async function executeTool(
         return await handleGetWorkspaceHealth(workspaceId);
       case 'get_time_tracking_summary':
         return await handleGetTimeTrackingSummary(toolInput, workspaceId);
+      case 'create_dashboard_widget':
+        return await handleCreateDashboardWidget(toolInput, workspaceId);
       default:
         return { error: `Unknown tool: ${toolName}`, success: false };
     }
@@ -49,7 +52,7 @@ export async function executeTool(
 }
 
 // ---------------------------------------------------------------------------
-// lookup_tasks
+// lookup_tasks — queries cached_tasks using correct schema columns
 // ---------------------------------------------------------------------------
 
 async function handleLookupTasks(
@@ -58,14 +61,16 @@ async function handleLookupTasks(
 ): Promise<Record<string, unknown>> {
   const supabase = getSupabaseAdmin();
 
+  // Schema columns: clickup_id, name, status, assignees (jsonb), due_date, priority, list_id, description
   let query = supabase
     .from('cached_tasks')
-    .select('clickup_task_id, name, status, assignee_name, due_date, priority, list_name, description')
+    .select('clickup_id, name, status, assignees, due_date, priority, list_id, description')
     .eq('workspace_id', workspaceId);
 
-  // Apply filters
+  // Filter by assignee name (search inside the jsonb assignees array)
   if (input.assignee && typeof input.assignee === 'string') {
-    query = query.ilike('assignee_name', `%${input.assignee}%`);
+    // Assignees is a jsonb array of objects with username field
+    query = query.contains('assignees', [{ username: input.assignee }]);
   }
 
   if (input.status && typeof input.status === 'string') {
@@ -73,7 +78,19 @@ async function handleLookupTasks(
   }
 
   if (input.list_name && typeof input.list_name === 'string') {
-    query = query.ilike('list_name', `%${input.list_name}%`);
+    // Look up the list_id from cached_lists first
+    const { data: matchingLists } = await supabase
+      .from('cached_lists')
+      .select('clickup_id, name')
+      .eq('workspace_id', workspaceId)
+      .ilike('name', `%${input.list_name}%`);
+
+    if (matchingLists && matchingLists.length > 0) {
+      const listIds = matchingLists.map((l) => l.clickup_id);
+      query = query.in('list_id', listIds);
+    } else {
+      return { success: true, tasks: [], count: 0, message: `No lists found matching "${input.list_name}"` };
+    }
   }
 
   if (input.due_before && typeof input.due_before === 'string') {
@@ -110,11 +127,34 @@ async function handleLookupTasks(
     return { error: `Failed to query tasks: ${error.message}`, success: false };
   }
 
-  return {
-    success: true,
-    tasks: tasks ?? [],
-    count: tasks?.length ?? 0,
-  };
+  // Enrich tasks with list names for better AI responses
+  const enrichedTasks = tasks ?? [];
+  if (enrichedTasks.length > 0) {
+    const listIds = [...new Set(enrichedTasks.map((t) => t.list_id))];
+    const { data: lists } = await supabase
+      .from('cached_lists')
+      .select('clickup_id, name')
+      .eq('workspace_id', workspaceId)
+      .in('clickup_id', listIds);
+
+    const listMap = new Map((lists ?? []).map((l) => [l.clickup_id, l.name]));
+
+    return {
+      success: true,
+      tasks: enrichedTasks.map((t) => ({
+        id: t.clickup_id,
+        name: t.name,
+        status: t.status,
+        assignees: Array.isArray(t.assignees) ? t.assignees.map((a: { username?: string }) => a.username).filter(Boolean) : [],
+        due_date: t.due_date,
+        priority: t.priority,
+        list: listMap.get(t.list_id) ?? t.list_id,
+      })),
+      count: enrichedTasks.length,
+    };
+  }
+
+  return { success: true, tasks: [], count: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +173,6 @@ async function handleUpdateTask(
   const client = new ClickUpClient(workspaceId);
   const supabase = getSupabaseAdmin();
 
-  // Build update params
   const updateParams: Record<string, unknown> = {};
 
   if (input.status && typeof input.status === 'string') {
@@ -151,15 +190,15 @@ async function handleUpdateTask(
   // Resolve assignee name to ClickUp user ID
   if (input.assignee_name && typeof input.assignee_name === 'string') {
     const { data: member } = await supabase
-      .from('cached_members')
-      .select('clickup_user_id')
+      .from('cached_team_members')
+      .select('clickup_id')
       .eq('workspace_id', workspaceId)
       .ilike('username', `%${input.assignee_name}%`)
       .limit(1)
       .single();
 
     if (member) {
-      updateParams.assignees = { add: [member.clickup_user_id] };
+      updateParams.assignees = { add: [parseInt(member.clickup_id)] };
     } else {
       return {
         error: `Could not find team member matching "${input.assignee_name}"`,
@@ -168,11 +207,10 @@ async function handleUpdateTask(
     }
   }
 
-  // Call ClickUp API
   const updatedTask = await client.updateTask(taskId, updateParams);
 
-  // Update the cached task in Supabase
-  const cacheUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  // Update the cached task
+  const cacheUpdate: Record<string, unknown> = { updated_at: new Date().toISOString(), synced_at: new Date().toISOString() };
   if (input.status) cacheUpdate.status = input.status;
   if (input.due_date) cacheUpdate.due_date = input.due_date;
   if (input.priority) cacheUpdate.priority = input.priority;
@@ -181,7 +219,7 @@ async function handleUpdateTask(
     .from('cached_tasks')
     .update(cacheUpdate)
     .eq('workspace_id', workspaceId)
-    .eq('clickup_task_id', taskId);
+    .eq('clickup_id', taskId);
 
   return {
     success: true,
@@ -216,7 +254,7 @@ async function handleCreateTask(
   // Resolve list name to ClickUp list ID
   const { data: list } = await supabase
     .from('cached_lists')
-    .select('clickup_list_id, name')
+    .select('clickup_id, name')
     .eq('workspace_id', workspaceId)
     .ilike('name', `%${listName}%`)
     .limit(1)
@@ -229,23 +267,17 @@ async function handleCreateTask(
     };
   }
 
-  // Build create params
-  const createParams: Record<string, unknown> = {
-    name: taskName,
-  };
+  const createParams: Record<string, unknown> = { name: taskName };
 
   if (input.description && typeof input.description === 'string') {
     createParams.description = input.description;
   }
-
   if (input.status && typeof input.status === 'string') {
     createParams.status = input.status;
   }
-
   if (input.priority && typeof input.priority === 'number') {
     createParams.priority = input.priority;
   }
-
   if (input.due_date && typeof input.due_date === 'string') {
     createParams.due_date = new Date(input.due_date).getTime();
   }
@@ -253,33 +285,33 @@ async function handleCreateTask(
   // Resolve assignee
   if (input.assignee_name && typeof input.assignee_name === 'string') {
     const { data: member } = await supabase
-      .from('cached_members')
-      .select('clickup_user_id')
+      .from('cached_team_members')
+      .select('clickup_id')
       .eq('workspace_id', workspaceId)
       .ilike('username', `%${input.assignee_name}%`)
       .limit(1)
       .single();
 
     if (member) {
-      createParams.assignees = [member.clickup_user_id];
+      createParams.assignees = [parseInt(member.clickup_id)];
     }
   }
 
-  const createdTask = await client.createTask(list.clickup_list_id, createParams as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const createdTask = await client.createTask(list.clickup_id, createParams as any);
 
   // Insert into cache
   await supabase.from('cached_tasks').insert({
     workspace_id: workspaceId,
-    clickup_task_id: createdTask.id,
+    clickup_id: createdTask.id,
     name: createdTask.name,
     status: createdTask.status.status,
-    assignee_name: createdTask.assignees[0]?.username ?? null,
+    assignees: createdTask.assignees,
     due_date: createdTask.due_date
       ? new Date(parseInt(createdTask.due_date)).toISOString()
       : null,
-    priority: createdTask.priority?.priority ?? null,
-    list_name: list.name,
-    list_id: list.clickup_list_id,
+    priority: createdTask.priority ? parseInt(createdTask.priority.orderindex) : null,
+    list_id: list.clickup_id,
     description: createdTask.description,
   });
 
@@ -296,97 +328,48 @@ async function handleCreateTask(
 }
 
 // ---------------------------------------------------------------------------
-// get_workspace_health
+// get_workspace_health — uses real health checker
 // ---------------------------------------------------------------------------
 
 async function handleGetWorkspaceHealth(
   workspaceId: string,
 ): Promise<Record<string, unknown>> {
   const supabase = getSupabaseAdmin();
-  const now = new Date().toISOString();
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Fetch all tasks for the workspace
-  const { data: tasks, error } = await supabase
-    .from('cached_tasks')
-    .select('clickup_task_id, name, status, assignee_name, due_date, priority, list_name, updated_at, description')
-    .eq('workspace_id', workspaceId);
+  // Get previous health score for trend comparison
+  const { data: lastCheck } = await supabase
+    .from('health_check_results')
+    .select('overall_score')
+    .eq('workspace_id', workspaceId)
+    .order('checked_at', { ascending: false })
+    .limit(1)
+    .single();
 
-  if (error) {
-    return { error: `Failed to fetch tasks: ${error.message}`, success: false };
-  }
+  const previousScore = lastCheck?.overall_score ?? undefined;
+  const result = await runHealthCheck(workspaceId, previousScore);
 
-  const allTasks = tasks ?? [];
-  const openTasks = allTasks.filter(
-    (t) => t.status !== 'closed' && t.status !== 'complete',
-  );
-
-  // Overdue tasks
-  const overdueTasks = openTasks.filter(
-    (t) => t.due_date && t.due_date < now,
-  );
-
-  // Unassigned tasks
-  const unassignedTasks = openTasks.filter((t) => !t.assignee_name);
-
-  // Stale tasks (no update in 7+ days)
-  const staleTasks = openTasks.filter(
-    (t) => t.updated_at && t.updated_at < sevenDaysAgo,
-  );
-
-  // Workload distribution
-  const workloadMap: Record<string, number> = {};
-  for (const task of openTasks) {
-    const assignee = task.assignee_name ?? 'Unassigned';
-    workloadMap[assignee] = (workloadMap[assignee] || 0) + 1;
-  }
-
-  const workload = Object.entries(workloadMap)
-    .sort(([, a], [, b]) => b - a)
-    .map(([name, count]) => ({ name, taskCount: count }));
-
-  // Missing metadata
-  const missingDueDate = openTasks.filter((t) => !t.due_date);
-  const missingPriority = openTasks.filter((t) => !t.priority);
-  const missingDescription = openTasks.filter((t) => !t.description);
+  // Store the health check result
+  await supabase.from('health_check_results').insert({
+    workspace_id: workspaceId,
+    overall_score: result.overall_score,
+    category_scores: result.category_scores,
+    issues: result.issues,
+    recommendations: result.recommendations,
+    previous_score: previousScore ?? null,
+    credits_used: 1,
+  });
 
   return {
     success: true,
     health: {
-      totalTasks: allTasks.length,
-      openTasks: openTasks.length,
-      overdue: {
-        count: overdueTasks.length,
-        tasks: overdueTasks.slice(0, 10).map((t) => ({
-          id: t.clickup_task_id,
-          name: t.name,
-          assignee: t.assignee_name,
-          due_date: t.due_date,
-        })),
-      },
-      unassigned: {
-        count: unassignedTasks.length,
-        tasks: unassignedTasks.slice(0, 10).map((t) => ({
-          id: t.clickup_task_id,
-          name: t.name,
-          list: t.list_name,
-        })),
-      },
-      stale: {
-        count: staleTasks.length,
-        tasks: staleTasks.slice(0, 10).map((t) => ({
-          id: t.clickup_task_id,
-          name: t.name,
-          assignee: t.assignee_name,
-          last_updated: t.updated_at,
-        })),
-      },
-      workloadDistribution: workload,
-      missingMetadata: {
-        noDueDate: missingDueDate.length,
-        noPriority: missingPriority.length,
-        noDescription: missingDescription.length,
-      },
+      overall_score: result.overall_score,
+      previous_score: previousScore,
+      trend: previousScore !== undefined
+        ? result.overall_score > previousScore ? 'improving' : result.overall_score < previousScore ? 'declining' : 'stable'
+        : 'first_check',
+      category_scores: result.category_scores,
+      issues: result.issues,
+      recommendations: result.recommendations,
     },
   };
 }
@@ -401,20 +384,29 @@ async function handleGetTimeTrackingSummary(
 ): Promise<Record<string, unknown>> {
   const supabase = getSupabaseAdmin();
 
-  // Determine date range based on period
   const period = (input.period as string) ?? 'this_week';
   const { startDate, endDate } = getDateRange(period);
 
   let query = supabase
     .from('cached_time_entries')
-    .select('clickup_entry_id, task_name, user_name, duration_ms, start_time, end_time, list_name')
+    .select('clickup_id, task_id, user_id, duration, start_time, end_time, description')
     .eq('workspace_id', workspaceId)
     .gte('start_time', startDate.toISOString())
     .lte('start_time', endDate.toISOString());
 
-  // Filter by member
+  // Filter by member — need to resolve name to user_id
   if (input.member_name && typeof input.member_name === 'string') {
-    query = query.ilike('user_name', `%${input.member_name}%`);
+    const { data: member } = await supabase
+      .from('cached_team_members')
+      .select('clickup_id')
+      .eq('workspace_id', workspaceId)
+      .ilike('username', `%${input.member_name}%`)
+      .limit(1)
+      .single();
+
+    if (member) {
+      query = query.eq('user_id', member.clickup_id);
+    }
   }
 
   const { data: entries, error } = await query;
@@ -425,11 +417,30 @@ async function handleGetTimeTrackingSummary(
 
   const timeEntries = entries ?? [];
   const totalMs = timeEntries.reduce(
-    (sum, e) => sum + (typeof e.duration_ms === 'number' ? e.duration_ms : 0),
+    (sum, e) => sum + (typeof e.duration === 'number' ? e.duration : 0),
     0,
   );
 
-  // Group by the requested dimension
+  // Resolve user_ids and task_ids for grouping
+  const userIds = [...new Set(timeEntries.map((e) => e.user_id))];
+  const taskIds = [...new Set(timeEntries.map((e) => e.task_id))];
+
+  const [{ data: members }, { data: tasks }] = await Promise.all([
+    supabase
+      .from('cached_team_members')
+      .select('clickup_id, username')
+      .eq('workspace_id', workspaceId)
+      .in('clickup_id', userIds.length > 0 ? userIds : ['']),
+    supabase
+      .from('cached_tasks')
+      .select('clickup_id, name, list_id')
+      .eq('workspace_id', workspaceId)
+      .in('clickup_id', taskIds.length > 0 ? taskIds : ['']),
+  ]);
+
+  const memberMap = new Map((members ?? []).map((m) => [m.clickup_id, m.username]));
+  const taskMap = new Map((tasks ?? []).map((t) => [t.clickup_id, { name: t.name, list_id: t.list_id }]));
+
   const groupBy = (input.group_by as string) ?? 'member';
   const grouped: Record<string, number> = {};
 
@@ -437,13 +448,13 @@ async function handleGetTimeTrackingSummary(
     let key: string;
     switch (groupBy) {
       case 'member':
-        key = entry.user_name ?? 'Unknown';
+        key = memberMap.get(entry.user_id) ?? 'Unknown';
         break;
       case 'task':
-        key = entry.task_name ?? 'Unknown';
+        key = taskMap.get(entry.task_id)?.name ?? 'Unknown';
         break;
       case 'list':
-        key = entry.list_name ?? 'Unknown';
+        key = taskMap.get(entry.task_id)?.list_id ?? 'Unknown';
         break;
       case 'day':
         key = entry.start_time
@@ -451,9 +462,9 @@ async function handleGetTimeTrackingSummary(
           : 'Unknown';
         break;
       default:
-        key = entry.user_name ?? 'Unknown';
+        key = memberMap.get(entry.user_id) ?? 'Unknown';
     }
-    grouped[key] = (grouped[key] || 0) + (typeof entry.duration_ms === 'number' ? entry.duration_ms : 0);
+    grouped[key] = (grouped[key] || 0) + (typeof entry.duration === 'number' ? entry.duration : 0);
   }
 
   const breakdown = Object.entries(grouped)
@@ -474,6 +485,96 @@ async function handleGetTimeTrackingSummary(
     totalHours: Math.round((totalMs / 3_600_000) * 100) / 100,
     groupBy,
     breakdown,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// create_dashboard_widget — conversational dashboard builder
+// ---------------------------------------------------------------------------
+
+async function handleCreateDashboardWidget(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  const widgetType = input.widget_type as string;
+  const title = input.title as string;
+  const config = (input.config as Record<string, unknown>) ?? {};
+  const dashboardName = (input.dashboard_name as string) ?? 'My Dashboard';
+
+  if (!widgetType || !title) {
+    return { error: 'widget_type and title are required', success: false };
+  }
+
+  // Find or create the dashboard
+  let dashboardId: string;
+  const { data: existingDashboard } = await supabase
+    .from('dashboards')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .ilike('name', `%${dashboardName}%`)
+    .limit(1)
+    .single();
+
+  if (existingDashboard) {
+    dashboardId = existingDashboard.id;
+  } else {
+    const { data: newDashboard, error: createError } = await supabase
+      .from('dashboards')
+      .insert({
+        workspace_id: workspaceId,
+        name: dashboardName,
+        description: `Created by Binee`,
+        created_by: 'system',
+        is_default: false,
+      })
+      .select('id')
+      .single();
+
+    if (createError || !newDashboard) {
+      return { error: `Failed to create dashboard: ${createError?.message}`, success: false };
+    }
+    dashboardId = newDashboard.id;
+  }
+
+  // Get current widget count for positioning
+  const { count } = await supabase
+    .from('dashboard_widgets')
+    .select('id', { count: 'exact', head: true })
+    .eq('dashboard_id', dashboardId);
+
+  const widgetCount = count ?? 0;
+  const col = (widgetCount % 3) * 4;
+  const row = Math.floor(widgetCount / 3) * 3;
+
+  // Create the widget
+  const { data: widget, error: widgetError } = await supabase
+    .from('dashboard_widgets')
+    .insert({
+      workspace_id: workspaceId,
+      dashboard_id: dashboardId,
+      type: widgetType,
+      title,
+      config,
+      position: { x: col, y: row, w: 4, h: 3 },
+    })
+    .select('id, type, title')
+    .single();
+
+  if (widgetError || !widget) {
+    return { error: `Failed to create widget: ${widgetError?.message}`, success: false };
+  }
+
+  return {
+    success: true,
+    widget: {
+      id: widget.id,
+      type: widget.type,
+      title: widget.title,
+      dashboard: dashboardName,
+    },
+    message: `Widget "${title}" added to dashboard "${dashboardName}". You can view it on the Dashboards page.`,
   };
 }
 
@@ -511,7 +612,7 @@ function getDateRange(period: string): { startDate: Date; endDate: Date } {
       break;
     case 'last_month':
       startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      endDate.setDate(0); // last day of previous month
+      endDate.setDate(0);
       endDate.setHours(23, 59, 59, 999);
       break;
     case 'last_30_days':

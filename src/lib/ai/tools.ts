@@ -156,4 +156,32 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'create_dashboard_widget',
+    description:
+      'Create a new dashboard widget from a user\'s natural language request. Interprets what the user wants to see and generates the appropriate widget configuration.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        dashboard_name: {
+          type: 'string',
+          description: 'Name of the dashboard to add the widget to. If it does not exist, it will be created.',
+        },
+        widget_type: {
+          type: 'string',
+          enum: ['bar_chart', 'line_chart', 'summary_card', 'table'],
+          description: 'The type of widget to create',
+        },
+        title: {
+          type: 'string',
+          description: 'Title for the widget',
+        },
+        config: {
+          type: 'object',
+          description: 'Widget configuration including data_source (tasks, time_entries, health), metric (count, hours, score), group_by (status, assignee, list, day, week), filters (status, list_name, assignee, date_range), and sort_by.',
+        },
+      },
+      required: ['widget_type', 'title', 'config'],
+    },
+  },
 ];

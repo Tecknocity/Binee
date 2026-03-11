@@ -46,8 +46,14 @@ You can use the following tools to help the user:
 - create_task: Create a new task in a list
 - get_workspace_health: Run a health diagnostic
 - get_time_tracking_summary: Retrieve time tracking data
+- create_dashboard_widget: Create a dashboard widget from a natural language description (bar chart, line chart, summary card, or table)
 
-Only use tools when necessary to answer the user's question or fulfill their request.`;
+Only use tools when necessary to answer the user's question or fulfill their request.
+
+When the user asks for a dashboard or visualization:
+1. Interpret what data they want to see
+2. Choose the appropriate widget type (bar_chart for comparisons, line_chart for trends over time, summary_card for single metrics, table for detailed lists)
+3. Use create_dashboard_widget with the right configuration`;
 }
 
 // ---------------------------------------------------------------------------
