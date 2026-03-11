@@ -82,21 +82,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate auth check — in production this would call Supabase
+    // In production this would read the Supabase session from cookies.
+    // For now, auto-authenticate with mock data since auth is handled
+    // by the separate frontend/marketing repo before redirecting here.
     const timer = setTimeout(() => {
-      // For visual dev, check if we're on an app route and auto-login
-      const isAppRoute = window.location.pathname.startsWith('/chat') ||
-        window.location.pathname.startsWith('/dashboards') ||
-        window.location.pathname.startsWith('/health') ||
-        window.location.pathname.startsWith('/setup') ||
-        window.location.pathname.startsWith('/settings');
-
-      if (isAppRoute) {
-        setUser(mockUser);
-        setWorkspaces(mockWorkspaces);
-        setWorkspace(mockWorkspaces[0]);
-        setMembership(mockMembership);
-      }
+      setUser(mockUser);
+      setWorkspaces(mockWorkspaces);
+      setWorkspace(mockWorkspaces[0]);
+      setMembership(mockMembership);
       setLoading(false);
     }, 300);
 
