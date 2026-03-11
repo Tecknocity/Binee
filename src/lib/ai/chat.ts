@@ -81,7 +81,9 @@ export async function handleChatMessage(
   const context = await buildContext(workspace_id, user_id, conversation_id);
 
   // 5. Determine if ClickUp is connected — controls tool availability
-  const clickUpConnected = context.workspace.clickup_connected;
+  // TODO: Remove DEMO_MODE override once real ClickUp integration is complete.
+  const DEMO_MODE = true;
+  const clickUpConnected = DEMO_MODE || context.workspace.clickup_connected;
 
   // 6. Build system prompt based on task type
   let systemPrompt: string;
