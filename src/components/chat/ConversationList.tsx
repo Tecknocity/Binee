@@ -45,6 +45,15 @@ export default function ConversationList({
         </button>
       </div>
 
+      {/* Search hint */}
+      {conversations.length > 5 && (
+        <div className="px-3 pb-2">
+          <p className="text-[10px] text-text-muted/50 text-center">
+            {conversations.length} conversations
+          </p>
+        </div>
+      )}
+
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
         {conversations.map((conv) => {
@@ -53,7 +62,7 @@ export default function ConversationList({
             <button
               key={conv.id}
               onClick={() => onSelect(conv.id)}
-              className={`group w-full text-left px-3 py-2.5 rounded-xl transition-colors relative ${
+              className={`group w-full text-left px-3 py-2.5 rounded-xl transition-all duration-150 relative ${
                 isActive
                   ? 'bg-surface border border-border'
                   : 'hover:bg-surface-hover/40 border border-transparent'
@@ -74,10 +83,10 @@ export default function ConversationList({
                     {conv.title}
                   </p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-text-muted truncate">
+                    <span className="text-[11px] text-text-muted truncate">
                       {formatRelativeDate(conv.updatedAt)}
                     </span>
-                    <span className="text-xs text-text-muted">
+                    <span className="text-[11px] text-text-muted/60">
                       {conv.messageCount} msg{conv.messageCount !== 1 ? 's' : ''}
                     </span>
                   </div>
@@ -100,8 +109,10 @@ export default function ConversationList({
         })}
 
         {conversations.length === 0 && (
-          <div className="text-center py-8 px-4">
+          <div className="text-center py-12 px-4">
+            <MessageSquare className="w-8 h-8 text-text-muted/30 mx-auto mb-3" />
             <p className="text-sm text-text-muted">No conversations yet</p>
+            <p className="text-xs text-text-muted/60 mt-1">Start a new chat to begin</p>
           </div>
         )}
       </div>

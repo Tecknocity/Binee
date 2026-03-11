@@ -7,10 +7,9 @@ import {
   AlertTriangle,
   Users,
   TrendingUp,
+  Loader2,
 } from 'lucide-react';
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -35,14 +34,14 @@ function MetricCard({
   sub?: string;
 }) {
   return (
-    <div className="rounded-xl bg-surface border border-border p-4 flex items-center gap-4">
-      <div className="rounded-lg bg-accent/10 p-2.5">
+    <div className="rounded-xl bg-surface border border-border p-4 flex items-center gap-4 hover:border-border-light transition-colors">
+      <div className="rounded-xl bg-accent/10 p-2.5">
         <Icon className="w-5 h-5 text-accent" />
       </div>
       <div>
-        <p className="text-2xl font-semibold text-text-primary">{value}</p>
+        <p className="text-2xl font-bold text-text-primary">{value}</p>
         <p className="text-xs text-text-secondary">{label}</p>
-        {sub && <p className="text-xs text-text-muted mt-0.5">{sub}</p>}
+        {sub && <p className="text-[11px] text-text-muted mt-0.5">{sub}</p>}
       </div>
     </div>
   );
@@ -64,16 +63,17 @@ export default function HealthPage() {
 
   if (isLoading && !healthResult) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <RefreshCw className="w-6 h-6 text-accent animate-spin" />
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
+        <Loader2 className="w-6 h-6 text-accent animate-spin" />
+        <p className="text-sm text-text-muted">Running health check...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 px-4 py-6">
+    <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">Health Monitor</h1>
           <p className="text-sm text-text-secondary mt-1">
@@ -94,7 +94,7 @@ export default function HealthPage() {
           <button
             onClick={runCheck}
             disabled={isLoading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             Run Health Check
@@ -112,7 +112,7 @@ export default function HealthPage() {
         </div>
 
         {/* Quick metrics */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <MetricCard
             icon={ListChecks}
             label="Active Tasks"
@@ -143,9 +143,12 @@ export default function HealthPage() {
       {/* Issues */}
       {healthResult && healthResult.issues.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold text-text-primary mb-4">
-            Issues ({healthResult.issues.length})
-          </h2>
+          <div className="flex items-center gap-2 mb-4">
+            <h2 className="text-lg font-semibold text-text-primary">Issues</h2>
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-error/10 text-error">
+              {healthResult.issues.length}
+            </span>
+          </div>
           <div className="space-y-3">
             {healthResult.issues.map((issue) => (
               <IssueCard key={issue.id} issue={issue} />
@@ -206,7 +209,7 @@ export default function HealthPage() {
       {healthResult?.category_scores && (
         <section>
           <h2 className="text-lg font-semibold text-text-primary mb-4">Score Breakdown</h2>
-          <div className="rounded-2xl bg-surface border border-border p-6 space-y-4">
+          <div className="rounded-2xl bg-surface border border-border p-6 space-y-5">
             {Object.entries(healthResult.category_scores).map(([key, value]) => {
               const maxScores: Record<string, number> = {
                 overdue_tasks: 25,
@@ -224,9 +227,9 @@ export default function HealthPage() {
 
               return (
                 <div key={key}>
-                  <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-text-secondary">{label}</span>
-                    <span className="text-sm font-medium text-text-primary">
+                    <span className="text-sm font-medium text-text-primary tabular-nums">
                       {value}/{max}
                     </span>
                   </div>

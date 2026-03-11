@@ -49,11 +49,20 @@ export default function ChatPage() {
 
   const handleSuggestedPrompt = useCallback(
     (prompt: string) => {
-      // Create a new conversation if none active, then send the message
       if (!activeConversationId) {
         createConversation();
       }
       sendMessage(prompt);
+    },
+    [activeConversationId, createConversation, sendMessage],
+  );
+
+  const handleSend = useCallback(
+    (content: string) => {
+      if (!activeConversationId) {
+        createConversation();
+      }
+      sendMessage(content);
     },
     [activeConversationId, createConversation, sendMessage],
   );
@@ -71,7 +80,7 @@ export default function ChatPage() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-navy-base">
+    <div className="flex h-screen overflow-hidden bg-navy-base">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -83,7 +92,7 @@ export default function ChatPage() {
       {/* Sidebar — conversation list */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-40 w-72 bg-navy-dark border-r border-border
+          fixed inset-y-0 left-0 z-40 w-72 bg-navy-dark border-r border-border/50
           transform transition-transform duration-200 ease-out
           lg:static lg:translate-x-0 lg:z-auto
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -112,28 +121,22 @@ export default function ChatPage() {
       {/* Main chat area */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
+        <div className="flex items-center gap-3 px-4 h-12 border-b border-border/50 shrink-0 bg-navy-base/50 backdrop-blur-sm">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted lg:hidden"
           >
             <PanelLeftOpen className="w-4 h-4" />
           </button>
-          {activeConversationId && (
-            <h2 className="text-sm font-medium text-text-primary truncate">
-              {conversations.find((c) => c.id === activeConversationId)?.title ??
-                'New conversation'}
-            </h2>
-          )}
+          <h2 className="text-sm font-medium text-text-primary truncate">
+            {activeConversationId
+              ? conversations.find((c) => c.id === activeConversationId)?.title ?? 'New conversation'
+              : 'Start a conversation'}
+          </h2>
         </div>
 
         {/* Messages or empty state */}
-        {!activeConversationId ? (
-          <EmptyState
-            variant="no-conversations"
-            onSuggestedPrompt={handleSuggestedPrompt}
-          />
-        ) : hasMessages ? (
+        {hasMessages ? (
           <MessageThread
             messages={messages}
             isLoading={isLoading}
@@ -147,10 +150,12 @@ export default function ChatPage() {
           />
         )}
 
-        {/* Input */}
-        {activeConversationId && (
-          <ChatInput onSend={sendMessage} disabled={isLoading} />
-        )}
+        {/* Input — always visible */}
+        <ChatInput
+          onSend={handleSend}
+          disabled={isLoading}
+          placeholder={!activeConversationId ? 'Start a new conversation...' : undefined}
+        />
       </main>
     </div>
   );

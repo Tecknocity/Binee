@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, MoreVertical, Trash2, GripVertical } from 'lucide-react';
+import { Plus, MoreVertical, Trash2, GripVertical, LayoutDashboard } from 'lucide-react';
 import { useDashboard } from '@/hooks/useDashboard';
 import DashboardSelector from './DashboardSelector';
 import AddWidgetDialog from './AddWidgetDialog';
@@ -51,9 +51,9 @@ function WidgetCard({
       }`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <GripVertical className="w-4 h-4 text-text-muted/50 cursor-grab" />
+          <GripVertical className="w-4 h-4 text-text-muted/40 cursor-grab" />
           <h3 className="text-sm font-medium text-text-primary">{widget.title}</h3>
         </div>
         <div className="relative">
@@ -108,34 +108,40 @@ export default function DashboardPage() {
   const tableWidgets = widgets.filter((w) => w.type === 'table');
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-4">
-          <DashboardSelector
-            dashboards={dashboards}
-            activeDashboard={activeDashboard}
-            onSelect={setActiveDashboard}
-            onCreate={createDashboard}
-          />
-          {activeDashboard?.description && (
-            <span className="text-sm text-text-muted hidden md:block">
-              {activeDashboard.description}
-            </span>
-          )}
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-text-primary">Dashboards</h1>
+          <p className="text-sm text-text-secondary mt-1">Track your workspace metrics and performance</p>
         </div>
         <button
           onClick={() => setAddDialogOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
           Add Widget
         </button>
       </div>
 
+      {/* Dashboard selector */}
+      <div className="flex items-center gap-4 mb-6">
+        <DashboardSelector
+          dashboards={dashboards}
+          activeDashboard={activeDashboard}
+          onSelect={setActiveDashboard}
+          onCreate={createDashboard}
+        />
+        {activeDashboard?.description && (
+          <span className="text-sm text-text-muted hidden md:block">
+            {activeDashboard.description}
+          </span>
+        )}
+      </div>
+
       {/* Summary cards row */}
       {summaryWidgets.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {summaryWidgets.map((w) => (
             <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
           ))}
@@ -144,7 +150,7 @@ export default function DashboardPage() {
 
       {/* Charts row */}
       {chartWidgets.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
           {chartWidgets.map((w) => (
             <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
           ))}
@@ -153,7 +159,7 @@ export default function DashboardPage() {
 
       {/* Table widgets */}
       {tableWidgets.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-4 mb-6">
           {tableWidgets.map((w) => (
             <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
           ))}
@@ -162,17 +168,17 @@ export default function DashboardPage() {
 
       {/* Empty state */}
       {widgets.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-surface border border-border flex items-center justify-center mb-4">
-            <Plus className="w-8 h-8 text-text-muted" />
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-surface border border-border flex items-center justify-center mb-5">
+            <LayoutDashboard className="w-7 h-7 text-text-muted" />
           </div>
-          <h3 className="text-lg font-medium text-text-primary mb-1">No widgets yet</h3>
-          <p className="text-sm text-text-secondary mb-4 max-w-sm">
-            Add widgets to build your custom dashboard with charts, metrics, and data tables.
+          <h3 className="text-lg font-semibold text-text-primary mb-2">Build your dashboard</h3>
+          <p className="text-sm text-text-secondary mb-6 max-w-sm">
+            Add widgets to visualize your workspace data with charts, metrics, and tables. Start by adding your first widget.
           </p>
           <button
             onClick={() => setAddDialogOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Your First Widget
