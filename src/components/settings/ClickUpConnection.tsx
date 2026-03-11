@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { Plug, RefreshCw, Loader2, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ConnectionStatus {
@@ -54,8 +55,6 @@ export function ClickUpConnection() {
   }, [fetchStatus]);
 
   const handleConnect = () => {
-    // Redirect to ClickUp OAuth — the server generates the URL
-    // with the correct workspace ID from the user's session
     window.location.href = "/api/clickup/auth";
   };
 
@@ -93,12 +92,9 @@ export function ClickUpConnection() {
       const res = await fetch("/api/clickup/sync", { method: "POST" });
       if (res.ok) {
         setStatus((prev) => ({ ...prev, syncStatus: "syncing" }));
-        // Poll for completion
         const pollInterval = setInterval(async () => {
           await fetchStatus();
         }, 3000);
-
-        // Stop polling after 5 minutes
         setTimeout(() => clearInterval(pollInterval), 300000);
       }
     } catch (err) {
@@ -110,12 +106,12 @@ export function ClickUpConnection() {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+      <div className="rounded-xl border border-border bg-surface p-6">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 animate-pulse rounded-lg bg-zinc-800" />
+          <div className="h-10 w-10 animate-pulse rounded-lg bg-navy-light" />
           <div className="space-y-2">
-            <div className="h-4 w-32 animate-pulse rounded bg-zinc-800" />
-            <div className="h-3 w-48 animate-pulse rounded bg-zinc-800" />
+            <div className="h-4 w-32 animate-pulse rounded bg-navy-light" />
+            <div className="h-3 w-48 animate-pulse rounded bg-navy-light" />
           </div>
         </div>
       </div>
@@ -123,22 +119,35 @@ export function ClickUpConnection() {
   }
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+    <div className="rounded-xl border border-border bg-surface p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-600/20">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#7B68EE]/15">
             <svg
               viewBox="0 0 24 24"
-              className="h-5 w-5 text-purple-400"
-              fill="currentColor"
+              className="h-5 w-5 text-[#7B68EE]"
+              fill="none"
             >
-              <path d="M4.105 18.015l3.612-2.756a4.161 4.161 0 0 0 4.283 0l3.612 2.756a8.305 8.305 0 0 1-11.507 0zM12 13.218a2.775 2.775 0 0 1-2.775-2.775L12 6.885l2.775 3.558A2.775 2.775 0 0 1 12 13.218z" />
+              <path
+                d="M4.5 17.5L8.5 14L12 17L15.5 14L19.5 17.5"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M4.5 11.5L12 5L19.5 11.5"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-zinc-100">ClickUp</h3>
-            <p className="text-xs text-zinc-500">
+            <h3 className="text-sm font-semibold text-text-primary">ClickUp</h3>
+            <p className="text-xs text-text-muted">
               Project management integration
             </p>
           </div>
@@ -149,14 +158,14 @@ export function ClickUpConnection() {
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
             status.connected
-              ? "bg-emerald-500/10 text-emerald-400"
-              : "bg-zinc-800 text-zinc-400"
+              ? "bg-success/10 text-success"
+              : "bg-surface-hover text-text-muted"
           )}
         >
           <span
             className={cn(
               "h-1.5 w-1.5 rounded-full",
-              status.connected ? "bg-emerald-400" : "bg-zinc-500"
+              status.connected ? "bg-success" : "bg-text-muted"
             )}
           />
           {status.connected ? "Connected" : "Disconnected"}
@@ -168,15 +177,15 @@ export function ClickUpConnection() {
         <div className="mt-5 space-y-4">
           {/* Team info */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-md bg-zinc-800/50 px-3 py-2">
-              <p className="text-xs text-zinc-500">Team</p>
-              <p className="text-sm font-medium text-zinc-200">
+            <div className="rounded-lg bg-navy-base/50 px-3 py-2">
+              <p className="text-xs text-text-muted">Team</p>
+              <p className="text-sm font-medium text-text-primary">
                 {status.teamName ?? "Unknown"}
               </p>
             </div>
-            <div className="rounded-md bg-zinc-800/50 px-3 py-2">
-              <p className="text-xs text-zinc-500">Last synced</p>
-              <p className="text-sm font-medium text-zinc-200">
+            <div className="rounded-lg bg-navy-base/50 px-3 py-2">
+              <p className="text-xs text-text-muted">Last synced</p>
+              <p className="text-sm font-medium text-text-primary">
                 {status.lastSyncedAt
                   ? formatRelativeTime(status.lastSyncedAt)
                   : "Never"}
@@ -186,15 +195,15 @@ export function ClickUpConnection() {
 
           {/* Sync status */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-md bg-zinc-800/50 px-3 py-2">
-              <p className="text-xs text-zinc-500">Sync status</p>
+            <div className="rounded-lg bg-navy-base/50 px-3 py-2">
+              <p className="text-xs text-text-muted">Sync status</p>
               <p
                 className={cn(
                   "text-sm font-medium",
-                  status.syncStatus === "synced" && "text-emerald-400",
-                  status.syncStatus === "syncing" && "text-yellow-400",
-                  status.syncStatus === "error" && "text-red-400",
-                  status.syncStatus === "idle" && "text-zinc-400"
+                  status.syncStatus === "synced" && "text-success",
+                  status.syncStatus === "syncing" && "text-warning",
+                  status.syncStatus === "error" && "text-error",
+                  status.syncStatus === "idle" && "text-text-secondary"
                 )}
               >
                 {status.syncStatus === "syncing" && "Syncing..."}
@@ -203,14 +212,14 @@ export function ClickUpConnection() {
                 {status.syncStatus === "idle" && "Idle"}
               </p>
             </div>
-            <div className="rounded-md bg-zinc-800/50 px-3 py-2">
-              <p className="text-xs text-zinc-500">Webhook</p>
+            <div className="rounded-lg bg-navy-base/50 px-3 py-2">
+              <p className="text-xs text-text-muted">Webhook</p>
               <p
                 className={cn(
                   "text-sm font-medium",
-                  status.webhookHealthy === true && "text-emerald-400",
-                  status.webhookHealthy === false && "text-red-400",
-                  status.webhookHealthy === null && "text-zinc-400"
+                  status.webhookHealthy === true && "text-success",
+                  status.webhookHealthy === false && "text-error",
+                  status.webhookHealthy === null && "text-text-secondary"
                 )}
               >
                 {status.webhookHealthy === true && "Healthy"}
@@ -223,24 +232,24 @@ export function ClickUpConnection() {
           {/* Rate limit */}
           {status.rateLimitRemaining !== null &&
             status.rateLimitTotal !== null && (
-              <div className="rounded-md bg-zinc-800/50 px-3 py-2">
+              <div className="rounded-lg bg-navy-base/50 px-3 py-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-zinc-500">API rate limit</p>
-                  <p className="text-xs text-zinc-400">
+                  <p className="text-xs text-text-muted">API rate limit</p>
+                  <p className="text-xs text-text-secondary">
                     {status.rateLimitRemaining} / {status.rateLimitTotal}{" "}
                     remaining
                   </p>
                 </div>
-                <div className="mt-1.5 h-1.5 w-full rounded-full bg-zinc-700">
+                <div className="mt-1.5 h-1.5 w-full rounded-full bg-navy-dark">
                   <div
                     className={cn(
                       "h-1.5 rounded-full transition-all",
                       status.rateLimitRemaining / status.rateLimitTotal > 0.5
-                        ? "bg-emerald-500"
+                        ? "bg-success"
                         : status.rateLimitRemaining / status.rateLimitTotal >
                             0.2
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
+                          ? "bg-warning"
+                          : "bg-error"
                     )}
                     style={{
                       width: `${(status.rateLimitRemaining / status.rateLimitTotal) * 100}%`,
@@ -252,7 +261,7 @@ export function ClickUpConnection() {
 
           {/* Error message */}
           {status.syncError && (
-            <div className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            <div className="rounded-lg bg-error/10 border border-error/20 px-3 py-2 text-sm text-error">
               {status.syncError}
             </div>
           )}
@@ -263,11 +272,16 @@ export function ClickUpConnection() {
               onClick={handleResync}
               disabled={syncing || status.syncStatus === "syncing"}
               className={cn(
-                "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
-                "bg-purple-600 text-white hover:bg-purple-500",
+                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                "bg-[#7B68EE] text-white hover:bg-[#6A5ACD]",
                 "disabled:cursor-not-allowed disabled:opacity-50"
               )}
             >
+              {syncing || status.syncStatus === "syncing" ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
               {syncing || status.syncStatus === "syncing"
                 ? "Syncing..."
                 : "Re-sync data"}
@@ -276,8 +290,8 @@ export function ClickUpConnection() {
               onClick={handleDisconnect}
               disabled={disconnecting}
               className={cn(
-                "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
-                "border border-zinc-700 text-zinc-300 hover:border-red-700 hover:text-red-400",
+                "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                "border border-border text-text-secondary hover:border-error/30 hover:text-error hover:bg-error/5",
                 "disabled:cursor-not-allowed disabled:opacity-50"
               )}
             >
@@ -290,19 +304,18 @@ export function ClickUpConnection() {
       {/* Disconnected state */}
       {!status.connected && (
         <div className="mt-5">
-          <p className="mb-4 text-sm text-zinc-400">
+          <p className="mb-4 text-sm text-text-secondary">
             Connect your ClickUp workspace to sync tasks, projects, and time
             tracking data. Binee will analyze your workflow and provide
             AI-powered insights.
           </p>
           <button
             onClick={handleConnect}
-            className={cn(
-              "rounded-md px-4 py-2 text-sm font-medium transition-colors",
-              "bg-purple-600 text-white hover:bg-purple-500"
-            )}
+            className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors bg-[#7B68EE] text-white hover:bg-[#6A5ACD]"
           >
+            <Plug className="w-4 h-4" />
             Connect ClickUp
+            <ExternalLink className="w-3.5 h-3.5 ml-1" />
           </button>
         </div>
       )}

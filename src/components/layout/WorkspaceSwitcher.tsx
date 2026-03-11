@@ -32,20 +32,22 @@ export default function WorkspaceSwitcher() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-surface-hover transition-colors"
+        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl hover:bg-surface-hover transition-colors"
       >
-        <div className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
-          <span className="text-accent text-xs font-bold">{initials}</span>
+        <div className="w-7 h-7 rounded-lg bg-accent/15 border border-accent/20 flex items-center justify-center shrink-0">
+          <span className="text-accent text-[10px] font-bold">{initials}</span>
         </div>
         <div className="flex-1 text-left min-w-0">
           <p className="text-sm font-medium text-text-primary truncate">{workspace.name}</p>
-          <p className="text-xs text-text-muted capitalize">{workspace.plan} plan</p>
         </div>
-        <ChevronDown className="w-4 h-4 text-text-muted shrink-0" />
+        <ChevronDown className={`w-3.5 h-3.5 text-text-muted shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-navy-light border border-border rounded-lg shadow-xl z-50 py-1">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
+          <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted/60">
+            Workspaces
+          </p>
           {workspaces.map((ws) => (
             <button
               key={ws.id}
@@ -55,12 +57,15 @@ export default function WorkspaceSwitcher() {
               }}
               className="flex items-center gap-2.5 w-full px-3 py-2 hover:bg-surface-hover transition-colors"
             >
-              <div className="w-6 h-6 rounded bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
-                <span className="text-accent text-[10px] font-bold">
+              <div className="w-6 h-6 rounded-md bg-accent/15 border border-accent/20 flex items-center justify-center shrink-0">
+                <span className="text-accent text-[9px] font-bold">
                   {ws.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)}
                 </span>
               </div>
-              <span className="text-sm text-text-primary truncate flex-1 text-left">{ws.name}</span>
+              <div className="flex-1 min-w-0 text-left">
+                <span className="text-sm text-text-primary truncate block">{ws.name}</span>
+                <span className="text-[10px] text-text-muted capitalize">{ws.plan} plan</span>
+              </div>
               {ws.id === workspace.id && <Check className="w-4 h-4 text-accent shrink-0" />}
             </button>
           ))}
