@@ -5,7 +5,7 @@ import type {
   ToolCallResult,
 } from '@/types/ai';
 import { classifyMessage, getModelForTask } from '@/lib/ai/router';
-import { buildSystemPrompt, buildSetupPrompt, buildHealthPrompt } from '@/lib/ai/prompts';
+import { buildSystemPrompt, buildSetupPrompt, buildHealthPrompt, buildDashboardPrompt } from '@/lib/ai/prompts';
 import { buildContext } from '@/lib/ai/context';
 import { BINEE_TOOLS } from '@/lib/ai/tools';
 import { executeTool } from '@/lib/ai/tool-executor';
@@ -91,6 +91,9 @@ export async function handleChatMessage(
       break;
     case 'health_analysis':
       systemPrompt = buildHealthPrompt(context);
+      break;
+    case 'dashboard_design':
+      systemPrompt = buildDashboardPrompt(context);
       break;
     default:
       systemPrompt = buildSystemPrompt(context);

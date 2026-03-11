@@ -1,14 +1,16 @@
 'use client';
 
 import { Bot, Coins } from 'lucide-react';
-import type { ChatMessage as ChatMessageType } from '@/hooks/useChat';
+import type { ChatMessage as ChatMessageType, DashboardChoiceData } from '@/hooks/useChat';
 import ToolCallIndicator from './ToolCallIndicator';
 import ActionConfirmation from './ActionConfirmation';
+import DashboardChoiceButtons from './DashboardChoiceButtons';
 
 interface ChatMessageProps {
   message: ChatMessageType;
   onConfirmAction?: (id: string) => void;
   onCancelAction?: (id: string) => void;
+  onDashboardChoice?: (messageId: string, choice: DashboardChoiceData) => void;
 }
 
 function formatTimestamp(date: Date): string {
@@ -226,6 +228,7 @@ export default function ChatMessage({
   message,
   onConfirmAction,
   onCancelAction,
+  onDashboardChoice,
 }: ChatMessageProps) {
   const isUser = message.role === 'user';
 
@@ -262,6 +265,15 @@ export default function ChatMessage({
         <div className="bg-surface border border-border px-4 py-3 rounded-2xl rounded-bl-md">
           {renderMarkdown(message.content)}
         </div>
+
+        {/* Dashboard choice buttons */}
+        {message.dashboardChoices && message.dashboardChoices.length > 0 && (
+          <DashboardChoiceButtons
+            choices={message.dashboardChoices}
+            selected={message.selectedDashboardChoice}
+            onSelect={(choice) => onDashboardChoice?.(message.id, choice)}
+          />
+        )}
 
         {/* Action confirmation */}
         {message.actionConfirmation && onConfirmAction && onCancelAction && (

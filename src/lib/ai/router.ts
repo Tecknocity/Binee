@@ -30,9 +30,9 @@ const PATTERNS: Record<TaskType, RegExp[]> = {
     /\b(workflow|process|template|workspace setup)\b/i,
   ],
   dashboard_design: [
-    /\b(build a dashboard|show me a chart|create a widget|track over time)\b/i,
-    /\b(visualize|graph|report|metric|kpi)\b/i,
-    /\b(burn ?down|velocity|throughput)\b/i,
+    /\b(build a dashboard|show me a chart|create a widget|track over time|add a widget|add widget)\b/i,
+    /\b(visualize|graph|report|metric|kpi|dashboard|new dashboard|create dashboard)\b/i,
+    /\b(burn ?down|velocity|throughput|update widget|delete widget|remove widget|modify widget)\b/i,
   ],
   health_analysis: [
     /\b(how'?s my workspace|health check|what'?s wrong|any issues)\b/i,

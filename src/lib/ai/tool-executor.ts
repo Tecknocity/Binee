@@ -42,6 +42,14 @@ export async function executeTool(
         return await handleGetTimeTrackingSummary(toolInput, workspaceId);
       case 'create_dashboard_widget':
         return await handleCreateDashboardWidget(toolInput, workspaceId);
+      case 'update_dashboard_widget':
+        return await handleUpdateDashboardWidget(toolInput, workspaceId);
+      case 'delete_dashboard_widget':
+        return await handleDeleteDashboardWidget(toolInput, workspaceId);
+      case 'list_dashboards':
+        return await handleListDashboards(workspaceId);
+      case 'list_dashboard_widgets':
+        return await handleListDashboardWidgets(toolInput, workspaceId);
       default:
         return { error: `Unknown tool: ${toolName}`, success: false };
     }
@@ -575,6 +583,269 @@ async function handleCreateDashboardWidget(
       dashboard: dashboardName,
     },
     message: `Widget "${title}" added to dashboard "${dashboardName}". You can view it on the Dashboards page.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// update_dashboard_widget — modify an existing widget
+// ---------------------------------------------------------------------------
+
+async function handleUpdateDashboardWidget(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+  const widgetId = input.widget_id as string;
+
+  if (!widgetId) {
+    return { error: 'widget_id is required', success: false };
+  }
+
+  // Fetch existing widget
+  const { data: existing, error: fetchError } = await supabase
+    .from('dashboard_widgets')
+    .select('id, type, title, config, dashboard_id')
+    .eq('workspace_id', workspaceId)
+    .eq('id', widgetId)
+    .single();
+
+  if (fetchError || !existing) {
+    return { error: `Widget not found: ${fetchError?.message ?? 'unknown'}`, success: false };
+  }
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  if (input.title && typeof input.title === 'string') {
+    updates.title = input.title;
+  }
+
+  if (input.widget_type && typeof input.widget_type === 'string') {
+    // Map API types to DB types
+    const typeMap: Record<string, string> = {
+      bar_chart: 'bar',
+      line_chart: 'line',
+      summary_card: 'summary',
+      table: 'table',
+    };
+    updates.type = typeMap[input.widget_type] ?? input.widget_type;
+  }
+
+  if (input.config && typeof input.config === 'object') {
+    // Merge with existing config
+    updates.config = { ...(existing.config as Record<string, unknown>), ...(input.config as Record<string, unknown>) };
+  }
+
+  const { error: updateError } = await supabase
+    .from('dashboard_widgets')
+    .update(updates)
+    .eq('id', widgetId)
+    .eq('workspace_id', workspaceId);
+
+  if (updateError) {
+    return { error: `Failed to update widget: ${updateError.message}`, success: false };
+  }
+
+  // Get dashboard name for the response
+  const { data: dashboard } = await supabase
+    .from('dashboards')
+    .select('name')
+    .eq('id', existing.dashboard_id)
+    .single();
+
+  return {
+    success: true,
+    widget: {
+      id: widgetId,
+      title: (updates.title as string) ?? existing.title,
+      type: (updates.type as string) ?? existing.type,
+      dashboard: dashboard?.name ?? 'Unknown',
+    },
+    message: `Widget "${(updates.title as string) ?? existing.title}" has been updated on dashboard "${dashboard?.name}".`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// delete_dashboard_widget — remove a widget from a dashboard
+// ---------------------------------------------------------------------------
+
+async function handleDeleteDashboardWidget(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+  const widgetId = input.widget_id as string;
+
+  if (!widgetId) {
+    return { error: 'widget_id is required', success: false };
+  }
+
+  // Fetch widget info before deleting (for the response message)
+  const { data: widget, error: fetchError } = await supabase
+    .from('dashboard_widgets')
+    .select('id, title, dashboard_id')
+    .eq('workspace_id', workspaceId)
+    .eq('id', widgetId)
+    .single();
+
+  if (fetchError || !widget) {
+    return { error: `Widget not found: ${fetchError?.message ?? 'unknown'}`, success: false };
+  }
+
+  const { data: dashboard } = await supabase
+    .from('dashboards')
+    .select('name')
+    .eq('id', widget.dashboard_id)
+    .single();
+
+  const { error: deleteError } = await supabase
+    .from('dashboard_widgets')
+    .delete()
+    .eq('id', widgetId)
+    .eq('workspace_id', workspaceId);
+
+  if (deleteError) {
+    return { error: `Failed to delete widget: ${deleteError.message}`, success: false };
+  }
+
+  return {
+    success: true,
+    deleted_widget: {
+      id: widgetId,
+      title: widget.title,
+      dashboard: dashboard?.name ?? 'Unknown',
+    },
+    message: `Widget "${widget.title}" has been removed from dashboard "${dashboard?.name}".`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// list_dashboards — list all dashboards in the workspace
+// ---------------------------------------------------------------------------
+
+async function handleListDashboards(
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: dashboards, error } = await supabase
+    .from('dashboards')
+    .select('id, name, description, is_default, created_at, updated_at')
+    .eq('workspace_id', workspaceId)
+    .order('is_default', { ascending: false })
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    return { error: `Failed to list dashboards: ${error.message}`, success: false };
+  }
+
+  // Get widget counts per dashboard
+  const dashboardList = dashboards ?? [];
+  const dashboardIds = dashboardList.map((d) => d.id);
+
+  let widgetCounts: Record<string, number> = {};
+  if (dashboardIds.length > 0) {
+    const { data: widgets } = await supabase
+      .from('dashboard_widgets')
+      .select('dashboard_id')
+      .eq('workspace_id', workspaceId)
+      .in('dashboard_id', dashboardIds);
+
+    widgetCounts = (widgets ?? []).reduce((acc: Record<string, number>, w) => {
+      acc[w.dashboard_id] = (acc[w.dashboard_id] || 0) + 1;
+      return acc;
+    }, {});
+  }
+
+  return {
+    success: true,
+    dashboards: dashboardList.map((d) => ({
+      id: d.id,
+      name: d.name,
+      description: d.description,
+      is_default: d.is_default,
+      widget_count: widgetCounts[d.id] ?? 0,
+      updated_at: d.updated_at,
+    })),
+    count: dashboardList.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// list_dashboard_widgets — list widgets on a specific dashboard
+// ---------------------------------------------------------------------------
+
+async function handleListDashboardWidgets(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  let dashboardId = input.dashboard_id as string | undefined;
+
+  // Resolve by name if ID not provided
+  if (!dashboardId && input.dashboard_name && typeof input.dashboard_name === 'string') {
+    const { data: dashboard } = await supabase
+      .from('dashboards')
+      .select('id, name')
+      .eq('workspace_id', workspaceId)
+      .ilike('name', `%${input.dashboard_name}%`)
+      .limit(1)
+      .single();
+
+    if (dashboard) {
+      dashboardId = dashboard.id;
+    } else {
+      return { error: `No dashboard found matching "${input.dashboard_name}"`, success: false };
+    }
+  }
+
+  // If still no dashboard, use default
+  if (!dashboardId) {
+    const { data: defaultDash } = await supabase
+      .from('dashboards')
+      .select('id, name')
+      .eq('workspace_id', workspaceId)
+      .eq('is_default', true)
+      .limit(1)
+      .single();
+
+    if (defaultDash) {
+      dashboardId = defaultDash.id;
+    } else {
+      return { error: 'No dashboards found in workspace', success: false };
+    }
+  }
+
+  const { data: widgets, error } = await supabase
+    .from('dashboard_widgets')
+    .select('id, type, title, config, position, created_at, updated_at')
+    .eq('workspace_id', workspaceId)
+    .eq('dashboard_id', dashboardId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    return { error: `Failed to list widgets: ${error.message}`, success: false };
+  }
+
+  // Get dashboard name
+  const { data: dashboard } = await supabase
+    .from('dashboards')
+    .select('name')
+    .eq('id', dashboardId)
+    .single();
+
+  return {
+    success: true,
+    dashboard_name: dashboard?.name ?? 'Unknown',
+    dashboard_id: dashboardId,
+    widgets: (widgets ?? []).map((w) => ({
+      id: w.id,
+      type: w.type,
+      title: w.title,
+      config: w.config,
+      position: w.position,
+    })),
+    count: (widgets ?? []).length,
   };
 }
 

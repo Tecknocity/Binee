@@ -21,6 +21,14 @@ export interface Conversation {
 
 const MOCK_CONVERSATIONS: Conversation[] = [
   {
+    id: 'conv-5',
+    title: 'Building October Overdue Dashboard',
+    lastMessage: 'I\'ve created your "October Overdue Tasks" dashboard',
+    messageCount: 4,
+    updatedAt: new Date('2026-03-11T11:00:15'),
+    createdAt: new Date('2026-03-11T11:00:00'),
+  },
+  {
     id: 'conv-1',
     title: 'Overdue tasks in Engineering',
     lastMessage: 'Done! I\'ve updated "API rate limiter update"',
