@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useConversations } from '@/hooks/useConversations';
 import { useChat } from '@/hooks/useChat';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -24,10 +25,27 @@ const SUGGESTED_PROMPTS = [
 
 export default function ChatPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const isNew = searchParams.get('new') === '1';
+
   const {
     activeConversationId,
     createConversation,
+    setActiveConversation,
   } = useConversations();
+
+  // When ?new=1 is in URL, clear the active conversation so we show the welcome screen
+  useEffect(() => {
+    if (isNew) {
+      setActiveConversation(null);
+      // Clean up the URL without re-rendering
+      router.replace('/chat', { scroll: false });
+    }
+  }, [isNew, setActiveConversation, router]);
+
+  // If we're in "new" mode, treat activeConversationId as null
+  const effectiveConversationId = isNew ? null : activeConversationId;
 
   const {
     messages,
@@ -35,30 +53,31 @@ export default function ChatPage() {
     sendMessage,
     confirmAction,
     loadConversation,
-  } = useChat(activeConversationId);
+  } = useChat(effectiveConversationId);
 
   useEffect(() => {
-    loadConversation(activeConversationId);
-  }, [activeConversationId, loadConversation]);
+    loadConversation(effectiveConversationId);
+  }, [effectiveConversationId, loadConversation]);
 
   const handleSend = useCallback(
     (content: string) => {
       if (!activeConversationId) {
-        createConversation();
+        const newId = createConversation();
+        // sendMessage needs the conversation to exist, but since hook state
+        // won't update until next render, we call it directly
+        sendMessage(content, newId);
+      } else {
+        sendMessage(content);
       }
-      sendMessage(content);
     },
     [activeConversationId, createConversation, sendMessage],
   );
 
   const handleSuggestedPrompt = useCallback(
     (prompt: string) => {
-      if (!activeConversationId) {
-        createConversation();
-      }
-      sendMessage(prompt);
+      handleSend(prompt);
     },
-    [activeConversationId, createConversation, sendMessage],
+    [handleSend],
   );
 
   const handleConfirmAction = useCallback(
@@ -87,7 +106,6 @@ export default function ChatPage() {
           <ChatInput
             onSend={handleSend}
             disabled={isLoading}
-            placeholder={!activeConversationId ? 'Start a new conversation...' : undefined}
           />
         </>
       ) : (
@@ -103,18 +121,16 @@ export default function ChatPage() {
               </h1>
             </div>
 
-            {/* Chat input - centered, hero style */}
+            {/* Chat input - centered */}
             <div className="w-full max-w-2xl mb-8">
-              <div className="relative">
-                <ChatInput
-                  onSend={handleSend}
-                  disabled={isLoading}
-                  placeholder="Start a new chat..."
-                />
-              </div>
+              <ChatInput
+                onSend={handleSend}
+                disabled={isLoading}
+                placeholder="Start a new chat..."
+              />
             </div>
 
-            {/* Suggested prompts as pills */}
+            {/* Suggested prompts */}
             <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
               {SUGGESTED_PROMPTS.map((prompt) => (
                 <button
