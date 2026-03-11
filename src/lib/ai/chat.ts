@@ -181,7 +181,10 @@ export async function handleChatMessage(
   // 8. Deduct credits
   await supabase.rpc('deduct_credits', {
     p_workspace_id: workspace_id,
+    p_user_id: user_id,
     p_amount: routing.creditCost,
+    p_description: `Chat: ${classification.taskType}`,
+    p_metadata: { task_type: classification.taskType, model: routing.modelId },
   });
 
   // 9. Save message and response to the database
@@ -246,24 +249,27 @@ async function saveConversationMessages(
 
     // Insert the user message
     await supabase.from('messages').insert({
+      workspace_id: workspaceId,
       conversation_id: conversationId,
       role: 'user',
       content: userMessage,
-      created_at: new Date().toISOString(),
+      credits_used: 0,
     });
 
-    // Insert the assistant message
+    // Insert the assistant message with metadata
     await supabase.from('messages').insert({
+      workspace_id: workspaceId,
       conversation_id: conversationId,
       role: 'assistant',
       content: assistantMessage,
-      model_used: modelUsed,
-      credits_consumed: creditsConsumed,
-      tokens_input: tokensInput,
-      tokens_output: tokensOutput,
-      tool_calls: toolCalls ? JSON.stringify(toolCalls) : null,
-      task_type: taskType,
-      created_at: new Date().toISOString(),
+      credits_used: creditsConsumed,
+      metadata: {
+        model_used: modelUsed,
+        tokens_input: tokensInput,
+        tokens_output: tokensOutput,
+        tool_calls: toolCalls,
+        task_type: taskType,
+      },
     });
   } catch (error) {
     // Log but don't fail the response if message saving fails

@@ -96,10 +96,10 @@ function computeTeamActivityScore(metrics: WorkspaceMetrics): { score: number; i
 
 function computeTaskHygieneScore(metrics: WorkspaceMetrics): { score: number; issues: HealthIssue[] } {
   const issues: HealthIssue[] = [];
-  // Estimate tasks with due dates: totalTasks - overdueTasks counts as having dates,
-  // but also some active tasks have dates. Mock: ~65% have due dates
-  const tasksWithDueDates = Math.round(metrics.totalTasks * 0.65);
-  const pct = metrics.totalTasks > 0 ? tasksWithDueDates / metrics.totalTasks : 0;
+  // Tasks with due dates: active tasks minus those due (overdue + due this week gives a baseline)
+  // For a proper count, we check activeTasks that have due_date vs those without
+  const tasksWithDueDates = metrics.tasksDueThisWeek + metrics.overdueTasks + metrics.tasksDueToday;
+  const pct = metrics.activeTasks > 0 ? Math.min(tasksWithDueDates / metrics.activeTasks, 1) : 0;
 
   let score: number;
   if (pct > 0.8) score = 15;
@@ -122,7 +122,7 @@ function computeTaskHygieneScore(metrics: WorkspaceMetrics): { score: number; is
   return { score, issues };
 }
 
-export async function runHealthCheck(workspaceId: string): Promise<HealthCheckResult> {
+export async function runHealthCheck(workspaceId: string, previousScore?: number): Promise<HealthCheckResult> {
   const metrics = await computeWorkspaceMetrics(workspaceId);
 
   const overdue = computeOverdueScore(metrics);

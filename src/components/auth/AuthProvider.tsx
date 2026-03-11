@@ -1,7 +1,9 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { createBrowserClient } from '@/lib/supabase/client';
 import type { Workspace, WorkspaceMember } from '@/types/database';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface User {
   id: string;
@@ -21,58 +23,23 @@ interface AuthState {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   switchWorkspace: (workspaceId: string) => void;
+  refreshWorkspace: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
-// Mock data for visual development
-const mockUser: User = {
-  id: 'usr_mock_001',
-  email: 'demo@binee.dev',
-  display_name: 'Alex Chen',
-  avatar_url: null,
-};
-
-const mockWorkspaces: Workspace[] = [
-  {
-    id: 'ws_mock_001',
-    name: 'Acme Corp',
-    slug: 'acme-corp',
-    owner_id: 'usr_mock_001',
-    plan: 'starter',
-    credit_balance: 487,
-    clickup_team_id: 'cu_team_123',
-    clickup_access_token: null,
-    settings: {},
-    created_at: '2025-12-01T00:00:00Z',
-    updated_at: '2026-03-10T00:00:00Z',
-  },
-  {
-    id: 'ws_mock_002',
-    name: 'Side Project',
-    slug: 'side-project',
-    owner_id: 'usr_mock_001',
-    plan: 'free',
-    credit_balance: 42,
-    clickup_team_id: null,
-    clickup_access_token: null,
-    settings: {},
-    created_at: '2026-01-15T00:00:00Z',
-    updated_at: '2026-03-08T00:00:00Z',
-  },
-];
-
-const mockMembership: WorkspaceMember = {
-  id: 'mem_mock_001',
-  workspace_id: 'ws_mock_001',
-  user_id: 'usr_mock_001',
-  role: 'owner',
-  email: 'demo@binee.dev',
-  display_name: 'Alex Chen',
-  avatar_url: null,
-  created_at: '2025-12-01T00:00:00Z',
-  updated_at: '2026-03-10T00:00:00Z',
-};
+function mapSupabaseUser(supabaseUser: SupabaseUser): User {
+  return {
+    id: supabaseUser.id,
+    email: supabaseUser.email ?? '',
+    display_name:
+      supabaseUser.user_metadata?.display_name ??
+      supabaseUser.user_metadata?.full_name ??
+      supabaseUser.email?.split('@')[0] ??
+      'User',
+    avatar_url: supabaseUser.user_metadata?.avatar_url ?? null,
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -81,64 +48,190 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [membership, setMembership] = useState<WorkspaceMember | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // In production this would read the Supabase session from cookies.
-    // For now, auto-authenticate with mock data since auth is handled
-    // by the separate frontend/marketing repo before redirecting here.
-    const timer = setTimeout(() => {
-      setUser(mockUser);
-      setWorkspaces(mockWorkspaces);
-      setWorkspace(mockWorkspaces[0]);
-      setMembership(mockMembership);
-      setLoading(false);
-    }, 300);
+  const supabase = createBrowserClient();
 
-    return () => clearTimeout(timer);
-  }, []);
+  const loadWorkspaces = useCallback(async (userId: string) => {
+    const { data: memberRows } = await supabase
+      .from('workspace_members')
+      .select('workspace_id, role, email, display_name, avatar_url')
+      .eq('user_id', userId);
+
+    if (!memberRows || memberRows.length === 0) {
+      setWorkspaces([]);
+      setWorkspace(null);
+      setMembership(null);
+      return;
+    }
+
+    const workspaceIds = memberRows.map((m) => m.workspace_id);
+
+    const { data: ws } = await supabase
+      .from('workspaces')
+      .select('*')
+      .in('id', workspaceIds);
+
+    const fetchedWorkspaces = (ws as Workspace[]) ?? [];
+    setWorkspaces(fetchedWorkspaces);
+
+    // Select the first workspace or persist the last selected one
+    const storedWsId = typeof window !== 'undefined'
+      ? localStorage.getItem('binee_active_workspace')
+      : null;
+    const activeWs = fetchedWorkspaces.find((w) => w.id === storedWsId) ?? fetchedWorkspaces[0] ?? null;
+    setWorkspace(activeWs);
+
+    if (activeWs) {
+      const memberRow = memberRows.find((m) => m.workspace_id === activeWs.id);
+      if (memberRow) {
+        setMembership({
+          id: '',
+          workspace_id: activeWs.id,
+          user_id: userId,
+          role: memberRow.role as 'owner' | 'admin' | 'member',
+          email: memberRow.email,
+          display_name: memberRow.display_name,
+          avatar_url: memberRow.avatar_url,
+          created_at: '',
+          updated_at: '',
+        });
+      }
+    }
+  }, [supabase]);
+
+  const refreshWorkspace = useCallback(async () => {
+    if (!user || !workspace) return;
+    const { data: ws } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('id', workspace.id)
+      .single();
+    if (ws) {
+      setWorkspace(ws as Workspace);
+      setWorkspaces((prev) => prev.map((w) => (w.id === ws.id ? (ws as Workspace) : w)));
+    }
+  }, [user, workspace, supabase]);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          const mappedUser = mapSupabaseUser(session.user);
+          setUser(mappedUser);
+          await loadWorkspaces(session.user.id);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          const mappedUser = mapSupabaseUser(session.user);
+          setUser(mappedUser);
+          await loadWorkspaces(session.user.id);
+          setLoading(false);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setWorkspace(null);
+          setWorkspaces([]);
+          setMembership(null);
+          setLoading(false);
+        }
+      },
+    );
+
+    return () => subscription.unsubscribe();
+  }, [supabase, loadWorkspaces]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
-    // Placeholder: would call supabase.auth.signInWithPassword
-    await new Promise((r) => setTimeout(r, 500));
-    setUser(mockUser);
-    setWorkspaces(mockWorkspaces);
-    setWorkspace(mockWorkspaces[0]);
-    setMembership(mockMembership);
-    setLoading(false);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setLoading(false);
+      return { error: error.message };
+    }
     return {};
   };
 
   const signUp = async (email: string, password: string, name: string) => {
     setLoading(true);
-    // Placeholder: would call supabase.auth.signUp
-    await new Promise((r) => setTimeout(r, 500));
-    setUser({ ...mockUser, email, display_name: name });
-    setWorkspaces(mockWorkspaces);
-    setWorkspace(mockWorkspaces[0]);
-    setMembership(mockMembership);
-    setLoading(false);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { display_name: name },
+      },
+    });
+
+    if (error) {
+      setLoading(false);
+      return { error: error.message };
+    }
+
+    // Create a default workspace for the new user
+    if (data.user) {
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
+      const { data: newWorkspace } = await supabase
+        .from('workspaces')
+        .insert({
+          name: `${name}'s Workspace`,
+          slug: `${slug}-${Date.now().toString(36)}`,
+          owner_id: data.user.id,
+          plan: 'free',
+          credit_balance: 10,
+        })
+        .select()
+        .single();
+
+      if (newWorkspace) {
+        await supabase.from('workspace_members').insert({
+          workspace_id: newWorkspace.id,
+          user_id: data.user.id,
+          role: 'owner',
+          email,
+          display_name: name,
+        });
+      }
+    }
+
     return {};
   };
 
   const signInWithGoogle = async () => {
-    // Placeholder: would call supabase.auth.signInWithOAuth({ provider: 'google' })
-    setUser(mockUser);
-    setWorkspaces(mockWorkspaces);
-    setWorkspace(mockWorkspaces[0]);
-    setMembership(mockMembership);
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/api/auth/callback`,
+      },
+    });
   };
 
   const signOut = async () => {
-    // Placeholder: would call supabase.auth.signOut()
+    await supabase.auth.signOut();
     setUser(null);
     setWorkspace(null);
     setWorkspaces([]);
     setMembership(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('binee_active_workspace');
+    }
   };
 
   const switchWorkspace = (workspaceId: string) => {
     const ws = workspaces.find((w) => w.id === workspaceId);
-    if (ws) setWorkspace(ws);
+    if (ws) {
+      setWorkspace(ws);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('binee_active_workspace', workspaceId);
+      }
+    }
   };
 
   return (
@@ -154,6 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGoogle,
         signOut,
         switchWorkspace,
+        refreshWorkspace,
       }}
     >
       {children}

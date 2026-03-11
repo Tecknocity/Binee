@@ -7,6 +7,7 @@ import {
 import { performInitialSync } from "@/lib/clickup/sync";
 import { registerWebhooks } from "@/lib/clickup/webhooks";
 import { ClickUpClient } from "@/lib/clickup/client";
+import { createClient } from "@supabase/supabase-js";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
@@ -34,14 +35,14 @@ export async function GET(request: NextRequest) {
   // Handle OAuth errors
   if (error) {
     console.error("[OAuth] ClickUp authorization error:", error);
-    const redirectUrl = new URL("/settings/integrations", APP_URL);
+    const redirectUrl = new URL("/settings", APP_URL);
     redirectUrl.searchParams.set("error", "clickup_auth_denied");
     return NextResponse.redirect(redirectUrl.toString());
   }
 
   // Validate required parameters
   if (!code || !state) {
-    const redirectUrl = new URL("/settings/integrations", APP_URL);
+    const redirectUrl = new URL("/settings", APP_URL);
     redirectUrl.searchParams.set("error", "clickup_missing_params");
     return NextResponse.redirect(redirectUrl.toString());
   }
@@ -65,14 +66,26 @@ export async function GET(request: NextRequest) {
       expiresAt
     );
 
-    // Step 4: Fetch team info
+    // Step 4: Fetch team info and store it
     const client = new ClickUpClient(workspaceId);
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
     let teamId: string | null = null;
 
     try {
       const teams = await client.getTeams();
       if (teams.length > 0) {
         teamId = teams[0].id;
+        await supabase
+          .from("workspaces")
+          .update({
+            clickup_team_id: teamId,
+            clickup_team_name: teams[0].name,
+            clickup_sync_status: 'syncing',
+          })
+          .eq("id", workspaceId);
       }
     } catch (teamError) {
       console.error("[OAuth] Failed to fetch ClickUp teams:", teamError);
@@ -92,18 +105,35 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 6: Trigger initial sync (fire and forget)
-    // Run in the background so the user isn't kept waiting
-    performInitialSync(workspaceId).catch((syncError) => {
+    performInitialSync(workspaceId).then(async (result) => {
+      const now = new Date().toISOString();
+      await supabase
+        .from("workspaces")
+        .update({
+          clickup_sync_status: 'complete',
+          clickup_last_synced_at: now,
+          last_sync_at: now,
+          clickup_sync_error: result.errors.length > 0 ? result.errors.join('; ') : null,
+        })
+        .eq("id", workspaceId);
+    }).catch(async (syncError) => {
       console.error("[OAuth] Initial sync failed:", syncError);
+      await supabase
+        .from("workspaces")
+        .update({
+          clickup_sync_status: 'error',
+          clickup_sync_error: syncError instanceof Error ? syncError.message : 'Sync failed',
+        })
+        .eq("id", workspaceId);
     });
 
     // Step 7: Redirect to settings with success
-    const redirectUrl = new URL("/settings/integrations", APP_URL);
+    const redirectUrl = new URL("/settings", APP_URL);
     redirectUrl.searchParams.set("success", "clickup_connected");
     return NextResponse.redirect(redirectUrl.toString());
   } catch (err) {
     console.error("[OAuth] Callback processing error:", err);
-    const redirectUrl = new URL("/settings/integrations", APP_URL);
+    const redirectUrl = new URL("/settings", APP_URL);
     redirectUrl.searchParams.set("error", "clickup_connection_failed");
     return NextResponse.redirect(redirectUrl.toString());
   }

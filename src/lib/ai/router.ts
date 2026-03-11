@@ -48,32 +48,32 @@ const PATTERNS: Record<TaskType, RegExp[]> = {
 const MODEL_ROUTING: Record<TaskType, ModelRouting> = {
   simple_query: {
     model: 'haiku',
-    modelId: 'claude-haiku-4-20250414',
+    modelId: 'claude-haiku-4-5-20251001',
     creditCost: 1,
   },
   simple_action: {
     model: 'haiku',
-    modelId: 'claude-haiku-4-20250414',
+    modelId: 'claude-haiku-4-5-20251001',
     creditCost: 1,
   },
   complex_reasoning: {
     model: 'sonnet',
-    modelId: 'claude-sonnet-4-20250514',
+    modelId: 'claude-sonnet-4-6',
     creditCost: 3,
   },
   setup_planning: {
     model: 'sonnet',
-    modelId: 'claude-sonnet-4-20250514',
+    modelId: 'claude-sonnet-4-6',
     creditCost: 5,
   },
   dashboard_design: {
     model: 'sonnet',
-    modelId: 'claude-sonnet-4-20250514',
+    modelId: 'claude-sonnet-4-6',
     creditCost: 3,
   },
   health_analysis: {
     model: 'haiku',
-    modelId: 'claude-haiku-4-20250414',
+    modelId: 'claude-haiku-4-5-20251001',
     creditCost: 2,
   },
 };
