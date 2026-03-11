@@ -1,4 +1,4 @@
-import { createBrowserClient } from '@/lib/supabase/client';
+import { createAdminClient } from '@/lib/supabase/client';
 import type { CreditTransaction, DeductCreditsResult } from '@/types/database';
 
 export async function deductCredits(
@@ -8,7 +8,7 @@ export async function deductCredits(
   description: string,
   metadata: Record<string, unknown> = {}
 ): Promise<DeductCreditsResult> {
-  const supabase = createBrowserClient();
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase.rpc('deduct_credits', {
     p_workspace_id: workspaceId,
@@ -33,7 +33,7 @@ export async function addCredits(
   description: string,
   metadata: Record<string, unknown> = {}
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = createBrowserClient();
+  const supabase = createAdminClient();
 
   // Get current balance
   const { data: workspace, error: wsError } = await supabase
@@ -77,7 +77,7 @@ export async function addCredits(
 }
 
 export async function getCreditBalance(workspaceId: string): Promise<number> {
-  const supabase = createBrowserClient();
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from('workspaces')
@@ -93,7 +93,7 @@ export async function getCreditHistory(
   workspaceId: string,
   limit = 50
 ): Promise<CreditTransaction[]> {
-  const supabase = createBrowserClient();
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from('credit_transactions')
