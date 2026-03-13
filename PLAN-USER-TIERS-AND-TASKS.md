@@ -24,8 +24,8 @@
 - Each task should have a **hyperlink** that opens the task directly in ClickUp.
 
 ### In-App Task Actions
-- **Update status** of a task directly from Binee (without going to ClickUp).
-- **Mark complete** — simple one-click action.
+- **Update status** — Changes are synced directly to ClickUp via the API (`PUT /task/{task_id}`). When a user changes status in Binee, it updates the actual task status in ClickUp in real time. This is not a local copy — Binee acts as a frontend to ClickUp.
+- **Mark complete** — Simple one-click action that sets the task to the "complete" status in ClickUp itself.
 - Goal: Users (especially busy managers) can manage their day-to-day tasks without ever leaving Binee.
 
 ---
