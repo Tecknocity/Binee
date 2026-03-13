@@ -39,23 +39,23 @@ export default function BarChartWidget({ title }: BarChartWidgetProps) {
   return (
     <ResponsiveContainer width="100%" height={240}>
       <BarChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
         <XAxis
           dataKey="name"
-          tick={{ fill: '#A0A0B8', fontSize: 11 }}
+          tick={{ fill: 'var(--chart-tick)', fontSize: 11 }}
           tickLine={false}
-          axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
+          axisLine={{ stroke: 'var(--chart-grid)' }}
         />
         <YAxis
-          tick={{ fill: '#6B6B80', fontSize: 11 }}
+          tick={{ fill: 'var(--chart-tick-secondary)', fontSize: 11 }}
           tickLine={false}
           axisLine={false}
           width={30}
         />
-        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--chart-cursor)' }} />
         <Bar
           dataKey="completed"
-          fill="#FF6B35"
+          fill="var(--color-accent)"
           radius={[4, 4, 0, 0]}
           maxBarSize={40}
         />
