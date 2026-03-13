@@ -26,6 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useConversations, type Conversation } from '@/hooks/useConversations';
 import { useSidebar } from '@/hooks/useSidebar';
+import { BineeLogo } from '@/components/BineeLogo';
 
 const navSections = [
   { href: '/chats', label: 'Chats', icon: MessageSquare },
@@ -269,7 +270,7 @@ export default function Sidebar() {
             {/* Brand */}
             <div className="pt-4 pb-2">
               <Link href="/chat" className="inline-block">
-                <span className="text-lg font-bold text-text-primary">B</span>
+                <BineeLogo variant="icon-white" width={28} height={28} />
               </Link>
             </div>
 
@@ -396,7 +397,7 @@ export default function Sidebar() {
             {/* Brand + collapse toggle */}
             <div className="px-4 pt-4 pb-2 flex items-center justify-between">
               <Link href="/chat" className="inline-block" onClick={() => setMobileOpen(false)}>
-                <span className="text-xl font-bold text-text-primary tracking-tight">BINEE</span>
+                <BineeLogo variant="full-white" width={100} height={40} />
               </Link>
               <button
                 onClick={toggleCollapse}

@@ -57,7 +57,7 @@ export function SetupComplete({ executionResult, manualStepsCount }: SetupComple
               style={{
                 left: `${Math.random() * 100}%`,
                 top: '-5%',
-                backgroundColor: ['#FF6B35', '#3B82F6', '#10B981', '#F59E0B', '#A855F7'][i % 5],
+                backgroundColor: ['#854DF9', '#3B82F6', '#10B981', '#F59E0B', '#9D6FFA'][i % 5],
                 animationDelay: `${Math.random() * 2}s`,
                 animationDuration: `${2 + Math.random() * 2}s`,
               }}

@@ -163,11 +163,11 @@ const mockWidgets: DashboardWidget[] = [
 
 export function getBarChartData() {
   return [
-    { name: 'Sarah K.', completed: 28, color: '#FF6B35' },
-    { name: 'James M.', completed: 24, color: '#FF8A5C' },
-    { name: 'Emily R.', completed: 21, color: '#FF6B35' },
-    { name: 'David L.', completed: 18, color: '#FF8A5C' },
-    { name: 'Maria C.', completed: 15, color: '#FF6B35' },
+    { name: 'Sarah K.', completed: 28, color: '#854DF9' },
+    { name: 'James M.', completed: 24, color: '#9D6FFA' },
+    { name: 'Emily R.', completed: 21, color: '#854DF9' },
+    { name: 'David L.', completed: 18, color: '#9D6FFA' },
+    { name: 'Maria C.', completed: 15, color: '#854DF9' },
   ];
 }
 
