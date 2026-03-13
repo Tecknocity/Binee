@@ -431,7 +431,7 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-64 bg-navy-dark border-r border-border/50 flex flex-col transition-transform duration-200 ease-out lg:translate-x-0 lg:static lg:z-auto',
+          'fixed inset-y-0 left-0 z-40 w-64 bg-navy-dark border-r border-border/50 flex flex-col transition-transform duration-200 ease-out lg:translate-x-0 lg:static lg:z-auto lg:h-full shrink-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >

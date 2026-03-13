@@ -30,9 +30,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-navy-base flex">
+    <div className="h-screen bg-navy-base flex overflow-hidden">
       <Sidebar />
-      <main className="flex-1 min-h-screen overflow-auto">
+      <main className="flex-1 h-screen overflow-auto">
         {isFullBleed ? (
           children
         ) : (
