@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@theme inline {
+@theme {
   --color-navy-base: #1A1A2E;
   --color-navy-light: #25253D;
   --color-navy-dark: #12121F;
@@ -37,7 +37,7 @@ html.light {
   --color-text-muted: #7A7A8C;
   --color-accent: #E55A28;
   --color-accent-hover: #D04E1E;
-  --color-accent-light: #FF8A5C;
+  --color-accent-light: #C04A1C;
   --color-success: #16A34A;
   --color-warning: #CA8A04;
   --color-error: #DC2626;

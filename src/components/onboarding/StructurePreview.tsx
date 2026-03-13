@@ -77,18 +77,18 @@ export function StructurePreview({ plan, onApprove, onRequestChanges, onStartOve
             {space.folders.map((folder, fi) => (
               <TreeNode
                 key={fi}
-                icon={<Folder className="w-4 h-4 text-yellow-400" />}
+                icon={<Folder className="w-4 h-4 text-warning" />}
                 label={folder.name}
                 badge="Folder"
-                badgeColor="bg-yellow-400/15 text-yellow-400"
+                badgeColor="bg-warning/15 text-warning"
               >
                 {folder.lists.map((list, li) => (
                   <TreeNode
                     key={li}
-                    icon={<List className="w-4 h-4 text-blue-400" />}
+                    icon={<List className="w-4 h-4 text-info" />}
                     label={list.name}
                     badge={`${list.tasks.length} tasks`}
-                    badgeColor="bg-blue-400/15 text-blue-400"
+                    badgeColor="bg-info/15 text-info"
                   >
                     {list.tasks.map((task, ti) => (
                       <div key={ti} className="flex items-center gap-2 py-1 pl-2 text-sm text-text-secondary">
@@ -104,10 +104,10 @@ export function StructurePreview({ plan, onApprove, onRequestChanges, onStartOve
             {space.folderlessLists.map((list, li) => (
               <TreeNode
                 key={`fl-${li}`}
-                icon={<List className="w-4 h-4 text-blue-400" />}
+                icon={<List className="w-4 h-4 text-info" />}
                 label={list.name}
                 badge={`${list.tasks.length} tasks`}
-                badgeColor="bg-blue-400/15 text-blue-400"
+                badgeColor="bg-info/15 text-info"
               >
                 {list.tasks.map((task, ti) => (
                   <div key={ti} className="flex items-center gap-2 py-1 pl-2 text-sm text-text-secondary">
@@ -123,10 +123,10 @@ export function StructurePreview({ plan, onApprove, onRequestChanges, onStartOve
         {/* Docs */}
         {plan.docs.length > 0 && (
           <TreeNode
-            icon={<FileText className="w-4 h-4 text-emerald-400" />}
+            icon={<FileText className="w-4 h-4 text-success" />}
             label="Documents"
             badge={`${plan.docs.length} docs`}
-            badgeColor="bg-emerald-400/15 text-emerald-400"
+            badgeColor="bg-success/15 text-success"
             defaultOpen
           >
             {plan.docs.map((doc, di) => (
