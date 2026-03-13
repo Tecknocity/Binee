@@ -94,7 +94,7 @@ export default function NotificationSettings() {
   };
 
   return (
-    <form onSubmit={handleSave} className="space-y-8 max-w-3xl">
+    <form onSubmit={handleSave} className="space-y-8">
       {/* Master toggle */}
       <div>
         <h2 className="text-lg font-medium text-text-primary mb-4">Notifications</h2>

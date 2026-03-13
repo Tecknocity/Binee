@@ -20,18 +20,18 @@ export default function PrivacySettings() {
   };
 
   return (
-    <form onSubmit={handleSave} className="space-y-8 max-w-3xl">
+    <form onSubmit={handleSave} className="space-y-8">
       {/* Data usage */}
       <div>
         <h2 className="text-lg font-medium text-text-primary mb-4">Privacy</h2>
 
-        <div className="space-y-5">
-          <div className="flex items-start justify-between gap-4">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-6 p-4 bg-surface border border-border rounded-xl">
             <div>
               <p className="text-sm font-medium text-text-primary">
                 Improve Binee for everyone
               </p>
-              <p className="text-xs text-text-muted mt-0.5 max-w-md">
+              <p className="text-xs text-text-muted mt-1">
                 Allow us to use your conversations to improve our AI models. Your data is
                 anonymized and never shared with third parties.
               </p>
@@ -40,7 +40,7 @@ export default function PrivacySettings() {
               type="button"
               onClick={() => setAllowTraining(!allowTraining)}
               className={cn(
-                'relative w-10 h-6 rounded-full transition-colors shrink-0 mt-0.5',
+                'relative w-10 h-6 rounded-full transition-colors shrink-0',
                 allowTraining ? 'bg-accent' : 'bg-surface border border-border'
               )}
             >
@@ -53,12 +53,12 @@ export default function PrivacySettings() {
             </button>
           </div>
 
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center justify-between gap-6 p-4 bg-surface border border-border rounded-xl">
             <div>
               <p className="text-sm font-medium text-text-primary">
                 Chat history
               </p>
-              <p className="text-xs text-text-muted mt-0.5 max-w-md">
+              <p className="text-xs text-text-muted mt-1">
                 Save your chat history so you can access previous conversations. When disabled,
                 new chats won&apos;t be saved after 30 days.
               </p>
@@ -67,7 +67,7 @@ export default function PrivacySettings() {
               type="button"
               onClick={() => setChatHistory(!chatHistory)}
               className={cn(
-                'relative w-10 h-6 rounded-full transition-colors shrink-0 mt-0.5',
+                'relative w-10 h-6 rounded-full transition-colors shrink-0',
                 chatHistory ? 'bg-accent' : 'bg-surface border border-border'
               )}
             >
@@ -88,10 +88,10 @@ export default function PrivacySettings() {
       {/* Data management */}
       <div>
         <h2 className="text-lg font-medium text-text-primary mb-4">Data Management</h2>
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             type="button"
-            className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-text-primary bg-surface border border-border rounded-lg hover:bg-surface-hover transition-colors"
+            className="flex items-center gap-2.5 px-5 py-4 text-sm font-medium text-text-primary bg-surface border border-border rounded-xl hover:bg-surface-hover transition-colors"
           >
             <Download className="w-4 h-4" />
             Export my data
@@ -99,7 +99,7 @@ export default function PrivacySettings() {
 
           <button
             type="button"
-            className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-error border border-error/30 rounded-lg hover:bg-error/10 transition-colors"
+            className="flex items-center gap-2.5 px-5 py-4 text-sm font-medium text-error bg-error/5 border border-error/20 rounded-xl hover:bg-error/10 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
             Delete all chat history
