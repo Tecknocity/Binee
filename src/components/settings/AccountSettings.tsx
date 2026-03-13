@@ -21,7 +21,6 @@ export default function AccountSettings() {
     e.preventDefault();
     if (!email || email === user?.email) return;
     setEmailSaving(true);
-    // Placeholder: would call supabase.auth.updateUser({ email })
     await new Promise((r) => setTimeout(r, 600));
     setEmailSaving(false);
     setEmailSaved(true);
@@ -43,14 +42,11 @@ export default function AccountSettings() {
   };
 
   return (
-    <div className="space-y-8 max-w-3xl">
+    <div className="space-y-8">
       {/* Email */}
-      <div>
-        <h2 className="text-lg font-medium text-text-primary mb-4">Account</h2>
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <h2 className="text-lg font-medium text-text-primary mb-4">Email Address</h2>
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-1.5">
-            Email address
-          </label>
           {emailEditing ? (
             <form onSubmit={handleUpdateEmail} className="space-y-3">
               <div className="relative">
@@ -118,48 +114,47 @@ export default function AccountSettings() {
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-border/50" />
-
       {/* Change password */}
-      <div>
+      <div className="bg-surface border border-border rounded-xl p-6">
         <h2 className="text-lg font-medium text-text-primary mb-4">Change Password</h2>
-        <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">
-              Current password
-            </label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">
-              New password
-            </label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">
-              Confirm new password
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-            />
-            {newPassword && confirmPassword && newPassword !== confirmPassword && (
-              <p className="text-xs text-error mt-1">Passwords do not match</p>
-            )}
+        <form onSubmit={handleChangePassword} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">
+                Current password
+              </label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">
+                New password
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">
+                Confirm new password
+              </label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+              />
+              {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                <p className="text-xs text-error mt-1">Passwords do not match</p>
+              )}
+            </div>
           </div>
 
           <button
@@ -181,18 +176,15 @@ export default function AccountSettings() {
         </form>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-border/50" />
-
       {/* Danger zone */}
-      <div>
+      <div className="bg-error/5 border border-error/20 rounded-xl p-6">
         <h2 className="text-lg font-medium text-error mb-2">Danger Zone</h2>
         <p className="text-sm text-text-secondary mb-4">
           Once you delete your account, there is no going back. Please be certain.
         </p>
 
         {showDeleteConfirm ? (
-          <div className="bg-error/5 border border-error/20 rounded-xl p-4">
+          <div className="bg-navy-base border border-error/20 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-error shrink-0 mt-0.5" />
               <div>

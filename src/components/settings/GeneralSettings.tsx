@@ -138,9 +138,9 @@ export default function GeneralSettings() {
     .slice(0, 2);
 
   return (
-    <form onSubmit={handleSave} className="space-y-8 max-w-3xl">
+    <form onSubmit={handleSave} className="space-y-8">
       {/* Profile section */}
-      <div>
+      <div className="bg-surface border border-border rounded-xl p-6">
         <h2 className="text-lg font-medium text-text-primary mb-4">Profile</h2>
         <div className="space-y-4">
           {/* Avatar */}
@@ -290,14 +290,11 @@ export default function GeneralSettings() {
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-border/50" />
-
       {/* Appearance */}
-      <div>
+      <div className="bg-surface border border-border rounded-xl p-6">
         <h2 className="text-lg font-medium text-text-primary mb-4">Appearance</h2>
         <p className="text-sm text-text-secondary mb-3">Color mode</p>
-        <div className="flex gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {colorModes.map((mode) => {
             const Icon = mode.icon;
             const isActive = colorMode === mode.id;
@@ -307,7 +304,7 @@ export default function GeneralSettings() {
                 type="button"
                 onClick={() => setTheme(mode.id)}
                 className={cn(
-                  'flex flex-col items-center gap-2 p-4 rounded-xl border transition-all w-28',
+                  'flex flex-col items-center gap-2 p-4 rounded-xl border transition-all',
                   isActive
                     ? 'border-accent bg-accent/5'
                     : 'border-border bg-surface hover:border-border-light'
