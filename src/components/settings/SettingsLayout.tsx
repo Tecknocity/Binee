@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Settings, User, Shield, Users, ArrowLeft, Bell, CreditCard, Plug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -24,8 +25,26 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]['id'];
 
+const validTabs = new Set<string>(tabs.map((t) => t.id));
+
 export default function SettingsLayout() {
-  const [activeTab, setActiveTab] = useState<TabId>('general');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const tabParam = searchParams.get('tab');
+  const initialTab = (tabParam && validTabs.has(tabParam) ? tabParam : 'general') as TabId;
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+
+  // Sync tab from URL when navigating back to settings with a different ?tab=
+  useEffect(() => {
+    if (tabParam && validTabs.has(tabParam) && tabParam !== activeTab) {
+      setActiveTab(tabParam as TabId);
+    }
+  }, [tabParam, activeTab]);
+
+  const handleTabChange = (id: TabId) => {
+    setActiveTab(id);
+    router.replace(`/settings?tab=${id}`, { scroll: false });
+  };
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -48,7 +67,7 @@ export default function SettingsLayout() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={cn(
                   'flex items-center gap-2.5 w-full px-3 py-2 text-sm font-medium rounded-lg transition-colors text-left',
                   activeTab === tab.id

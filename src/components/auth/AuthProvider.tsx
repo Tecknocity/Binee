@@ -24,6 +24,7 @@ interface AuthState {
   signOut: () => Promise<void>;
   switchWorkspace: (workspaceId: string) => void;
   refreshWorkspace: () => Promise<void>;
+  updateUser: (data: { display_name?: string; avatar_url?: string | null }) => Promise<{ error?: string }>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -213,6 +214,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const updateUser = async (data: { display_name?: string; avatar_url?: string | null }) => {
+    const { error } = await supabase.auth.updateUser({ data });
+    if (error) return { error: error.message };
+    // Re-fetch session to get updated metadata
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      setUser(mapSupabaseUser(session.user));
+    }
+    return {};
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -248,6 +260,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         switchWorkspace,
         refreshWorkspace,
+        updateUser,
       }}
     >
       {children}

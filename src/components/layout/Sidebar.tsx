@@ -359,7 +359,7 @@ export default function Sidebar() {
 
             {/* Usage / Billing */}
             <Link
-              href="/billing"
+              href="/settings?tab=billing"
               onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
               className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
             >
@@ -372,7 +372,7 @@ export default function Sidebar() {
 
             {/* View all plans */}
             <Link
-              href="/billing"
+              href="/settings?tab=billing"
               onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
               className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
             >
@@ -382,7 +382,7 @@ export default function Sidebar() {
 
             {/* Integrations */}
             <Link
-              href="/integrations"
+              href="/settings?tab=integrations"
               onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
               className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
             >
