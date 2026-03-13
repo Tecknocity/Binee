@@ -41,19 +41,19 @@ export default function LineChartWidget({ title }: LineChartWidgetProps) {
       <AreaChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
         <defs>
           <linearGradient id="lineWidgetGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#FF6B35" stopOpacity={0} />
+            <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.25} />
+            <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
         <XAxis
           dataKey="week"
-          tick={{ fill: '#A0A0B8', fontSize: 11 }}
+          tick={{ fill: 'var(--chart-tick)', fontSize: 11 }}
           tickLine={false}
-          axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
+          axisLine={{ stroke: 'var(--chart-grid)' }}
         />
         <YAxis
-          tick={{ fill: '#6B6B80', fontSize: 11 }}
+          tick={{ fill: 'var(--chart-tick-secondary)', fontSize: 11 }}
           tickLine={false}
           axisLine={false}
           width={30}
@@ -62,11 +62,11 @@ export default function LineChartWidget({ title }: LineChartWidgetProps) {
         <Area
           type="monotone"
           dataKey="completed"
-          stroke="#FF6B35"
+          stroke="var(--color-accent)"
           strokeWidth={2}
           fill="url(#lineWidgetGradient)"
-          dot={{ r: 3, fill: '#FF6B35', stroke: '#1A1A2E', strokeWidth: 2 }}
-          activeDot={{ r: 5, fill: '#FF6B35', stroke: '#1A1A2E', strokeWidth: 2 }}
+          dot={{ r: 3, fill: 'var(--color-accent)', stroke: 'var(--chart-dot-stroke)', strokeWidth: 2 }}
+          activeDot={{ r: 5, fill: 'var(--color-accent)', stroke: 'var(--chart-dot-stroke)', strokeWidth: 2 }}
         />
       </AreaChart>
     </ResponsiveContainer>

@@ -48,7 +48,7 @@ export default function HealthScoreCircle({ score, size = 180 }: HealthScoreCirc
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="rgba(255,255,255,0.06)"
+            stroke="var(--chart-grid)"
             strokeWidth={10}
           />
           {/* Progress circle */}

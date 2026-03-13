@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { Monitor, Moon, Sun, Save, Loader2, Camera, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type ColorMode = 'light' | 'auto' | 'dark';
+type ColorMode = 'light' | 'system' | 'dark';
 
 const colorModes: { id: ColorMode; label: string; icon: typeof Sun; description: string }[] = [
   { id: 'light', label: 'Light', icon: Sun, description: 'Always use light theme' },
-  { id: 'auto', label: 'Auto', icon: Monitor, description: 'Match system setting' },
+  { id: 'system', label: 'Auto', icon: Monitor, description: 'Match system setting' },
   { id: 'dark', label: 'Dark', icon: Moon, description: 'Always use dark theme' },
 ];
 
@@ -63,14 +64,17 @@ function detectTimezone(): string {
   return 'America/New_York';
 }
 
+const emptySubscribe = () => () => {};
+
 export default function GeneralSettings() {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [displayName, setDisplayName] = useState(user?.display_name || '');
   const [preferredName, setPreferredName] = useState(user?.display_name?.split(' ')[0] || '');
   const [workRole, setWorkRole] = useState('Founder/Owner');
   const [personalPreferences, setPersonalPreferences] = useState('');
   const [timezone, setTimezone] = useState(detectTimezone);
-  const [colorMode, setColorMode] = useState<ColorMode>('dark');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null);
@@ -99,6 +103,8 @@ export default function GeneralSettings() {
     const first = value.split(' ')[0] || '';
     setPreferredName(first);
   }, []);
+
+  const colorMode = (mounted ? theme : 'dark') as ColorMode;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -294,7 +300,7 @@ export default function GeneralSettings() {
               <button
                 key={mode.id}
                 type="button"
-                onClick={() => setColorMode(mode.id)}
+                onClick={() => setTheme(mode.id)}
                 className={cn(
                   'flex flex-col items-center gap-2 p-4 rounded-xl border transition-all w-28',
                   isActive
@@ -306,15 +312,15 @@ export default function GeneralSettings() {
                   className={cn(
                     'w-16 h-10 rounded-lg border flex items-center justify-center',
                     mode.id === 'light'
-                      ? 'bg-gray-100 border-gray-200'
+                      ? 'bg-[#F5F3EF] border-[#E3E0DA]'
                       : mode.id === 'dark'
                         ? 'bg-navy-dark border-border'
-                        : 'bg-gradient-to-r from-gray-100 to-navy-dark border-border'
+                        : 'bg-gradient-to-r from-[#F5F3EF] to-navy-dark border-border'
                   )}
                 >
                   <Icon className={cn(
                     'w-4 h-4',
-                    mode.id === 'light' ? 'text-gray-600' : 'text-text-secondary'
+                    mode.id === 'light' ? 'text-[#4A4A5C]' : 'text-text-secondary'
                   )} />
                 </div>
                 <span className={cn(

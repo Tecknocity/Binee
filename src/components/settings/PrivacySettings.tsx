@@ -46,7 +46,7 @@ export default function PrivacySettings() {
             >
               <span
                 className={cn(
-                  'absolute top-1 w-4 h-4 rounded-full bg-white transition-transform',
+                  'absolute top-1 w-4 h-4 rounded-full bg-[var(--toggle-knob)] shadow-sm transition-transform',
                   allowTraining ? 'left-5' : 'left-1'
                 )}
               />
@@ -73,7 +73,7 @@ export default function PrivacySettings() {
             >
               <span
                 className={cn(
-                  'absolute top-1 w-4 h-4 rounded-full bg-white transition-transform',
+                  'absolute top-1 w-4 h-4 rounded-full bg-[var(--toggle-knob)] shadow-sm transition-transform',
                   chatHistory ? 'left-5' : 'left-1'
                 )}
               />
