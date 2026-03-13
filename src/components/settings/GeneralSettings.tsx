@@ -20,7 +20,7 @@ const ROTATING_PLACEHOLDERS = [
   'I like data-driven recommendations with specific numbers',
   'When analyzing tasks, group them by team member first',
   'I prefer dashboards that show trends over the last 30 days',
-  'Keep suggestions actionable — tell me exactly what to do next',
+  'Keep suggestions actionable -tell me exactly what to do next',
   'I work best with morning priorities and end-of-day reviews',
   'Use simple language, avoid jargon unless it\'s industry-specific',
   'I like to see both the big picture and the details',

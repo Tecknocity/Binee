@@ -1,6 +1,7 @@
 'use client';
 
-import { Bot, Coins } from 'lucide-react';
+import { Coins } from 'lucide-react';
+import Image from 'next/image';
 import type { ChatMessage as ChatMessageType, DashboardChoiceData } from '@/hooks/useChat';
 import ToolCallIndicator from './ToolCallIndicator';
 import ActionConfirmation from './ActionConfirmation';
@@ -251,8 +252,8 @@ export default function ChatMessage({
   return (
     <div className="flex gap-3 mb-4">
       {/* Avatar */}
-      <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0 mt-0.5">
-        <Bot className="w-4 h-4 text-accent" />
+      <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+        <Image src="/Binee__icon__white.svg" alt="Binee" width={24} height={24} unoptimized />
       </div>
 
       <div className="max-w-[80%] space-y-1 min-w-0">

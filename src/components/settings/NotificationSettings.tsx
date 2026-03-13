@@ -183,7 +183,7 @@ export default function NotificationSettings() {
               <div>
                 <p className="text-sm font-medium text-text-primary">Daily digest</p>
                 <p className="text-xs text-text-muted mt-0.5">
-                  At the end of the day, receive an email with an overview of what happened — tasks completed, progress made, and anything that needs attention.
+                  At the end of the day, receive an email with an overview of what happened -tasks completed, progress made, and anything that needs attention.
                 </p>
               </div>
               <Toggle

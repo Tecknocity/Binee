@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { useConversations, type Conversation } from '@/hooks/useConversations';
 import { useSidebar } from '@/hooks/useSidebar';
 import { BineeLogo } from '@/components/BineeLogo';
+import { useTheme } from 'next-themes';
 
 const navSections = [
   { href: '/chats', label: 'Chats', icon: MessageSquare },
@@ -172,6 +173,7 @@ export default function Sidebar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { collapsed, toggle: toggleCollapse } = useSidebar();
+  const { resolvedTheme } = useTheme();
 
   const {
     conversations,
@@ -270,7 +272,7 @@ export default function Sidebar() {
             {/* Brand */}
             <div className="pt-4 pb-2">
               <Link href="/chat" className="inline-block">
-                <BineeLogo variant="icon-white" width={28} height={28} />
+                <BineeLogo variant={resolvedTheme === 'light' ? 'icon-black' : 'icon-white'} width={28} height={28} />
               </Link>
             </div>
 
@@ -397,7 +399,7 @@ export default function Sidebar() {
             {/* Brand + collapse toggle */}
             <div className="px-4 pt-4 pb-2 flex items-center justify-between">
               <Link href="/chat" className="inline-block" onClick={() => setMobileOpen(false)}>
-                <BineeLogo variant="full-white" width={100} height={40} />
+                <span className="text-xl font-black text-text-primary tracking-wide" style={{ fontFamily: "'Heebo', sans-serif" }}>BINEE</span>
               </Link>
               <button
                 onClick={toggleCollapse}

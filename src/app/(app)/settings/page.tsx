@@ -1,7 +1,7 @@
 import SettingsLayout from '@/components/settings/SettingsLayout';
 
 export const metadata = {
-  title: 'Settings — Binee',
+  title: 'Settings - Binee',
 };
 
 export default function SettingsPage() {
