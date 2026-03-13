@@ -14,7 +14,6 @@ import {
   Menu,
   X,
   ChevronUp,
-  Hexagon,
   Plus,
   Search,
   Trash2,
@@ -82,39 +81,39 @@ function SearchDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Dialog */}
+      {/* Dialog — larger and centered like Claude */}
       <div
         ref={dialogRef}
-        className="relative w-full max-w-lg mx-4 bg-navy-dark border border-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="relative w-full max-w-2xl mx-6 bg-navy-dark border border-accent/20 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
       >
         {/* Search input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50">
-          <Search className="w-4 h-4 text-text-muted shrink-0" />
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border/50">
+          <Search className="w-5 h-5 text-text-muted shrink-0" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search chats and projects"
-            className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+            className="flex-1 bg-transparent text-base text-text-primary placeholder:text-text-muted focus:outline-none"
           />
           <button
             onClick={onClose}
-            className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+            className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Results */}
-        <div className="max-h-[50vh] overflow-y-auto py-1">
+        <div className="max-h-[60vh] overflow-y-auto py-2">
           {filtered.length > 0 ? (
             filtered.map((conv) => (
               <button
@@ -123,7 +122,7 @@ function SearchDialog({
                   onSelectConversation(conv.id);
                   onClose();
                 }}
-                className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-surface-hover transition-colors"
+                className="flex items-center gap-3 w-full px-5 py-3 text-left hover:bg-surface-hover transition-colors"
               >
                 <MessageSquare className="w-4 h-4 text-text-muted shrink-0" />
                 <span className="text-sm text-text-primary truncate flex-1">
@@ -135,7 +134,7 @@ function SearchDialog({
               </button>
             ))
           ) : (
-            <div className="px-4 py-8 text-center">
+            <div className="px-5 py-10 text-center">
               <p className="text-sm text-text-muted">
                 {query ? 'No results found' : 'No chats yet'}
               </p>
@@ -216,13 +215,10 @@ export default function Sidebar() {
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      {/* Logo / Brand */}
+      {/* Brand */}
       <div className="px-4 pt-4 pb-2">
-        <Link href="/chat" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}>
-          <div className="w-7 h-7 rounded-lg bg-accent/15 flex items-center justify-center">
-            <Hexagon className="w-4 h-4 text-accent" />
-          </div>
-          <span className="text-base font-bold text-text-primary tracking-tight">Binee</span>
+        <Link href="/chat" className="inline-block" onClick={() => setMobileOpen(false)}>
+          <span className="text-xl font-bold text-text-primary tracking-tight">BINEE</span>
         </Link>
       </div>
 
@@ -323,11 +319,15 @@ export default function Sidebar() {
             userMenuOpen ? 'bg-surface-hover' : 'hover:bg-surface-hover'
           )}
         >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-            <span className="text-accent text-xs font-bold">
-              {user?.display_name?.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '??'}
-            </span>
-          </div>
+          {user?.avatar_url ? (
+            <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-accent/20 shrink-0" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+              <span className="text-accent text-xs font-bold">
+                {user?.display_name?.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '??'}
+              </span>
+            </div>
+          )}
           <div className="flex-1 text-left min-w-0">
             <p className="text-sm font-medium text-text-primary truncate">{user?.display_name || 'User'}</p>
             <p className="text-[11px] text-text-muted truncate leading-none mt-0.5">

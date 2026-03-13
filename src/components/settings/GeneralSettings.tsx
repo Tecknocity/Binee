@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { Monitor, Moon, Sun, Save, Loader2 } from 'lucide-react';
+import { Monitor, Moon, Sun, Save, Loader2, Camera, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type ColorMode = 'light' | 'auto' | 'dark';
@@ -13,17 +13,92 @@ const colorModes: { id: ColorMode; label: string; icon: typeof Sun; description:
   { id: 'dark', label: 'Dark', icon: Moon, description: 'Always use dark theme' },
 ];
 
+const ROTATING_PLACEHOLDERS = [
+  'I prefer concise, bullet-point summaries over long paragraphs',
+  'Always prioritize tasks by deadline, then by priority level',
+  'I like data-driven recommendations with specific numbers',
+  'When analyzing tasks, group them by team member first',
+  'I prefer dashboards that show trends over the last 30 days',
+  'Keep suggestions actionable — tell me exactly what to do next',
+  'I work best with morning priorities and end-of-day reviews',
+  'Use simple language, avoid jargon unless it\'s industry-specific',
+  'I like to see both the big picture and the details',
+  'When in doubt, ask me clarifying questions before proceeding',
+];
+
+const TIMEZONES = [
+  { value: 'Pacific/Honolulu', label: '(GMT-10:00) Hawaii' },
+  { value: 'America/Anchorage', label: '(GMT-09:00) Alaska' },
+  { value: 'America/Los_Angeles', label: '(GMT-08:00) Pacific Time' },
+  { value: 'America/Denver', label: '(GMT-07:00) Mountain Time' },
+  { value: 'America/Chicago', label: '(GMT-06:00) Central Time' },
+  { value: 'America/New_York', label: '(GMT-05:00) Eastern Time' },
+  { value: 'America/Halifax', label: '(GMT-04:00) Atlantic Time' },
+  { value: 'America/Sao_Paulo', label: '(GMT-03:00) Brasilia' },
+  { value: 'Atlantic/South_Georgia', label: '(GMT-02:00) Mid-Atlantic' },
+  { value: 'Atlantic/Azores', label: '(GMT-01:00) Azores' },
+  { value: 'Europe/London', label: '(GMT+00:00) London' },
+  { value: 'Europe/Paris', label: '(GMT+01:00) Paris, Berlin' },
+  { value: 'Europe/Helsinki', label: '(GMT+02:00) Helsinki, Cairo' },
+  { value: 'Europe/Moscow', label: '(GMT+03:00) Moscow' },
+  { value: 'Asia/Dubai', label: '(GMT+04:00) Dubai' },
+  { value: 'Asia/Karachi', label: '(GMT+05:00) Karachi' },
+  { value: 'Asia/Kolkata', label: '(GMT+05:30) Mumbai, New Delhi' },
+  { value: 'Asia/Dhaka', label: '(GMT+06:00) Dhaka' },
+  { value: 'Asia/Bangkok', label: '(GMT+07:00) Bangkok' },
+  { value: 'Asia/Shanghai', label: '(GMT+08:00) Shanghai, Singapore' },
+  { value: 'Asia/Tokyo', label: '(GMT+09:00) Tokyo' },
+  { value: 'Australia/Sydney', label: '(GMT+10:00) Sydney' },
+  { value: 'Pacific/Noumea', label: '(GMT+11:00) Noumea' },
+  { value: 'Pacific/Auckland', label: '(GMT+12:00) Auckland' },
+];
+
+function detectTimezone(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (TIMEZONES.some((t) => t.value === tz)) return tz;
+  } catch {
+    // ignore
+  }
+  return 'America/New_York';
+}
+
 export default function GeneralSettings() {
   const { user } = useAuth();
   const [displayName, setDisplayName] = useState(user?.display_name || '');
   const [preferredName, setPreferredName] = useState(user?.display_name?.split(' ')[0] || '');
-  const [workRole, setWorkRole] = useState('Operations');
+  const [workRole, setWorkRole] = useState('Founder/Owner');
   const [personalPreferences, setPersonalPreferences] = useState('');
+  const [timezone, setTimezone] = useState(detectTimezone);
   const [colorMode, setColorMode] = useState<ColorMode>('dark');
-  const [responseNotifications, setResponseNotifications] = useState(false);
-  const [emailNotifications, setEmailNotifications] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Rotating placeholder for personal preferences
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [placeholderVisible, setPlaceholderVisible] = useState(true);
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (isFocused || personalPreferences) return;
+    const interval = setInterval(() => {
+      setPlaceholderVisible(false);
+      setTimeout(() => {
+        setPlaceholderIndex((prev) => (prev + 1) % ROTATING_PLACEHOLDERS.length);
+        setPlaceholderVisible(true);
+      }, 300);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isFocused, personalPreferences]);
+
+  // Auto-fill preferred name from first name when display name changes
+  const handleDisplayNameChange = useCallback((value: string) => {
+    setDisplayName(value);
+    const first = value.split(' ')[0] || '';
+    setPreferredName(first);
+  }, []);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +107,16 @@ export default function GeneralSettings() {
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setAvatarPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const initials = (displayName || 'U')
@@ -47,23 +132,53 @@ export default function GeneralSettings() {
       <div>
         <h2 className="text-lg font-medium text-text-primary mb-4">Profile</h2>
         <div className="space-y-4">
+          {/* Avatar */}
+          <div className="flex items-center gap-4 mb-2">
+            <div className="relative">
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt="Avatar"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-accent/30"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-accent/20 border-2 border-accent/30 flex items-center justify-center">
+                  <span className="text-accent text-lg font-bold">{initials}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-surface-hover transition-colors"
+              >
+                <Camera className="w-3.5 h-3.5 text-text-secondary" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-text-primary">{displayName || 'Your Name'}</p>
+              <p className="text-xs text-text-muted">Click the camera to update your photo</p>
+            </div>
+          </div>
+
           {/* Full name + preferred name */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-1.5">
                 Full name
               </label>
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0">
-                  <span className="text-accent text-xs font-bold">{initials}</span>
-                </div>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="flex-1 px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-                />
-              </div>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => handleDisplayNameChange(e.target.value)}
+                className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-1.5">
@@ -73,6 +188,7 @@ export default function GeneralSettings() {
                 type="text"
                 value={preferredName}
                 onChange={(e) => setPreferredName(e.target.value)}
+                placeholder="Your preferred name"
                 className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
               />
             </div>
@@ -88,17 +204,24 @@ export default function GeneralSettings() {
               onChange={(e) => setWorkRole(e.target.value)}
               className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent transition-colors"
             >
+              <option value="Founder/Owner">Founder/Owner</option>
+              <option value="CEO">CEO</option>
+              <option value="CTO">CTO</option>
               <option value="Engineering">Engineering</option>
               <option value="Design">Design</option>
               <option value="Product">Product</option>
               <option value="Marketing">Marketing</option>
               <option value="Sales">Sales</option>
               <option value="Operations">Operations</option>
+              <option value="Finance">Finance</option>
+              <option value="HR">HR</option>
+              <option value="Freelancer">Freelancer</option>
+              <option value="Consultant">Consultant</option>
               <option value="Other">Other</option>
             </select>
           </div>
 
-          {/* Personal preferences */}
+          {/* Personal preferences with rotating placeholder */}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">
               What personal preferences should Binee consider in responses?
@@ -106,70 +229,52 @@ export default function GeneralSettings() {
             <p className="text-xs text-text-muted mb-2">
               Your preferences will apply to all conversations.
             </p>
-            <textarea
-              value={personalPreferences}
-              onChange={(e) => setPersonalPreferences(e.target.value)}
-              placeholder="e.g. when learning new concepts, I find analogies particularly helpful"
-              rows={3}
-              className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors resize-none"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Divider */}
-      <div className="border-t border-border/50" />
-
-      {/* Notifications */}
-      <div>
-        <h2 className="text-lg font-medium text-text-primary mb-4">Notifications</h2>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-text-primary">Response completions</p>
-              <p className="text-xs text-text-muted mt-0.5">
-                Get notified when Binee has finished a response.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setResponseNotifications(!responseNotifications)}
-              className={cn(
-                'relative w-10 h-6 rounded-full transition-colors',
-                responseNotifications ? 'bg-accent' : 'bg-surface border border-border'
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-1 w-4 h-4 rounded-full bg-white transition-transform',
-                  responseNotifications ? 'left-5' : 'left-1'
-                )}
+            <div className="relative">
+              <textarea
+                value={personalPreferences}
+                onChange={(e) => setPersonalPreferences(e.target.value)}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
+                rows={3}
+                className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors resize-none"
               />
-            </button>
+              {!personalPreferences && !isFocused && (
+                <div className="absolute top-0 left-0 right-0 px-3 py-2.5 pointer-events-none">
+                  <span
+                    className={cn(
+                      'text-sm text-text-muted transition-opacity duration-300',
+                      placeholderVisible ? 'opacity-100' : 'opacity-0'
+                    )}
+                  >
+                    {ROTATING_PLACEHOLDERS[placeholderIndex]}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-text-primary">Email notifications</p>
-              <p className="text-xs text-text-muted mt-0.5">
-                Get an email when Binee has finished building or needs your response.
-              </p>
+          {/* Timezone */}
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">
+              Timezone
+            </label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+              <select
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full pl-9 pr-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent transition-colors"
+              >
+                {TIMEZONES.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+              </select>
             </div>
-            <button
-              type="button"
-              onClick={() => setEmailNotifications(!emailNotifications)}
-              className={cn(
-                'relative w-10 h-6 rounded-full transition-colors',
-                emailNotifications ? 'bg-accent' : 'bg-surface border border-border'
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-1 w-4 h-4 rounded-full bg-white transition-transform',
-                  emailNotifications ? 'left-5' : 'left-1'
-                )}
-              />
-            </button>
+            <p className="text-xs text-text-muted mt-1">
+              Used for daily notifications and digest scheduling.
+            </p>
           </div>
         </div>
       </div>
