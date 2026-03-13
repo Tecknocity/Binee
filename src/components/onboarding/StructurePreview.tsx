@@ -235,7 +235,7 @@ function TreeNode({
       <button
         onClick={() => hasChildren && setOpen(!open)}
         className={`flex items-center gap-2 w-full text-left py-1.5 px-2 rounded-lg
-          hover:bg-white/[0.03] transition-colors group ${hasChildren ? 'cursor-pointer' : 'cursor-default'}`}
+          hover:bg-surface-hover transition-colors group ${hasChildren ? 'cursor-pointer' : 'cursor-default'}`}
       >
         {hasChildren ? (
           open ? (

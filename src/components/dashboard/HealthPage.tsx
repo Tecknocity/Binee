@@ -167,16 +167,16 @@ export default function HealthPage() {
             <AreaChart data={historicalScores} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
               <defs>
                 <linearGradient id="healthGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#FF6B35" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
               <XAxis
                 dataKey="date"
-                tick={{ fill: '#6B6B80', fontSize: 11 }}
+                tick={{ fill: 'var(--chart-tick-secondary)', fontSize: 11 }}
                 tickLine={false}
-                axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
+                axisLine={{ stroke: 'var(--chart-grid)' }}
                 tickFormatter={(v) => {
                   const d = new Date(v);
                   return `${d.getMonth() + 1}/${d.getDate()}`;
@@ -185,7 +185,7 @@ export default function HealthPage() {
               />
               <YAxis
                 domain={[0, 100]}
-                tick={{ fill: '#6B6B80', fontSize: 11 }}
+                tick={{ fill: 'var(--chart-tick-secondary)', fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
                 width={35}
@@ -194,11 +194,11 @@ export default function HealthPage() {
               <Area
                 type="monotone"
                 dataKey="score"
-                stroke="#FF6B35"
+                stroke="var(--color-accent)"
                 strokeWidth={2}
                 fill="url(#healthGradient)"
                 dot={false}
-                activeDot={{ r: 5, fill: '#FF6B35', stroke: '#1A1A2E', strokeWidth: 2 }}
+                activeDot={{ r: 5, fill: 'var(--color-accent)', stroke: 'var(--chart-dot-stroke)', strokeWidth: 2 }}
               />
             </AreaChart>
           </ResponsiveContainer>

@@ -20,10 +20,35 @@
   --color-info: #3B82F6;
 }
 
+/* ------------------------------------------------------------------ */
+/* Light mode overrides                                                */
+/* Warm off-white backgrounds so users don't get eye fatigue           */
+/* ------------------------------------------------------------------ */
+html.light {
+  --color-navy-base: #F5F3EF;
+  --color-navy-light: #ECEAE5;
+  --color-navy-dark: #E3E0DA;
+  --color-surface: rgba(0, 0, 0, 0.04);
+  --color-surface-hover: rgba(0, 0, 0, 0.07);
+  --color-border: rgba(0, 0, 0, 0.10);
+  --color-border-light: rgba(0, 0, 0, 0.16);
+  --color-text-primary: #1A1A2E;
+  --color-text-secondary: #4A4A5C;
+  --color-text-muted: #7A7A8C;
+  --color-accent: #E55A28;
+  --color-accent-hover: #D04E1E;
+  --color-accent-light: #FF8A5C;
+  --color-success: #16A34A;
+  --color-warning: #CA8A04;
+  --color-error: #DC2626;
+  --color-info: #2563EB;
+}
+
 body {
   background-color: var(--color-navy-base);
   color: var(--color-text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Smooth page transitions */
@@ -47,26 +72,66 @@ main {
   border-radius: 4px;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
+/* Scrollbar styling — dark mode */
+.dark ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
+.dark ::-webkit-scrollbar-track {
   background: transparent;
 }
-::-webkit-scrollbar-thumb {
+.dark ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
+.dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.15);
 }
 
+/* Scrollbar styling — light mode */
+.light ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.light ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
 /* Selection color */
-::selection {
+.dark ::selection {
   background: rgba(255, 107, 53, 0.3);
   color: #F0F0F0;
+}
+.light ::selection {
+  background: rgba(229, 90, 40, 0.25);
+  color: #1A1A2E;
+}
+
+/* ------------------------------------------------------------------ */
+/* Chart-specific CSS variables (used by Recharts inline styles)       */
+/* ------------------------------------------------------------------ */
+.dark {
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-cursor: rgba(255, 255, 255, 0.03);
+  --chart-tick: #A0A0B8;
+  --chart-tick-secondary: #6B6B80;
+  --chart-dot-stroke: #12121F;
+  --toggle-knob: #ffffff;
+}
+.light {
+  --chart-grid: rgba(0, 0, 0, 0.08);
+  --chart-cursor: rgba(0, 0, 0, 0.04);
+  --chart-tick: #4A4A5C;
+  --chart-tick-secondary: #7A7A8C;
+  --chart-dot-stroke: #E3E0DA;
+  --toggle-knob: #ffffff;
 }
 
 /* Confetti animation for setup completion */
