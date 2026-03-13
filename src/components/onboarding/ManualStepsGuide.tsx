@@ -25,22 +25,22 @@ const CATEGORY_META: Record<string, { icon: React.ReactNode; label: string; colo
   automation: {
     icon: <Zap className="w-3 h-3" />,
     label: 'Automation',
-    color: 'bg-yellow-400/15 text-yellow-400',
+    color: 'bg-warning/15 text-warning',
   },
   view: {
     icon: <LayoutGrid className="w-3 h-3" />,
     label: 'View',
-    color: 'bg-blue-400/15 text-blue-400',
+    color: 'bg-info/15 text-info',
   },
   setting: {
     icon: <Settings className="w-3 h-3" />,
     label: 'Setting',
-    color: 'bg-emerald-400/15 text-emerald-400',
+    color: 'bg-success/15 text-success',
   },
   custom_field: {
     icon: <Tag className="w-3 h-3" />,
     label: 'Custom Field',
-    color: 'bg-purple-400/15 text-purple-400',
+    color: 'bg-purple-600/15 text-purple-600',
   },
 };
 
