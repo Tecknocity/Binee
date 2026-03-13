@@ -314,10 +314,10 @@ export default function GeneralSettings() {
                   className={cn(
                     'w-16 h-10 rounded-lg border flex items-center justify-center',
                     mode.id === 'light'
-                      ? 'bg-[#F5F3EF] border-[#E3E0DA]'
+                      ? 'bg-[#ECECF1] border-[#D5D5E0]'
                       : mode.id === 'dark'
                         ? 'bg-navy-dark border-border'
-                        : 'bg-gradient-to-r from-[#F5F3EF] to-navy-dark border-border'
+                        : 'bg-gradient-to-r from-[#ECECF1] to-navy-dark border-border'
                   )}
                 >
                   <Icon className={cn(
