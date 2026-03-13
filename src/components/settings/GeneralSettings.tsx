@@ -138,7 +138,7 @@ export default function GeneralSettings() {
     .slice(0, 2);
 
   return (
-    <form onSubmit={handleSave} className="space-y-8">
+    <form onSubmit={handleSave} className="space-y-8 max-w-3xl">
       {/* Profile section */}
       <div>
         <h2 className="text-lg font-medium text-text-primary mb-4">Profile</h2>

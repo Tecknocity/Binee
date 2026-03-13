@@ -457,7 +457,7 @@ export default function IntegrationsSettingsPage() {
             <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
               {category}
             </h3>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
               {items.map((integration) => (
                 <div
                   key={integration.id}

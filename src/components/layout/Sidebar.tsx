@@ -20,9 +20,12 @@ import {
   CreditCard,
   Plug,
   Eye,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConversations, type Conversation } from '@/hooks/useConversations';
+import { useSidebar } from '@/hooks/useSidebar';
 
 const navSections = [
   { href: '/chats', label: 'Chats', icon: MessageSquare },
@@ -167,6 +170,7 @@ export default function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const { collapsed, toggle: toggleCollapse } = useSidebar();
 
   const {
     conversations,
@@ -213,13 +217,158 @@ export default function Sidebar() {
 
   const recentConversations = conversations.slice(0, 15);
 
-  const sidebarContent = (
-    <div className="flex flex-col h-full">
+  const initials = (user?.display_name || 'U')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+  // ─── Collapsed sidebar (icons only) ───────────────────────
+  const collapsedContent = (
+    <div className="flex flex-col h-full items-center">
       {/* Brand */}
-      <div className="px-4 pt-4 pb-2">
+      <div className="pt-4 pb-2">
+        <Link href="/chat" className="inline-block">
+          <span className="text-lg font-bold text-text-primary">B</span>
+        </Link>
+      </div>
+
+      {/* Expand button */}
+      <button
+        onClick={toggleCollapse}
+        className="p-2 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors my-1"
+        aria-label="Expand sidebar"
+        title="Expand sidebar"
+      >
+        <PanelLeftOpen className="w-4 h-4" />
+      </button>
+
+      {/* New chat */}
+      <button
+        onClick={handleNewChat}
+        className="p-2 rounded-lg text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
+        title="New chat"
+      >
+        <Plus className="w-4 h-4" />
+      </button>
+
+      {/* Search */}
+      <button
+        onClick={() => setSearchOpen(true)}
+        className="p-2 rounded-lg text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
+        title="Search"
+      >
+        <Search className="w-4 h-4" />
+      </button>
+
+      {/* Divider */}
+      <div className="w-6 my-1.5 border-t border-border/50" />
+
+      {/* Navigation sections */}
+      <nav className="space-y-1">
+        {navSections.map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'flex items-center justify-center p-2 rounded-lg transition-colors',
+                isActive
+                  ? 'bg-surface-hover text-text-primary'
+                  : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+              )}
+              title={item.label}
+            >
+              <Icon className="w-4 h-4" />
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* User avatar at bottom */}
+      <div className="p-2 border-t border-border/50 w-full flex justify-center" ref={collapsed ? userMenuRef : undefined}>
+        <button
+          onClick={() => setUserMenuOpen(!userMenuOpen)}
+          className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors"
+          title={user?.display_name || 'User'}
+        >
+          {user?.avatar_url ? (
+            <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-accent/20" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border border-accent/20 flex items-center justify-center">
+              <span className="text-accent text-xs font-bold">{initials}</span>
+            </div>
+          )}
+        </button>
+
+        {userMenuOpen && collapsed && (
+          <div className="absolute bottom-12 left-2 w-56 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
+            <div className="px-3.5 py-2 border-b border-border/50">
+              <p className="text-xs text-text-muted truncate">{user?.email || ''}</p>
+            </div>
+            <Link
+              href="/settings"
+              onClick={() => { setUserMenuOpen(false); }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="text-sm">Settings</span>
+            </Link>
+            <Link
+              href="/settings?tab=billing"
+              onClick={() => { setUserMenuOpen(false); }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+            >
+              <Eye className="w-4 h-4" />
+              <span className="text-sm">Usage</span>
+            </Link>
+            <Link
+              href="/settings?tab=integrations"
+              onClick={() => { setUserMenuOpen(false); }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+            >
+              <Plug className="w-4 h-4" />
+              <span className="text-sm">Integrations</span>
+            </Link>
+            <div className="my-1 border-t border-border/50" />
+            <button
+              onClick={async () => {
+                await signOut();
+                setUserMenuOpen(false);
+              }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-sm">Log out</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ─── Expanded sidebar (full content) ──────────────────────
+  const expandedContent = (
+    <div className="flex flex-col h-full">
+      {/* Brand + collapse toggle */}
+      <div className="px-4 pt-4 pb-2 flex items-center justify-between">
         <Link href="/chat" className="inline-block" onClick={() => setMobileOpen(false)}>
           <span className="text-xl font-bold text-text-primary tracking-tight">BINEE</span>
         </Link>
+        <button
+          onClick={toggleCollapse}
+          className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors hidden lg:flex"
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+        >
+          <PanelLeftClose className="w-4 h-4" />
+        </button>
       </div>
 
       {/* New chat + Search */}
@@ -311,7 +460,7 @@ export default function Sidebar() {
       </div>
 
       {/* User section at bottom */}
-      <div className="p-3 border-t border-border/50 relative" ref={userMenuRef}>
+      <div className="p-3 border-t border-border/50 relative" ref={!collapsed ? userMenuRef : undefined}>
         <button
           onClick={() => setUserMenuOpen(!userMenuOpen)}
           className={cn(
@@ -323,9 +472,7 @@ export default function Sidebar() {
             <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-accent/20 shrink-0" />
           ) : (
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-              <span className="text-accent text-xs font-bold">
-                {user?.display_name?.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '??'}
-              </span>
+              <span className="text-accent text-xs font-bold">{initials}</span>
             </div>
           )}
           <div className="flex-1 text-left min-w-0">
@@ -340,7 +487,7 @@ export default function Sidebar() {
           )} />
         </button>
 
-        {userMenuOpen && (
+        {userMenuOpen && !collapsed && (
           <div className="absolute bottom-full left-3 right-3 mb-1.5 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
             {/* Email display */}
             <div className="px-3.5 py-2 border-b border-border/50">
@@ -431,8 +578,9 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-64 bg-navy-dark border-r border-border/50 flex flex-col transition-transform duration-200 ease-out lg:translate-x-0 lg:static lg:z-auto lg:h-dvh shrink-0 overflow-hidden',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+          'fixed inset-y-0 left-0 z-40 bg-navy-dark border-r border-border/50 flex flex-col transition-all duration-200 ease-out lg:translate-x-0 lg:static lg:z-auto lg:h-dvh shrink-0 overflow-hidden',
+          collapsed ? 'w-16' : 'w-64',
+          mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'
         )}
       >
         {/* Mobile close */}
@@ -444,7 +592,13 @@ export default function Sidebar() {
           <X className="w-5 h-5" />
         </button>
 
-        {sidebarContent}
+        {/* Show collapsed content on desktop when collapsed, always expanded on mobile */}
+        <div className="hidden lg:flex lg:flex-col lg:h-full">
+          {collapsed ? collapsedContent : expandedContent}
+        </div>
+        <div className="flex flex-col h-full lg:hidden">
+          {expandedContent}
+        </div>
       </aside>
 
       {/* Search popup */}
