@@ -50,11 +50,12 @@ supabase/
 ```
 
 ## Design System
-- Dark theme: navy-purple gradients (#1A1A2E base)
-- Accent: orange (#FF6B35)
-- Cards: semi-transparent with subtle borders (surface color)
-- Text: #F0F0F0 primary, #A0A0B8 secondary, #6B6B80 muted
-- Font: Inter or system fonts
+- Dark theme: deep dark (#0A0A0F base, #12121A cards, #1A1A25 elevated)
+- Accent: Binee Purple (#854DF9), hover (#9D6FFA), active (#6B3AD4)
+- Cards: #12121A with #2A2A3A borders (no shadows on dark theme)
+- Text: #F0F0F5 primary, #A0A0B5 secondary, #6B6B80 muted
+- Font: Inter for UI, JetBrains Mono for metrics/code
+- Logo: Use BineeLogo component or PNG files from /public/
 - Use Tailwind utilities, no custom CSS unless necessary
 
 ## Key Rules
