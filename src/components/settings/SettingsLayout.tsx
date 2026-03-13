@@ -1,19 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings, User, Shield, Users, ArrowLeft } from 'lucide-react';
+import { Settings, User, Shield, Users, ArrowLeft, Bell, CreditCard, Plug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import GeneralSettings from '@/components/settings/GeneralSettings';
 import AccountSettings from '@/components/settings/AccountSettings';
 import PrivacySettings from '@/components/settings/PrivacySettings';
 import TeamSettings from '@/components/settings/TeamSettings';
+import NotificationSettings from '@/components/settings/NotificationSettings';
+import BillingSettings from '@/components/settings/BillingSettings';
+import IntegrationsSettingsPage from '@/components/settings/IntegrationsSettingsPage';
 
 const tabs = [
   { id: 'general', label: 'General', icon: Settings },
   { id: 'account', label: 'Account', icon: User },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'privacy', label: 'Privacy', icon: Shield },
   { id: 'team', label: 'Team', icon: Users },
+  { id: 'billing', label: 'Billing & Usage', icon: CreditCard },
+  { id: 'integrations', label: 'Integrations', icon: Plug },
 ] as const;
 
 type TabId = (typeof tabs)[number]['id'];
@@ -61,8 +67,11 @@ export default function SettingsLayout() {
         <div className="flex-1 min-w-0 max-w-2xl">
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'account' && <AccountSettings />}
+          {activeTab === 'notifications' && <NotificationSettings />}
           {activeTab === 'privacy' && <PrivacySettings />}
           {activeTab === 'team' && <TeamSettings />}
+          {activeTab === 'billing' && <BillingSettings />}
+          {activeTab === 'integrations' && <IntegrationsSettingsPage />}
         </div>
       </div>
     </div>
