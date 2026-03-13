@@ -55,7 +55,7 @@ const WELCOME_MESSAGE: SetupChatMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
-    "Welcome! I'm here to help you set up your ClickUp workspace.\n\nTell me about your business — what do you do, what services do you offer, and how does your team work? The more detail you share, the better I can tailor your workspace.\n\nOr pick a quick-start template below to get started right away.",
+    "Welcome! I'm here to help you set up your ClickUp workspace.\n\nTell me about your business -what do you do, what services do you offer, and how does your team work? The more detail you share, the better I can tailor your workspace.\n\nOr pick a quick-start template below to get started right away.",
   timestamp: new Date(),
 };
 

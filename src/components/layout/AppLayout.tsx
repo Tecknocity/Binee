@@ -3,7 +3,8 @@
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
 import Sidebar from '@/components/layout/Sidebar';
-import { Loader2, Hexagon } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import Image from 'next/image';
 
 // Pages that need full-height edge-to-edge layout (no padding)
 const FULL_BLEED_PAGES = ['/chat'];
@@ -17,8 +18,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-navy-base flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-accent/15 flex items-center justify-center">
-            <Hexagon className="w-6 h-6 text-accent animate-pulse" />
+          <div className="w-12 h-12 rounded-xl bg-accent/15 flex items-center justify-center overflow-hidden animate-pulse">
+            <Image src="/Binee__icon__white.svg" alt="Binee" width={32} height={32} unoptimized />
           </div>
           <div className="flex flex-col items-center gap-1.5">
             <Loader2 className="w-5 h-5 text-accent animate-spin" />

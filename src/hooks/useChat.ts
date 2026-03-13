@@ -81,7 +81,7 @@ function getMockMessages(conversationId: string): ChatMessage[] {
         id: 'msg-1-3',
         role: 'assistant',
         content:
-          "Here's a summary of **12 overdue tasks** in the Engineering team:\n\n### Critical (3)\n- **Fix payment processing bug** — due Mar 5, assigned to Sarah\n- **Database migration v2.4** — due Mar 7, assigned to Mike\n- **API rate limiter update** — due Mar 8, unassigned\n\n### High Priority (5)\n- Refactor auth middleware — due Mar 6\n- Update CI pipeline — due Mar 9\n- Add monitoring alerts — due Mar 9\n- Fix memory leak in worker — due Mar 10\n- Update SDK documentation — due Mar 10\n\n### Medium Priority (4)\n- Clean up legacy endpoints *(and 3 others)*\n\nWould you like me to reassign any of these or update their due dates?",
+          "Here's a summary of **12 overdue tasks** in the Engineering team:\n\n### Critical (3)\n- **Fix payment processing bug** -due Mar 5, assigned to Sarah\n- **Database migration v2.4** -due Mar 7, assigned to Mike\n- **API rate limiter update** -due Mar 8, unassigned\n\n### High Priority (5)\n- Refactor auth middleware -due Mar 6\n- Update CI pipeline -due Mar 9\n- Add monitoring alerts -due Mar 9\n- Fix memory leak in worker -due Mar 10\n- Update SDK documentation -due Mar 10\n\n### Medium Priority (4)\n- Clean up legacy endpoints *(and 3 others)*\n\nWould you like me to reassign any of these or update their due dates?",
         timestamp: new Date('2026-03-11T09:00:05'),
         creditsConsumed: 3,
       },
@@ -231,7 +231,7 @@ function getMockMessages(conversationId: string): ChatMessage[] {
             tool_name: 'clickup_get_spaces',
             description: 'Loading workspace structure...',
             status: 'error',
-            error: "Couldn't access workspace — rate limit reached. Please try again in a moment.",
+            error: "Couldn't access workspace -rate limit reached. Please try again in a moment.",
           },
         ],
       },
@@ -298,7 +298,7 @@ function getMockMessages(conversationId: string): ChatMessage[] {
       {
         id: 'msg-5-4',
         role: 'assistant',
-        content: 'I\'ve created your **"October Overdue Tasks"** dashboard with the following widgets:\n\n- **Overdue by Team** — Bar chart comparing overdue task counts across teams\n- **Total Overdue** — Summary card showing 23 overdue tasks in October\n- **Overdue Tasks Detail** — Table listing each overdue task with assignee, team, and days overdue\n\nYou can view it on the **Dashboards** page. Want me to add anything else to this dashboard?',
+        content: 'I\'ve created your **"October Overdue Tasks"** dashboard with the following widgets:\n\n- **Overdue by Team** -Bar chart comparing overdue task counts across teams\n- **Total Overdue** -Summary card showing 23 overdue tasks in October\n- **Overdue Tasks Detail** -Table listing each overdue task with assignee, team, and days overdue\n\nYou can view it on the **Dashboards** page. Want me to add anything else to this dashboard?',
         timestamp: new Date('2026-03-11T11:00:15'),
         creditsConsumed: 3,
         toolCalls: [
