@@ -20,7 +20,7 @@ export default function PrivacySettings() {
   };
 
   return (
-    <form onSubmit={handleSave} className="space-y-8">
+    <form onSubmit={handleSave} className="space-y-8 max-w-3xl">
       {/* Data usage */}
       <div>
         <h2 className="text-lg font-medium text-text-primary mb-4">Privacy</h2>

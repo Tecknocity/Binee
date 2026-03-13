@@ -43,7 +43,7 @@ export default function AccountSettings() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-3xl">
       {/* Email */}
       <div>
         <h2 className="text-lg font-medium text-text-primary mb-4">Account</h2>

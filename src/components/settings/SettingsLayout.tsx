@@ -47,7 +47,7 @@ export default function SettingsLayout() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="w-full">
       <div className="mb-8">
         <Link
           href="/chat"
@@ -59,9 +59,9 @@ export default function SettingsLayout() {
         <h1 className="text-2xl font-semibold text-text-primary">Settings</h1>
       </div>
 
-      <div className="flex gap-8">
+      <div className="flex gap-10">
         {/* Left sidebar nav */}
-        <nav className="w-48 shrink-0 space-y-0.5">
+        <nav className="w-52 shrink-0 space-y-0.5">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -69,21 +69,21 @@ export default function SettingsLayout() {
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={cn(
-                  'flex items-center gap-2.5 w-full px-3 py-2 text-sm font-medium rounded-lg transition-colors text-left',
+                  'flex items-center gap-3 w-full px-3.5 py-2.5 text-sm font-medium rounded-lg transition-colors text-left',
                   activeTab === tab.id
                     ? 'bg-accent/10 text-accent'
                     : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
                 )}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-4.5 h-4.5" />
                 {tab.label}
               </button>
             );
           })}
         </nav>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0 max-w-2xl">
+        {/* Content — fills remaining space */}
+        <div className="flex-1 min-w-0">
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'account' && <AccountSettings />}
           {activeTab === 'notifications' && <NotificationSettings />}
