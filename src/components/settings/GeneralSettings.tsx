@@ -67,7 +67,7 @@ function detectTimezone(): string {
 const emptySubscribe = () => () => {};
 
 export default function GeneralSettings() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [displayName, setDisplayName] = useState(user?.display_name || '');
@@ -109,10 +109,15 @@ export default function GeneralSettings() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
+    const { error } = await updateUser({
+      display_name: displayName,
+      avatar_url: avatarPreview,
+    });
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (!error) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
