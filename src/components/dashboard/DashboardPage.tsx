@@ -10,6 +10,12 @@ import BarChartWidget from './widgets/BarChartWidget';
 import LineChartWidget from './widgets/LineChartWidget';
 import SummaryCardWidget from './widgets/SummaryCardWidget';
 import TableWidget from './widgets/TableWidget';
+import DonutChartWidget from './widgets/DonutChartWidget';
+import TimeTrackingWidget from './widgets/TimeTrackingWidget';
+import WorkloadWidget from './widgets/WorkloadWidget';
+import PriorityBreakdownWidget from './widgets/PriorityBreakdownWidget';
+import ProgressWidget from './widgets/ProgressWidget';
+import RecentActivityWidget from './widgets/RecentActivityWidget';
 
 function WidgetCard({
   widget,
@@ -30,6 +36,18 @@ function WidgetCard({
         return <SummaryCardWidget title={widget.title} config={widget.config} />;
       case 'table':
         return <TableWidget title={widget.title} />;
+      case 'donut':
+        return <DonutChartWidget title={widget.title} />;
+      case 'time_tracking':
+        return <TimeTrackingWidget title={widget.title} />;
+      case 'workload':
+        return <WorkloadWidget title={widget.title} />;
+      case 'priority':
+        return <PriorityBreakdownWidget title={widget.title} />;
+      case 'progress':
+        return <ProgressWidget title={widget.title} />;
+      case 'activity':
+        return <RecentActivityWidget title={widget.title} />;
       default:
         return (
           <div className="flex items-center justify-center h-full text-text-muted text-sm">
@@ -106,8 +124,13 @@ export default function DashboardPage() {
 
   // Split widgets into summary vs charts/tables for layout
   const summaryWidgets = widgets.filter((w) => w.type === 'summary');
-  const chartWidgets = widgets.filter((w) => w.type === 'bar' || w.type === 'line');
+  const chartWidgets = widgets.filter(
+    (w) => w.type === 'bar' || w.type === 'line' || w.type === 'donut' || w.type === 'time_tracking' || w.type === 'priority' || w.type === 'workload'
+  );
   const tableWidgets = widgets.filter((w) => w.type === 'table');
+  const fullWidthWidgets = widgets.filter(
+    (w) => w.type === 'progress' || w.type === 'activity'
+  );
 
   const handleDashboardUpdated = useCallback(() => {
     // In production, this would refetch dashboard data from Supabase.
@@ -178,6 +201,15 @@ export default function DashboardPage() {
       {tableWidgets.length > 0 && (
         <div className="space-y-4 mb-6">
           {tableWidgets.map((w) => (
+            <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
+          ))}
+        </div>
+      )}
+
+      {/* Full-width widgets (progress, activity) */}
+      {fullWidthWidgets.length > 0 && (
+        <div className="space-y-4 mb-6">
+          {fullWidthWidgets.map((w) => (
             <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
           ))}
         </div>

@@ -157,7 +157,138 @@ const mockWidgets: DashboardWidget[] = [
     created_at: '2026-02-15T10:00:00Z',
     updated_at: '2026-03-10T08:30:00Z',
   },
+  {
+    id: 'widget-8',
+    workspace_id: 'mock-workspace',
+    dashboard_id: 'dash-1',
+    type: 'donut',
+    title: 'Task Status Distribution',
+    config: { dataSource: 'tasks', metric: 'count', groupBy: 'status' },
+    position: { x: 0, y: 3, w: 2, h: 1 },
+    created_at: '2026-02-15T10:00:00Z',
+    updated_at: '2026-03-10T08:30:00Z',
+  },
+  {
+    id: 'widget-9',
+    workspace_id: 'mock-workspace',
+    dashboard_id: 'dash-1',
+    type: 'time_tracking',
+    title: 'Hours Logged This Week',
+    config: { dataSource: 'time_entries', metric: 'hours', groupBy: 'day', timeRange: '7d' },
+    position: { x: 2, y: 3, w: 2, h: 1 },
+    created_at: '2026-02-15T10:00:00Z',
+    updated_at: '2026-03-10T08:30:00Z',
+  },
+  {
+    id: 'widget-10',
+    workspace_id: 'mock-workspace',
+    dashboard_id: 'dash-1',
+    type: 'workload',
+    title: 'Team Workload',
+    config: { dataSource: 'tasks', metric: 'count', groupBy: 'assignee' },
+    position: { x: 0, y: 4, w: 2, h: 1 },
+    created_at: '2026-02-15T10:00:00Z',
+    updated_at: '2026-03-10T08:30:00Z',
+  },
+  {
+    id: 'widget-11',
+    workspace_id: 'mock-workspace',
+    dashboard_id: 'dash-1',
+    type: 'priority',
+    title: 'Priority Breakdown by List',
+    config: { dataSource: 'tasks', metric: 'count', groupBy: 'priority' },
+    position: { x: 2, y: 4, w: 2, h: 1 },
+    created_at: '2026-02-15T10:00:00Z',
+    updated_at: '2026-03-10T08:30:00Z',
+  },
+  {
+    id: 'widget-12',
+    workspace_id: 'mock-workspace',
+    dashboard_id: 'dash-1',
+    type: 'progress',
+    title: 'Sprint & Milestone Progress',
+    config: { dataSource: 'tasks', metric: 'progress' },
+    position: { x: 0, y: 5, w: 3, h: 1 },
+    created_at: '2026-02-15T10:00:00Z',
+    updated_at: '2026-03-10T08:30:00Z',
+  },
+  {
+    id: 'widget-13',
+    workspace_id: 'mock-workspace',
+    dashboard_id: 'dash-1',
+    type: 'activity',
+    title: 'Recent Activity',
+    config: { dataSource: 'tasks', metric: 'activity' },
+    position: { x: 0, y: 6, w: 3, h: 1 },
+    created_at: '2026-02-15T10:00:00Z',
+    updated_at: '2026-03-10T08:30:00Z',
+  },
 ];
+
+// ----- New widget mock data generators -----
+
+export function getTaskStatusData() {
+  return [
+    { name: 'In Progress', value: 64 },
+    { name: 'To Do', value: 52 },
+    { name: 'In Review', value: 28 },
+    { name: 'Done', value: 34 },
+    { name: 'Blocked', value: 9 },
+  ];
+}
+
+export function getSprintProgressData() {
+  return [
+    { name: 'Sprint 14 — Auth Revamp', completed: 18, total: 22, expectedPct: 75, daysLeft: 4 },
+    { name: 'Sprint 15 — Dashboard V2', completed: 8, total: 26, expectedPct: 30, daysLeft: 11 },
+    { name: 'Q1 Milestone — Beta Launch', completed: 142, total: 180, expectedPct: 80, daysLeft: 16 },
+  ];
+}
+
+export function getTimeTrackingData() {
+  return [
+    { day: 'Mon', hours: 28.5 },
+    { day: 'Tue', hours: 32.0 },
+    { day: 'Wed', hours: 26.5 },
+    { day: 'Thu', hours: 34.0 },
+    { day: 'Fri', hours: 30.5 },
+    { day: 'Sat', hours: 4.0 },
+    { day: 'Sun', hours: 1.0 },
+  ];
+}
+
+export function getWorkloadData() {
+  return [
+    { name: 'Sarah K.', completed: 12, inProgress: 8, overdue: 2, total: 22 },
+    { name: 'James M.', completed: 9, inProgress: 10, overdue: 4, total: 23 },
+    { name: 'Emily R.', completed: 14, inProgress: 5, overdue: 1, total: 20 },
+    { name: 'David L.', completed: 7, inProgress: 9, overdue: 3, total: 19 },
+    { name: 'Maria C.', completed: 10, inProgress: 6, overdue: 2, total: 18 },
+  ];
+}
+
+export function getPriorityBreakdownData() {
+  return [
+    { list: 'Backend', urgent: 3, high: 8, normal: 14, low: 5 },
+    { list: 'Frontend', urgent: 1, high: 6, normal: 18, low: 8 },
+    { list: 'Design', urgent: 0, high: 4, normal: 10, low: 6 },
+    { list: 'Bugs', urgent: 5, high: 9, normal: 7, low: 2 },
+    { list: 'Infra', urgent: 2, high: 5, normal: 6, low: 3 },
+  ];
+}
+
+export function getRecentActivityData() {
+  return [
+    { id: 'a1', type: 'completed', user: 'Sarah K.', action: 'completed', target: 'Implement OAuth flow', time: '12 min ago' },
+    { id: 'a2', type: 'commented', user: 'James M.', action: 'commented on', target: 'API rate limiting PR', time: '28 min ago' },
+    { id: 'a3', type: 'flagged', user: 'Emily R.', action: 'flagged', target: 'Login redirect bug', time: '45 min ago' },
+    { id: 'a4', type: 'created', user: 'David L.', action: 'created', target: 'Database migration task', time: '1h ago' },
+    { id: 'a5', type: 'assigned', user: 'Maria C.', action: 'was assigned to', target: 'Review onboarding flow', time: '1.5h ago' },
+    { id: 'a6', type: 'completed', user: 'James M.', action: 'completed', target: 'Fix pagination offset', time: '2h ago' },
+    { id: 'a7', type: 'updated', user: 'Sarah K.', action: 'updated due date for', target: 'Design system tokens', time: '2.5h ago' },
+    { id: 'a8', type: 'commented', user: 'David L.', action: 'commented on', target: 'Staging deploy config', time: '3h ago' },
+  ];
+}
 
 // ----- Chart data generators -----
 
