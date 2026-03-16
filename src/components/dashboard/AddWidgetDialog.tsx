@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, BarChart3, LineChart as LineChartIcon, Hash, Table } from 'lucide-react';
+import { X, BarChart3, LineChart as LineChartIcon, Hash, Table, PieChart, Clock, Users, Layers, Target, Activity } from 'lucide-react';
 
 interface AddWidgetDialogProps {
   open: boolean;
@@ -18,6 +18,12 @@ const widgetTypes = [
   { value: 'line', label: 'Line Chart', icon: LineChartIcon, desc: 'Show trends over time' },
   { value: 'summary', label: 'Summary Card', icon: Hash, desc: 'Display a single key metric' },
   { value: 'table', label: 'Data Table', icon: Table, desc: 'Show detailed data rows' },
+  { value: 'donut', label: 'Donut Chart', icon: PieChart, desc: 'Visualize status distribution' },
+  { value: 'time_tracking', label: 'Time Tracking', icon: Clock, desc: 'Hours logged per day' },
+  { value: 'workload', label: 'Workload', icon: Users, desc: 'Team member task distribution' },
+  { value: 'priority', label: 'Priority Breakdown', icon: Layers, desc: 'Stacked priority by list' },
+  { value: 'progress', label: 'Progress Tracker', icon: Target, desc: 'Sprint & milestone progress' },
+  { value: 'activity', label: 'Activity Feed', icon: Activity, desc: 'Recent team activity log' },
 ];
 
 const dataSources = [
