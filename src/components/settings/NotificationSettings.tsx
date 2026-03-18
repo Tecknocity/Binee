@@ -76,7 +76,7 @@ function TimeSelect({
 }
 
 export default function NotificationSettings() {
-  const { profile, loading: profileLoading, saveProfile } = useUserProfile();
+  const { profile, loading: profileLoading, error: profileError, saveProfile } = useUserProfile();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [taskComplete, setTaskComplete] = useState(true);
   const [dailyStandup, setDailyStandup] = useState(false);
@@ -85,6 +85,7 @@ export default function NotificationSettings() {
   const [digestTime, setDigestTime] = useState('18:00');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Hydrate form from user_profiles
@@ -102,6 +103,7 @@ export default function NotificationSettings() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     const { error } = await saveProfile({
       notifications_enabled: notificationsEnabled,
       notify_task_complete: taskComplete,
@@ -111,7 +113,9 @@ export default function NotificationSettings() {
       daily_digest_time: digestTime,
     });
     setSaving(false);
-    if (!error) {
+    if (error) {
+      setSaveError(error);
+    } else {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
@@ -231,7 +235,10 @@ export default function NotificationSettings() {
       </div>
 
       {/* Save */}
-      <div className="flex justify-end pt-2">
+      <div className="flex items-center justify-end gap-3 pt-2">
+        {(saveError || profileError) && (
+          <p className="text-sm text-error">{saveError || profileError}</p>
+        )}
         <button
           type="submit"
           disabled={saving}
