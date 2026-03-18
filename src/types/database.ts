@@ -299,6 +299,26 @@ export interface SetupSession {
   updated_at: string;
 }
 
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  preferred_name: string | null;
+  work_role: string | null;
+  personal_preferences: string | null;
+  timezone: string;
+  avatar_url: string | null;
+  notifications_enabled: boolean;
+  notify_task_complete: boolean;
+  notify_daily_standup: boolean;
+  daily_standup_time: string;
+  notify_daily_digest: boolean;
+  daily_digest_time: string;
+  allow_training: boolean;
+  chat_history_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // Helper type for deduct_credits RPC response
 export interface DeductCreditsResult {
   success: boolean;

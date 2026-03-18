@@ -2,27 +2,38 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { createBrowserClient } from '@/lib/supabase/client';
 import { Save, Loader2, AlertTriangle, Mail, Check } from 'lucide-react';
 
 export default function AccountSettings() {
   const { user } = useAuth();
+  const supabase = createBrowserClient();
   const [email, setEmail] = useState(user?.email || '');
   const [emailEditing, setEmailEditing] = useState(false);
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleUpdateEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || email === user?.email) return;
     setEmailSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
+    setEmailError(null);
+
+    const { error } = await supabase.auth.updateUser({ email });
+
     setEmailSaving(false);
+    if (error) {
+      setEmailError(error.message);
+      return;
+    }
     setEmailSaved(true);
     setEmailEditing(false);
     setTimeout(() => setEmailSaved(false), 3000);
@@ -32,8 +43,15 @@ export default function AccountSettings() {
     e.preventDefault();
     if (newPassword !== confirmPassword) return;
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
+    setPasswordError(null);
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+
     setSaving(false);
+    if (error) {
+      setPasswordError(error.message);
+      return;
+    }
     setSaved(true);
     setCurrentPassword('');
     setNewPassword('');
@@ -83,6 +101,9 @@ export default function AccountSettings() {
                   Cancel
                 </button>
               </div>
+              {emailError && (
+                <p className="text-xs text-error">{emailError}</p>
+              )}
               <p className="text-xs text-text-muted">
                 A confirmation email will be sent to your new address.
               </p>
@@ -157,6 +178,9 @@ export default function AccountSettings() {
             </div>
           </div>
 
+          {passwordError && (
+            <p className="text-xs text-error">{passwordError}</p>
+          )}
           <button
             type="submit"
             disabled={saving || !currentPassword || !newPassword || newPassword !== confirmPassword}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { Monitor, Moon, Sun, Save, Loader2, Camera, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -68,10 +69,11 @@ const emptySubscribe = () => () => {};
 
 export default function GeneralSettings() {
   const { user, updateUser } = useAuth();
+  const { profile, loading: profileLoading, saveProfile } = useUserProfile();
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [displayName, setDisplayName] = useState(user?.display_name || '');
-  const [preferredName, setPreferredName] = useState(user?.display_name?.split(' ')[0] || '');
+  const [preferredName, setPreferredName] = useState('');
   const [workRole, setWorkRole] = useState('Founder/Owner');
   const [personalPreferences, setPersonalPreferences] = useState('');
   const [timezone, setTimezone] = useState(detectTimezone);
@@ -79,6 +81,17 @@ export default function GeneralSettings() {
   const [saved, setSaved] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // Hydrate form from user_profiles once loaded
+  useEffect(() => {
+    if (profileLoading || profileLoaded) return;
+    setPreferredName(profile.preferred_name || user?.display_name?.split(' ')[0] || '');
+    setWorkRole(profile.work_role || 'Founder/Owner');
+    setPersonalPreferences(profile.personal_preferences || '');
+    if (profile.timezone) setTimezone(profile.timezone);
+    setProfileLoaded(true);
+  }, [profileLoading, profileLoaded, profile, user?.display_name]);
 
   // Rotating placeholder for personal preferences
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -109,12 +122,29 @@ export default function GeneralSettings() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const { error } = await updateUser({
+
+    // Save display_name + avatar to Supabase Auth metadata
+    const { error: authError } = await updateUser({
       display_name: displayName,
       avatar_url: avatarPreview,
     });
+
+    if (authError) {
+      setSaving(false);
+      return;
+    }
+
+    // Save extended profile fields to user_profiles table
+    const { error: profileError } = await saveProfile({
+      preferred_name: preferredName,
+      work_role: workRole,
+      personal_preferences: personalPreferences,
+      timezone,
+      avatar_url: avatarPreview,
+    });
+
     setSaving(false);
-    if (!error) {
+    if (!profileError) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }

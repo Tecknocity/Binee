@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { Save, Loader2, Bell, BellOff, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -75,6 +76,7 @@ function TimeSelect({
 }
 
 export default function NotificationSettings() {
+  const { profile, loading: profileLoading, saveProfile } = useUserProfile();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [taskComplete, setTaskComplete] = useState(true);
   const [dailyStandup, setDailyStandup] = useState(false);
@@ -83,14 +85,36 @@ export default function NotificationSettings() {
   const [digestTime, setDigestTime] = useState('18:00');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // Hydrate form from user_profiles
+  useEffect(() => {
+    if (profileLoading || profileLoaded) return;
+    setNotificationsEnabled(profile.notifications_enabled);
+    setTaskComplete(profile.notify_task_complete);
+    setDailyStandup(profile.notify_daily_standup);
+    setStandupTime(profile.daily_standup_time ?? '08:00');
+    setDailyDigest(profile.notify_daily_digest);
+    setDigestTime(profile.daily_digest_time ?? '18:00');
+    setProfileLoaded(true);
+  }, [profileLoading, profileLoaded, profile]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
+    const { error } = await saveProfile({
+      notifications_enabled: notificationsEnabled,
+      notify_task_complete: taskComplete,
+      notify_daily_standup: dailyStandup,
+      daily_standup_time: standupTime,
+      notify_daily_digest: dailyDigest,
+      daily_digest_time: digestTime,
+    });
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (!error) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
   };
 
   return (
