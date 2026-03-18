@@ -69,7 +69,7 @@ const emptySubscribe = () => () => {};
 
 export default function GeneralSettings() {
   const { user, updateUser } = useAuth();
-  const { profile, loading: profileLoading, saveProfile } = useUserProfile();
+  const { profile, loading: profileLoading, error: profileError, saveProfile } = useUserProfile();
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [displayName, setDisplayName] = useState(user?.display_name || '');
@@ -79,6 +79,7 @@ export default function GeneralSettings() {
   const [timezone, setTimezone] = useState(detectTimezone);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -122,6 +123,7 @@ export default function GeneralSettings() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
 
     // Save display_name + avatar to Supabase Auth metadata
     const { error: authError } = await updateUser({
@@ -130,12 +132,13 @@ export default function GeneralSettings() {
     });
 
     if (authError) {
+      setSaveError(authError);
       setSaving(false);
       return;
     }
 
     // Save extended profile fields to user_profiles table
-    const { error: profileError } = await saveProfile({
+    const { error: profileSaveError } = await saveProfile({
       preferred_name: preferredName,
       work_role: workRole,
       personal_preferences: personalPreferences,
@@ -144,7 +147,9 @@ export default function GeneralSettings() {
     });
 
     setSaving(false);
-    if (!profileError) {
+    if (profileSaveError) {
+      setSaveError(profileSaveError);
+    } else {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
@@ -368,7 +373,10 @@ export default function GeneralSettings() {
       </div>
 
       {/* Save */}
-      <div className="flex justify-end pt-2">
+      <div className="flex items-center justify-end gap-3 pt-2">
+        {(saveError || profileError) && (
+          <p className="text-sm text-error">{saveError || profileError}</p>
+        )}
         <button
           type="submit"
           disabled={saving}

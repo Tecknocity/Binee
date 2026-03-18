@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import type { UserProfile } from '@/types/database';
@@ -30,9 +30,10 @@ export function useUserProfile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createBrowserClient();
+  // Stable ref for supabase client — avoid recreating on every render
+  const supabaseRef = useRef(createBrowserClient());
 
-  // Load profile on mount
+  // Load profile on mount when user is available
   useEffect(() => {
     if (!user) {
       setLoading(false);
@@ -40,6 +41,7 @@ export function useUserProfile() {
     }
 
     let cancelled = false;
+    const supabase = supabaseRef.current;
 
     const load = async () => {
       setLoading(true);
@@ -53,6 +55,7 @@ export function useUserProfile() {
 
       if (fetchError && fetchError.code !== 'PGRST116') {
         // PGRST116 = no rows found, which is fine for new users
+        console.error('[useUserProfile] load error:', fetchError.message);
         setError(fetchError.message);
       }
 
@@ -79,7 +82,7 @@ export function useUserProfile() {
 
     load();
     return () => { cancelled = true; };
-  }, [user, supabase]);
+  }, [user?.id]);
 
   // Upsert profile data
   const saveProfile = useCallback(async (updates: Partial<UserProfileData>) => {
@@ -88,6 +91,7 @@ export function useUserProfile() {
     setSaving(true);
     setError(null);
 
+    const supabase = supabaseRef.current;
     const payload = { ...updates, user_id: user.id };
 
     const { error: upsertError } = await supabase
@@ -97,6 +101,7 @@ export function useUserProfile() {
     setSaving(false);
 
     if (upsertError) {
+      console.error('[useUserProfile] save error:', upsertError.message);
       setError(upsertError.message);
       return { error: upsertError.message };
     }
@@ -104,7 +109,7 @@ export function useUserProfile() {
     // Update local state
     setProfile((prev) => ({ ...prev, ...updates }));
     return {};
-  }, [user, supabase]);
+  }, [user?.id]);
 
   return { profile, loading, saving, error, saveProfile };
 }

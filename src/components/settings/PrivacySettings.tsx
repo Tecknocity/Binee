@@ -6,11 +6,12 @@ import { Save, Loader2, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function PrivacySettings() {
-  const { profile, loading: profileLoading, saveProfile } = useUserProfile();
+  const { profile, loading: profileLoading, error: profileError, saveProfile } = useUserProfile();
   const [allowTraining, setAllowTraining] = useState(false);
   const [chatHistory, setChatHistory] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
 
   // Hydrate form from user_profiles
@@ -24,12 +25,15 @@ export default function PrivacySettings() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     const { error } = await saveProfile({
       allow_training: allowTraining,
       chat_history_enabled: chatHistory,
     });
     setSaving(false);
-    if (!error) {
+    if (error) {
+      setSaveError(error);
+    } else {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
@@ -124,7 +128,10 @@ export default function PrivacySettings() {
       </div>
 
       {/* Save */}
-      <div className="flex justify-end pt-2">
+      <div className="flex items-center justify-end gap-3 pt-2">
+        {(saveError || profileError) && (
+          <p className="text-sm text-error">{saveError || profileError}</p>
+        )}
         <button
           type="submit"
           disabled={saving}
