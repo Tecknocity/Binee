@@ -1,5 +1,15 @@
 // Binee Database Types — mirrors the Supabase schema
 
+export interface Profile {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -35,6 +45,9 @@ export interface WorkspaceMember {
   email: string;
   display_name: string | null;
   avatar_url: string | null;
+  invited_email: string | null;
+  status: 'pending' | 'active' | 'removed';
+  joined_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -161,6 +174,21 @@ export interface WebhookRegistration {
   updated_at: string;
 }
 
+export interface ClickupConnection {
+  id: string;
+  workspace_id: string;
+  access_token_encrypted: string | null;
+  refresh_token_encrypted: string | null;
+  token_expires_at: string | null;
+  clickup_user_id: string | null;
+  clickup_team_id: string | null;
+  plan_tier: 'free' | 'unlimited' | 'business' | 'business_plus' | 'enterprise';
+  sync_status: 'idle' | 'syncing' | 'error' | 'complete';
+  last_sync_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface WebhookEvent {
   id: string;
   workspace_id: string;
@@ -191,8 +219,10 @@ export interface Message {
   conversation_id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  tool_calls_json: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
   credits_used: number;
+  model_used: string | null;
   created_at: string;
 }
 
@@ -204,6 +234,7 @@ export interface CreditTransaction {
   balance_after: number;
   type: 'deduction' | 'purchase' | 'bonus' | 'refund' | 'monthly_reset';
   description: string;
+  message_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
 }
