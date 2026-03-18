@@ -104,9 +104,9 @@ export function SetupComplete({ executionResult, manualStepsCount }: SetupComple
               <div className={`w-10 h-10 rounded-xl ${action.bg} flex items-center justify-center mb-3`}>
                 <Icon className={`w-5 h-5 ${action.color}`} />
               </div>
-              <h3 className="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
+              <h2 className="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
                 {action.title}
-              </h3>
+              </h2>
               <p className="text-xs text-text-muted mt-0.5">{action.description}</p>
             </a>
           );

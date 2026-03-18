@@ -57,7 +57,7 @@ export default function IntegrationsPage() {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-medium text-text-primary">ClickUp</h3>
+              <h2 className="text-lg font-medium text-text-primary">ClickUp</h2>
               {isConnected ? (
                 <span className="flex items-center gap-1 text-xs font-medium text-success bg-success/10 px-2 py-0.5 rounded-full">
                   <CheckCircle className="w-3 h-3" />

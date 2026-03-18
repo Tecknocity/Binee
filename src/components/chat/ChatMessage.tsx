@@ -107,18 +107,18 @@ function renderMarkdown(content: string): React.ReactNode {
     // Heading
     if (line.startsWith('### ')) {
       elements.push(
-        <h4 key={`h3-${i}`} className="text-sm font-semibold text-text-primary mt-3 mb-1">
+        <p key={`h3-${i}`} className="text-sm font-semibold text-text-primary mt-3 mb-1" role="heading" aria-level={4}>
           {renderInline(line.slice(4))}
-        </h4>,
+        </p>,
       );
       i++;
       continue;
     }
     if (line.startsWith('## ')) {
       elements.push(
-        <h3 key={`h2-${i}`} className="text-sm font-bold text-text-primary mt-3 mb-1">
+        <p key={`h2-${i}`} className="text-sm font-bold text-text-primary mt-3 mb-1" role="heading" aria-level={3}>
           {renderInline(line.slice(3))}
-        </h3>,
+        </p>,
       );
       i++;
       continue;

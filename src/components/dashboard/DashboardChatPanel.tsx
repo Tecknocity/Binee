@@ -284,6 +284,7 @@ export default function DashboardChatPanel({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close chat panel"
             className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-secondary transition-colors"
           >
             <X className="w-4 h-4" />
