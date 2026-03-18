@@ -308,3 +308,12 @@ export interface DeductCreditsResult {
   deducted?: number;
   required?: number;
 }
+
+// Helper type for add_credits RPC response
+export interface AddCreditsResult {
+  success: boolean;
+  error?: string;
+  transaction_id?: string;
+  balance?: number;
+  added?: number;
+}
