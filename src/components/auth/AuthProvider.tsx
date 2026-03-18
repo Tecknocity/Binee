@@ -92,6 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: memberRow.email,
           display_name: memberRow.display_name,
           avatar_url: memberRow.avatar_url,
+          invited_email: null,
+          status: 'active',
+          joined_at: null,
           created_at: '',
           updated_at: '',
         });

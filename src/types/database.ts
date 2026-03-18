@@ -10,6 +10,26 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  preferred_name: string | null;
+  work_role: string | null;
+  personal_preferences: string | null;
+  timezone: string;
+  avatar_url: string | null;
+  notifications_enabled: boolean;
+  notify_task_complete: boolean;
+  notify_daily_standup: boolean;
+  daily_standup_time: string;
+  notify_daily_digest: boolean;
+  daily_digest_time: string;
+  allow_training: boolean;
+  chat_history_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -29,7 +49,7 @@ export interface Workspace {
   clickup_sync_status: 'idle' | 'syncing' | 'error' | 'complete';
   clickup_last_synced_at: string | null;
   clickup_sync_error: string | null;
-  clickup_plan_tier: string | null;
+  clickup_plan_tier: 'free' | 'unlimited' | 'business' | 'business_plus' | 'enterprise' | null;
   last_sync_at: string | null;
   credits_reset_at: string | null;
   settings: Record<string, unknown>;
@@ -198,6 +218,8 @@ export interface WebhookEvent {
   processed: boolean;
   processed_at: string | null;
   error: string | null;
+  source: string | null;
+  received_at: string;
   created_at: string;
 }
 
@@ -272,6 +294,7 @@ export interface HealthCheckResult {
   recommendations: string[];
   checked_at: string;
   credits_used: number;
+  previous_score: number | null;
   created_at: string;
 }
 
@@ -299,24 +322,12 @@ export interface SetupSession {
   updated_at: string;
 }
 
-export interface UserProfile {
-  id: string;
-  user_id: string;
-  preferred_name: string | null;
-  work_role: string | null;
-  personal_preferences: string | null;
-  timezone: string;
-  avatar_url: string | null;
-  notifications_enabled: boolean;
-  notify_task_complete: boolean;
-  notify_daily_standup: boolean;
-  daily_standup_time: string;
-  notify_daily_digest: boolean;
-  daily_digest_time: string;
-  allow_training: boolean;
-  chat_history_enabled: boolean;
-  created_at: string;
-  updated_at: string;
+export interface PlanConfiguration {
+  plan: string;
+  monthly_credits: number;
+  price_cents: number;
+  max_members: number | null;
+  features: Record<string, unknown>;
 }
 
 // Helper type for deduct_credits RPC response
@@ -336,4 +347,30 @@ export interface AddCreditsResult {
   transaction_id?: string;
   balance?: number;
   added?: number;
+}
+
+// Supabase Tables type map for client typing
+export interface Tables {
+  profiles: Profile;
+  user_profiles: UserProfile;
+  workspaces: Workspace;
+  workspace_members: WorkspaceMember;
+  workspace_invitations: WorkspaceInvitation;
+  cached_spaces: CachedSpace;
+  cached_folders: CachedFolder;
+  cached_lists: CachedList;
+  cached_tasks: CachedTask;
+  cached_time_entries: CachedTimeEntry;
+  cached_team_members: CachedTeamMember;
+  webhook_registrations: WebhookRegistration;
+  clickup_connections: ClickupConnection;
+  webhook_events: WebhookEvent;
+  conversations: Conversation;
+  messages: Message;
+  credit_transactions: CreditTransaction;
+  dashboards: Dashboard;
+  dashboard_widgets: DashboardWidget;
+  health_check_results: HealthCheckResult;
+  setup_sessions: SetupSession;
+  plan_configurations: PlanConfiguration;
 }
