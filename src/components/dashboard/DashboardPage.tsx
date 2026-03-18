@@ -78,6 +78,7 @@ function WidgetCard({
         <div className="relative">
           <button
             onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="Widget options"
             className="p-1 rounded-md hover:bg-surface-hover text-text-muted hover:text-text-secondary transition-colors"
           >
             <MoreVertical className="w-4 h-4" />

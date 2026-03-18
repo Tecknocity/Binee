@@ -103,6 +103,7 @@ export default function DashboardSelector({
                 />
                 <button
                   onClick={handleCreate}
+                  aria-label="Confirm create dashboard"
                   className="p-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white transition-colors"
                 >
                   <Check className="w-4 h-4" />
