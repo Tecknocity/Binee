@@ -40,11 +40,15 @@ export function SignupPage() {
 
   const onSubmit = async (data: SignupFormData) => {
     setServerError('');
-    const result = await signUp(data.email, data.password, data.fullName);
-    if (result.error) {
-      setServerError(result.error);
-    } else {
-      router.push('/chat');
+    try {
+      const result = await signUp(data.email, data.password, data.fullName);
+      if (result.error) {
+        setServerError(result.error);
+      } else {
+        router.push('/chat');
+      }
+    } catch {
+      setServerError('Something went wrong. Please try again.');
     }
   };
 

@@ -156,56 +156,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setLoading(false);
+        return { error: error.message };
+      }
+      // onAuthStateChange will handle setting user & loading=false
+      return {};
+    } catch (err) {
       setLoading(false);
-      return { error: error.message };
+      return { error: 'Unable to connect. Please check your network and try again.' };
     }
-    return {};
   };
 
   const signUp = async (email: string, password: string, name: string) => {
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: name },
-      },
-    });
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { display_name: name },
+        },
+      });
 
-    if (error) {
-      setLoading(false);
-      return { error: error.message };
-    }
-
-    // Create a default workspace for the new user
-    if (data.user) {
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
-      const { data: newWorkspace } = await supabase
-        .from('workspaces')
-        .insert({
-          name: `${name}'s Workspace`,
-          slug: `${slug}-${Date.now().toString(36)}`,
-          owner_id: data.user.id,
-          plan: 'free',
-          credit_balance: 10,
-        })
-        .select()
-        .single();
-
-      if (newWorkspace) {
-        await supabase.from('workspace_members').insert({
-          workspace_id: newWorkspace.id,
-          user_id: data.user.id,
-          role: 'owner',
-          email,
-          display_name: name,
-        });
+      if (error) {
+        setLoading(false);
+        return { error: error.message };
       }
-    }
 
-    return {};
+      // Create a default workspace for the new user
+      if (data.user) {
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
+        const { data: newWorkspace } = await supabase
+          .from('workspaces')
+          .insert({
+            name: `${name}'s Workspace`,
+            slug: `${slug}-${Date.now().toString(36)}`,
+            owner_id: data.user.id,
+            plan: 'free',
+            credit_balance: 10,
+          })
+          .select()
+          .single();
+
+        if (newWorkspace) {
+          await supabase.from('workspace_members').insert({
+            workspace_id: newWorkspace.id,
+            user_id: data.user.id,
+            role: 'owner',
+            email,
+            display_name: name,
+          });
+        }
+      }
+
+      return {};
+    } catch (err) {
+      setLoading(false);
+      return { error: 'Unable to connect. Please check your network and try again.' };
+    }
   };
 
   const signInWithGoogle = async () => {
