@@ -252,7 +252,7 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 bg-navy-dark border-r border-border/50 flex flex-col transition-all duration-200 ease-out lg:translate-x-0 lg:static lg:z-auto lg:h-dvh shrink-0 overflow-hidden',
+          'fixed inset-y-0 left-0 z-40 bg-navy-dark border-r border-border/50 flex flex-col transition-all duration-200 ease-out lg:translate-x-0 lg:static lg:z-auto lg:h-dvh shrink-0 overflow-x-clip',
           collapsed && !mobileOpen ? 'lg:w-16 w-64' : 'w-64',
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
@@ -334,7 +334,7 @@ export default function Sidebar() {
             <div className="flex-1" />
 
             {/* User avatar at bottom */}
-            <div className="p-2 border-t border-border/50 w-full flex justify-center relative" ref={userMenuRef}>
+            <div className="p-2 border-t border-border/50 w-full flex justify-center" ref={userMenuRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors"
@@ -350,7 +350,7 @@ export default function Sidebar() {
               </button>
 
               {userMenuOpen && (
-                <div className="absolute bottom-12 left-2 w-56 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
+                <div className="fixed bottom-16 left-2 w-56 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
                   <div className="px-3.5 py-2 border-b border-border/50">
                     <p className="text-xs text-text-muted truncate">{user?.email || ''}</p>
                   </div>

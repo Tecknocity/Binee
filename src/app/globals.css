@@ -150,3 +150,12 @@ main {
 .animate-confetti {
   animation: confetti 3s ease-out forwards;
 }
+
+/* Hide scrollbar but keep scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

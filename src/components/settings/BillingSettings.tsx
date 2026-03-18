@@ -187,7 +187,8 @@ export default function BillingSettings() {
               <p className="text-text-muted text-sm">No credit transactions yet</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[500px]">
               <thead>
                 <tr className="border-b border-border text-text-muted">
                   <th className="text-left px-4 py-3 font-medium">Description</th>
@@ -219,6 +220,7 @@ export default function BillingSettings() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

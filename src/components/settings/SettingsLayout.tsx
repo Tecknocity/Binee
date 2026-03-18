@@ -59,9 +59,31 @@ export default function SettingsLayout() {
         <h1 className="text-2xl font-semibold text-text-primary">Settings</h1>
       </div>
 
+      {/* Mobile: horizontal scrollable tabs */}
+      <nav className="flex lg:hidden gap-1 overflow-x-auto pb-4 mb-6 border-b border-border/50 scrollbar-hide -mx-6 px-6">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              className={cn(
+                'flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0',
+                activeTab === tab.id
+                  ? 'bg-accent/10 text-accent'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
+
       <div className="flex gap-10">
-        {/* Left sidebar nav */}
-        <nav className="w-52 shrink-0 space-y-0.5">
+        {/* Left sidebar nav — desktop only */}
+        <nav className="hidden lg:block w-52 shrink-0 space-y-0.5">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
