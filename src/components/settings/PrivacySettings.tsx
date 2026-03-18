@@ -1,22 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { Save, Loader2, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function PrivacySettings() {
+  const { profile, loading: profileLoading, saveProfile } = useUserProfile();
   const [allowTraining, setAllowTraining] = useState(false);
   const [chatHistory, setChatHistory] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // Hydrate form from user_profiles
+  useEffect(() => {
+    if (profileLoading || profileLoaded) return;
+    setAllowTraining(profile.allow_training);
+    setChatHistory(profile.chat_history_enabled);
+    setProfileLoaded(true);
+  }, [profileLoading, profileLoaded, profile]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
+    const { error } = await saveProfile({
+      allow_training: allowTraining,
+      chat_history_enabled: chatHistory,
+    });
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (!error) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
   };
 
   return (
