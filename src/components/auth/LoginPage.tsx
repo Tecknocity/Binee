@@ -34,11 +34,15 @@ export function LoginPage() {
 
   const onSubmit = async (data: LoginFormData) => {
     setServerError('');
-    const result = await signIn(data.email, data.password);
-    if (result.error) {
-      setServerError(result.error);
-    } else {
-      router.push('/chat');
+    try {
+      const result = await signIn(data.email, data.password);
+      if (result.error) {
+        setServerError(result.error);
+      } else {
+        router.push('/chat');
+      }
+    } catch {
+      setServerError('Something went wrong. Please try again.');
     }
   };
 
