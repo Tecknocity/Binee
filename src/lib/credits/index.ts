@@ -1,5 +1,5 @@
 import { createBrowserClient } from '@/lib/supabase/client';
-import type { CreditTransaction, DeductCreditsResult } from '@/types/database';
+import type { CreditTransaction, DeductCreditsResult, AddCreditsResult } from '@/types/database';
 
 // Plan credit allocations
 export const PLAN_CREDITS: Record<string, number> = {
@@ -20,6 +20,7 @@ export async function deductCredits(
   userId: string,
   amount: number,
   description: string,
+  messageId?: string,
   metadata: Record<string, unknown> = {},
 ): Promise<DeductCreditsResult> {
   const supabase = createBrowserClient();
@@ -29,6 +30,7 @@ export async function deductCredits(
     p_user_id: userId,
     p_amount: amount,
     p_description: description,
+    p_message_id: messageId ?? null,
     p_metadata: metadata,
   });
 
@@ -46,48 +48,23 @@ export async function addCredits(
   type: 'purchase' | 'bonus' | 'refund' | 'monthly_reset',
   description: string,
   metadata: Record<string, unknown> = {},
-): Promise<{ success: boolean; error?: string }> {
+): Promise<AddCreditsResult> {
   const supabase = createBrowserClient();
 
-  // Get current balance
-  const { data: workspace, error: wsError } = await supabase
-    .from('workspaces')
-    .select('credit_balance')
-    .eq('id', workspaceId)
-    .single();
-
-  if (wsError || !workspace) {
-    return { success: false, error: wsError?.message || 'Workspace not found' };
-  }
-
-  const newBalance = workspace.credit_balance + amount;
-
-  // Update balance
-  const { error: updateError } = await supabase
-    .from('workspaces')
-    .update({ credit_balance: newBalance })
-    .eq('id', workspaceId);
-
-  if (updateError) {
-    return { success: false, error: updateError.message };
-  }
-
-  // Record transaction
-  const { error: txError } = await supabase.from('credit_transactions').insert({
-    workspace_id: workspaceId,
-    user_id: userId,
-    amount,
-    balance_after: newBalance,
-    type,
-    description,
-    metadata,
+  const { data, error } = await supabase.rpc('add_credits', {
+    p_workspace_id: workspaceId,
+    p_user_id: userId,
+    p_amount: amount,
+    p_type: type,
+    p_description: description,
+    p_metadata: metadata,
   });
 
-  if (txError) {
-    return { success: false, error: txError.message };
+  if (error) {
+    return { success: false, error: error.message };
   }
 
-  return { success: true };
+  return data as AddCreditsResult;
 }
 
 export async function getCreditBalance(workspaceId: string): Promise<number> {

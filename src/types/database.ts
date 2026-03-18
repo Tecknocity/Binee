@@ -204,6 +204,7 @@ export interface CreditTransaction {
   balance_after: number;
   type: 'deduction' | 'purchase' | 'bonus' | 'refund' | 'monthly_reset';
   description: string;
+  message_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
 }
@@ -276,4 +277,13 @@ export interface DeductCreditsResult {
   balance?: number;
   deducted?: number;
   required?: number;
+}
+
+// Helper type for add_credits RPC response
+export interface AddCreditsResult {
+  success: boolean;
+  error?: string;
+  transaction_id?: string;
+  balance?: number;
+  added?: number;
 }
