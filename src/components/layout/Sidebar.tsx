@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -172,6 +173,7 @@ export default function Sidebar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuTriggerRef = useRef<HTMLDivElement>(null);
   const { collapsed, toggle: toggleCollapse } = useSidebar();
   const { resolvedTheme } = useTheme();
 
@@ -186,7 +188,10 @@ export default function Sidebar() {
   // Close user menu on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inMenu = userMenuRef.current?.contains(target);
+      const inTrigger = userMenuTriggerRef.current?.contains(target);
+      if (!inMenu && !inTrigger) {
         setUserMenuOpen(false);
       }
     }
@@ -252,7 +257,7 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 bg-navy-dark border-r border-border/50 flex flex-col transition-all duration-200 ease-out lg:translate-x-0 lg:static lg:z-auto lg:h-dvh shrink-0 overflow-x-clip',
+          'fixed inset-y-0 left-0 z-40 bg-navy-dark border-r border-border/50 flex flex-col transition-all duration-200 ease-out lg:translate-x-0 lg:static lg:z-auto lg:h-dvh shrink-0 overflow-hidden',
           collapsed && !mobileOpen ? 'lg:w-16 w-64' : 'w-64',
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
@@ -334,7 +339,7 @@ export default function Sidebar() {
             <div className="flex-1" />
 
             {/* User avatar at bottom */}
-            <div className="p-2 border-t border-border/50 w-full flex justify-center" ref={userMenuRef}>
+            <div className="p-2 border-t border-border/50 w-full flex justify-center" ref={userMenuTriggerRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors"
@@ -349,8 +354,8 @@ export default function Sidebar() {
                 )}
               </button>
 
-              {userMenuOpen && (
-                <div className="fixed bottom-16 left-2 w-56 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
+              {userMenuOpen && createPortal(
+                <div ref={userMenuRef} className="fixed bottom-16 left-2 w-56 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
                   <div className="px-3.5 py-2 border-b border-border/50">
                     <p className="text-xs text-text-muted truncate">{user?.email || ''}</p>
                   </div>
@@ -389,7 +394,8 @@ export default function Sidebar() {
                     <LogOut className="w-4 h-4" />
                     <span className="text-sm">Log out</span>
                   </button>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           </div>
