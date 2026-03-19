@@ -1,14 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getMonthlyCredits, isPaidPlan } from '@/lib/credits/tiers';
 
 // Vercel Cron: runs on the 1st of each month at midnight UTC
 export const dynamic = 'force-dynamic';
-
-const PLAN_CREDITS: Record<string, number> = {
-  free: 10,
-  starter: 200,
-  pro: 600,
-};
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -33,9 +28,12 @@ export async function GET(request: Request) {
   let reset = 0;
 
   for (const ws of workspaces) {
-    const monthlyCredits = PLAN_CREDITS[ws.plan] ?? 10;
+    // Free tier does not get monthly credit refresh (B-020)
+    if (!isPaidPlan(ws.plan)) continue;
 
-    // Reset credit balance to plan amount
+    const monthlyCredits = getMonthlyCredits(ws.plan);
+
+    // Reset credit balance to plan amount (no rollover)
     await supabase
       .from('workspaces')
       .update({
