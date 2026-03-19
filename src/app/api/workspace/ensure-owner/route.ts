@@ -6,14 +6,15 @@ import { cookies } from 'next/headers';
 /**
  * POST /api/workspace/ensure-owner
  *
- * Ensures the authenticated user has a workspace and 'owner' role.
- * Handles three cases:
- * 1. User has workspace + member row → promotes role to 'owner' if needed
- * 2. User has workspace but no member row → creates member row as 'owner'
- * 3. User has no workspace at all → creates workspace + member row
+ * Ensures the authenticated user has:
+ * 1. A `profiles` row (auth-synced profile)
+ * 2. A `user_profiles` row (settings/preferences)
+ * 3. A workspace they own
+ * 4. A `workspace_members` row linking them as 'owner'
+ * 5. A welcome credit transaction
  *
- * Uses service role key to bypass RLS (the first member insert can't pass
- * the "Admins can manage members" RLS policy since no member exists yet).
+ * Uses service role key to bypass RLS.
+ * Designed to be idempotent — safe to call multiple times.
  */
 export async function POST() {
   const cookieStore = await cookies();
@@ -52,21 +53,11 @@ export async function POST() {
     user.user_metadata?.full_name ??
     userEmail.split('@')[0] ??
     'User';
+  const avatarUrl = user.user_metadata?.avatar_url ?? null;
 
-  // Check if the user has any workspace_members rows (include all non-removed statuses)
-  const { data: memberRows } = await admin
-    .from('workspace_members')
-    .select('id, workspace_id, role, status')
-    .eq('user_id', user.id)
-    .in('status', ['active', 'pending']);
+  const actions: string[] = [];
 
-  // Check if the user owns any workspaces
-  const { data: ownedWorkspaces } = await admin
-    .from('workspaces')
-    .select('id')
-    .eq('owner_id', user.id);
-
-  // Also ensure the user has a profile row
+  // ── Step 1: Ensure profiles row exists ────────────────────────
   const { data: existingProfile } = await admin
     .from('profiles')
     .select('id')
@@ -74,17 +65,52 @@ export async function POST() {
     .maybeSingle();
 
   if (!existingProfile) {
-    await admin.from('profiles').upsert({
+    const { error: profileError } = await admin.from('profiles').upsert({
       user_id: user.id,
       email: userEmail,
       full_name: displayName,
-      avatar_url: user.user_metadata?.avatar_url ?? null,
+      avatar_url: avatarUrl,
     }, { onConflict: 'user_id' });
+
+    if (profileError) {
+      console.error('[ensure-owner] Failed to create profiles row:', profileError.message);
+    } else {
+      actions.push('created_profile');
+    }
   }
 
-  const actions: string[] = [];
+  // ── Step 2: Ensure user_profiles row exists ───────────────────
+  const { data: existingUserProfile } = await admin
+    .from('user_profiles')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
 
-  // Case 3: No workspace at all — create one + member row
+  if (!existingUserProfile) {
+    const { error: upError } = await admin.from('user_profiles').upsert({
+      user_id: user.id,
+    }, { onConflict: 'user_id' });
+
+    if (upError) {
+      console.error('[ensure-owner] Failed to create user_profiles row:', upError.message);
+    } else {
+      actions.push('created_user_profile');
+    }
+  }
+
+  // ── Step 3: Check existing workspace ownership & membership ───
+  const { data: ownedWorkspaces } = await admin
+    .from('workspaces')
+    .select('id')
+    .eq('owner_id', user.id);
+
+  const { data: memberRows } = await admin
+    .from('workspace_members')
+    .select('id, workspace_id, role, status')
+    .eq('user_id', user.id)
+    .in('status', ['active', 'pending']);
+
+  // ── Step 4: Create workspace if user owns none ────────────────
   if (!ownedWorkspaces || ownedWorkspaces.length === 0) {
     const slug =
       displayName
@@ -105,13 +131,15 @@ export async function POST() {
       .single();
 
     if (wsError || !newWorkspace) {
+      console.error('[ensure-owner] Failed to create workspace:', wsError?.message);
       return NextResponse.json(
         { error: 'Failed to create workspace', detail: wsError?.message },
         { status: 500 },
       );
     }
 
-    await admin.from('workspace_members').insert({
+    // Create workspace_members row
+    const { error: memberError } = await admin.from('workspace_members').insert({
       workspace_id: newWorkspace.id,
       user_id: user.id,
       role: 'owner',
@@ -122,8 +150,18 @@ export async function POST() {
       joined_at: new Date().toISOString(),
     });
 
+    if (memberError) {
+      console.error('[ensure-owner] Failed to create workspace_members row:', memberError.message);
+      // Critical failure — try to clean up the orphaned workspace
+      await admin.from('workspaces').delete().eq('id', newWorkspace.id);
+      return NextResponse.json(
+        { error: 'Failed to create membership', detail: memberError.message },
+        { status: 500 },
+      );
+    }
+
     // Add welcome credits transaction
-    await admin.from('credit_transactions').insert({
+    const { error: creditError } = await admin.from('credit_transactions').insert({
       workspace_id: newWorkspace.id,
       user_id: user.id,
       amount: 10,
@@ -132,17 +170,22 @@ export async function POST() {
       description: 'Welcome to Binee! 10 free credits.',
     });
 
-    actions.push('created_workspace', 'created_member');
+    if (creditError) {
+      console.error('[ensure-owner] Failed to create credit transaction:', creditError.message);
+      // Non-critical — workspace and membership are created
+    }
+
+    actions.push('created_workspace', 'created_member', 'created_credits');
     return NextResponse.json({ actions });
   }
 
-  // Case 2: Has workspace(s) but no member rows — create missing member rows
+  // ── Step 5: Has workspace(s) — ensure member rows exist ───────
   const ownedIds = ownedWorkspaces.map((w) => w.id);
   const memberWorkspaceIds = new Set((memberRows ?? []).map((m) => m.workspace_id));
 
   for (const wsId of ownedIds) {
     if (!memberWorkspaceIds.has(wsId)) {
-      await admin.from('workspace_members').insert({
+      const { error: memberError } = await admin.from('workspace_members').insert({
         workspace_id: wsId,
         user_id: user.id,
         role: 'owner',
@@ -152,21 +195,31 @@ export async function POST() {
         status: 'active',
         joined_at: new Date().toISOString(),
       });
-      actions.push(`created_member_for_${wsId}`);
+
+      if (memberError) {
+        console.error(`[ensure-owner] Failed to create member row for workspace ${wsId}:`, memberError.message);
+      } else {
+        actions.push(`created_member_for_${wsId}`);
+      }
     }
   }
 
-  // Case 1: Has workspace + member but role isn't 'owner' — promote
+  // ── Step 6: Ensure owned workspace members have 'owner' role ──
   const membersToPromote = (memberRows ?? []).filter(
     (m) => ownedIds.includes(m.workspace_id) && m.role !== 'owner',
   );
 
   for (const member of membersToPromote) {
-    await admin
+    const { error: promoteError } = await admin
       .from('workspace_members')
       .update({ role: 'owner' })
       .eq('id', member.id);
-    actions.push(`promoted_${member.id}`);
+
+    if (promoteError) {
+      console.error(`[ensure-owner] Failed to promote member ${member.id}:`, promoteError.message);
+    } else {
+      actions.push(`promoted_${member.id}`);
+    }
   }
 
   return NextResponse.json({ actions: actions.length > 0 ? actions : ['no_changes'] });

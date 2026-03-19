@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import type { Workspace, WorkspaceMember } from '@/types/database';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
@@ -49,16 +49,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [membership, setMembership] = useState<WorkspaceMember | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Guard against concurrent ensure-owner calls (the race condition fix)
+  const ensureOwnerCalledRef = useRef(false);
+
   const supabase = createBrowserClient();
 
+  // ── loadWorkspaces: pure data loader, NO side effects ─────────
   const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
-    // Auto-fix: ensure user has 'owner' role in workspaces they own
-    try {
-      await fetch('/api/workspace/ensure-owner', { method: 'POST' });
-    } catch {
-      // Non-critical — don't block workspace loading
-    }
-
     const { data: memberRows } = await supabase
       .from('workspace_members')
       .select('workspace_id, role, email, display_name, avatar_url, status')
@@ -112,6 +109,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return fetchedWorkspaces;
   }, [supabase]);
 
+  // ── ensureOwnerOnce: call ensure-owner exactly once per session ─
+  const ensureOwnerOnce = useCallback(async (userId: string): Promise<Workspace[]> => {
+    // Prevent concurrent/duplicate calls
+    if (ensureOwnerCalledRef.current) {
+      return loadWorkspaces(userId);
+    }
+    ensureOwnerCalledRef.current = true;
+
+    try {
+      const response = await fetch('/api/workspace/ensure-owner', { method: 'POST' });
+      if (!response.ok) {
+        console.error('[AuthProvider] ensure-owner failed:', response.status);
+      }
+    } catch {
+      console.error('[AuthProvider] ensure-owner network error');
+    }
+
+    return loadWorkspaces(userId);
+  }, [loadWorkspaces]);
+
   const refreshWorkspace = useCallback(async () => {
     if (!user || !workspace) return;
     const { data: ws } = await supabase
@@ -137,7 +154,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const mappedUser = mapSupabaseUser(session.user);
           setUser(mappedUser);
-          await loadWorkspaces(session.user.id);
+
+          // Try loading workspaces first (fast path if data exists)
+          let loaded = await loadWorkspaces(session.user.id);
+
+          // If no workspaces found, call ensure-owner once to create them
+          if (loaded.length === 0) {
+            loaded = await ensureOwnerOnce(session.user.id);
+          }
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -178,18 +202,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
 
-            let loadedWorkspaces = await loadWorkspaces(session.user.id);
+            // Call ensure-owner once — it creates profile, user_profile,
+            // workspace, and membership if any are missing
+            const loadedWorkspaces = await ensureOwnerOnce(session.user.id);
 
-            // If no workspaces after initial load (e.g. OAuth user whose
-            // trigger hasn't fired yet), call ensure-owner to create one
-            // server-side (bypasses RLS) and reload.
             if (loadedWorkspaces.length === 0) {
-              try {
-                await fetch('/api/workspace/ensure-owner', { method: 'POST' });
-                loadedWorkspaces = await loadWorkspaces(session.user.id);
-              } catch {
-                // Non-critical — ensure-owner is already called inside loadWorkspaces
-              }
+              console.error('[AuthProvider] No workspaces after ensure-owner — possible database issue');
             }
 
             setLoading(false);
@@ -199,6 +217,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setWorkspaces([]);
             setMembership(null);
             setLoading(false);
+            // Reset the guard so a new sign-in can call ensure-owner again
+            ensureOwnerCalledRef.current = false;
           }
         } catch (error) {
           console.error('Auth state change error:', error);
@@ -212,10 +232,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
-  }, [supabase, loadWorkspaces]);
+  }, [supabase, loadWorkspaces, ensureOwnerOnce]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
+    // Reset the guard so ensure-owner runs for this new session
+    ensureOwnerCalledRef.current = false;
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
@@ -229,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       // onAuthStateChange will handle setting user & loading=false
       return {};
-    } catch (err) {
+    } catch {
       setLoading(false);
       return { error: 'Unable to connect. Please check your network and try again.' };
     }
@@ -237,6 +259,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, name: string) => {
     setLoading(true);
+    // Reset the guard so ensure-owner runs for this new session
+    ensureOwnerCalledRef.current = false;
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -252,31 +276,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // If a session was returned (email confirmation disabled),
-      // set up user + workspace immediately — don't rely on the async
-      // onAuthStateChange event which may fire after SignupPage navigates.
+      // set up user + workspace immediately.
+      // The trigger should have created everything, but ensure-owner
+      // is the safety net (called exactly once).
       if (data.user && data.session) {
         const mappedUser = mapSupabaseUser(data.user);
         setUser(mappedUser);
 
-        // ensure-owner (server-side, bypasses RLS) creates the workspace
-        // and member row if the handle_new_user() trigger didn't fire.
-        try {
-          await fetch('/api/workspace/ensure-owner', { method: 'POST' });
-        } catch {
-          // Will be retried inside loadWorkspaces
+        // Small delay to let the DB trigger complete before we query
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Load workspaces — if trigger worked, data is already there
+        let loaded = await loadWorkspaces(data.user.id);
+
+        // If trigger didn't create data, ensure-owner will
+        if (loaded.length === 0) {
+          loaded = await ensureOwnerOnce(data.user.id);
         }
 
-        await loadWorkspaces(data.user.id);
+        setLoading(false);
       }
 
       return {};
-    } catch (err) {
+    } catch {
       setLoading(false);
       return { error: 'Unable to connect. Please check your network and try again.' };
     }
   };
 
   const signInWithGoogle = async () => {
+    // Reset the guard so ensure-owner runs for this new session
+    ensureOwnerCalledRef.current = false;
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -303,6 +333,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setWorkspaces([]);
     setMembership(null);
     setLoading(false);
+    ensureOwnerCalledRef.current = false;
 
     // Fire Supabase signOut but don't wait — it may hang or fail
     supabase.auth.signOut().catch(() => {});
