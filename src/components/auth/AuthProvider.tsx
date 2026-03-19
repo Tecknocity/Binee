@@ -52,6 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createBrowserClient();
 
   const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
+    // Auto-fix: ensure user has 'owner' role in workspaces they own
+    try {
+      await fetch('/api/workspace/ensure-owner', { method: 'POST' });
+    } catch {
+      // Non-critical — don't block workspace loading
+    }
+
     const { data: memberRows } = await supabase
       .from('workspace_members')
       .select('workspace_id, role, email, display_name, avatar_url')
