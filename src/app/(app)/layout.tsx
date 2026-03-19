@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import { AuthProvider } from '@/components/auth/AuthProvider';
+import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import AppLayout from '@/components/layout/AppLayout';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { Loader2 } from 'lucide-react';
@@ -26,11 +27,13 @@ function AppLoadingFallback() {
 export default function AppRouteLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <SidebarProvider>
-        <Suspense fallback={<AppLoadingFallback />}>
-          <AppLayout>{children}</AppLayout>
-        </Suspense>
-      </SidebarProvider>
+      <WorkspaceProvider>
+        <SidebarProvider>
+          <Suspense fallback={<AppLoadingFallback />}>
+            <AppLayout>{children}</AppLayout>
+          </Suspense>
+        </SidebarProvider>
+      </WorkspaceProvider>
     </AuthProvider>
   );
 }
