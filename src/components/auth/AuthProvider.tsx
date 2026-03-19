@@ -316,18 +316,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch {
-      // Clear state even if Supabase signOut fails
-    }
+    // Clear React state immediately
     setUser(null);
     setWorkspace(null);
     setWorkspaces([]);
     setMembership(null);
     setLoading(false);
+
+    // Fire Supabase signOut but don't wait — it may hang or fail
+    supabase.auth.signOut().catch(() => {});
+
     if (typeof window !== 'undefined') {
       localStorage.removeItem('binee_active_workspace');
+      // Clear all Supabase auth cookies so the middleware
+      // won't redirect back to /chat with a stale session
+      document.cookie.split(';').forEach((c) => {
+        const name = c.trim().split('=')[0];
+        if (name.startsWith('sb-')) {
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+        }
+      });
       window.location.href = '/login';
     }
   };
