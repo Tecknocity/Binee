@@ -5,6 +5,7 @@ import type { SetupPlan, ExecutionProgress, ExecutionResult, ManualStep } from '
 import { executeSetupPlan } from '@/lib/setup/session';
 import { generateDefaultPlan } from '@/lib/setup/planner';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +66,7 @@ const WELCOME_MESSAGE: SetupChatMessage = {
 
 export function useSetup(): UseSetupReturn {
   const clickUp = useClickUpStatus();
+  const { workspace_id } = useWorkspace();
 
   // Start at step 0 (connect) if ClickUp is not connected, otherwise step 1 (describe)
   const [currentStep, setCurrentStep] = useState<SetupStep>(0);
@@ -88,8 +90,9 @@ export function useSetup(): UseSetupReturn {
   }, [clickUp.connected, clickUp.loading, currentStep]);
 
   const handleClickUpConnect = useCallback(() => {
-    window.location.href = '/api/clickup/auth';
-  }, []);
+    if (!workspace_id) return;
+    window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}`;
+  }, [workspace_id]);
 
   const refreshClickUpStatus = useCallback(async () => {
     await clickUp.refetch();
