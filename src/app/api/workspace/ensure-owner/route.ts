@@ -53,10 +53,10 @@ export async function POST() {
     userEmail.split('@')[0] ??
     'User';
 
-  // Check if the user has any workspace_members rows
+  // Check if the user has any workspace_members rows (include all non-removed statuses)
   const { data: memberRows } = await admin
     .from('workspace_members')
-    .select('id, workspace_id, role')
+    .select('id, workspace_id, role, status')
     .eq('user_id', user.id)
     .in('status', ['active', 'pending']);
 
@@ -66,7 +66,23 @@ export async function POST() {
     .select('id')
     .eq('owner_id', user.id);
 
-  let actions: string[] = [];
+  // Also ensure the user has a profile row
+  const { data: existingProfile } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!existingProfile) {
+    await admin.from('profiles').upsert({
+      user_id: user.id,
+      email: userEmail,
+      full_name: displayName,
+      avatar_url: user.user_metadata?.avatar_url ?? null,
+    }, { onConflict: 'user_id' });
+  }
+
+  const actions: string[] = [];
 
   // Case 3: No workspace at all — create one + member row
   if (!ownedWorkspaces || ownedWorkspaces.length === 0) {
