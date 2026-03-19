@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const supabase = createBrowserClient();
 
-  const loadWorkspaces = useCallback(async (userId: string) => {
+  const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
     const { data: memberRows } = await supabase
       .from('workspace_members')
       .select('workspace_id, role, email, display_name, avatar_url')
@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setWorkspaces([]);
       setWorkspace(null);
       setMembership(null);
-      return;
+      return [];
     }
 
     const workspaceIds = memberRows.map((m) => m.workspace_id);
@@ -92,11 +92,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: memberRow.email,
           display_name: memberRow.display_name,
           avatar_url: memberRow.avatar_url,
+          invited_email: null,
+          status: 'active',
+          joined_at: null,
           created_at: '',
           updated_at: '',
         });
       }
     }
+
+    return fetchedWorkspaces;
   }, [supabase]);
 
   const refreshWorkspace = useCallback(async () => {
@@ -133,16 +138,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const mappedUser = mapSupabaseUser(session.user);
-          setUser(mappedUser);
-          await loadWorkspaces(session.user.id);
-          setLoading(false);
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setWorkspace(null);
-          setWorkspaces([]);
-          setMembership(null);
+        try {
+          if (event === 'SIGNED_IN' && session?.user) {
+            const mappedUser = mapSupabaseUser(session.user);
+            setUser(mappedUser);
+            const loadedWorkspaces = await loadWorkspaces(session.user.id);
+
+            // Auto-create a workspace for new users who have none
+            if (loadedWorkspaces.length === 0) {
+              const displayName = mappedUser.display_name || 'My';
+              const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
+              const { data: newWorkspace } = await supabase
+                .from('workspaces')
+                .insert({
+                  name: `${displayName}'s Workspace`,
+                  slug: `${slug}-${Date.now().toString(36)}`,
+                  owner_id: session.user.id,
+                  plan: 'free',
+                  credit_balance: 10,
+                })
+                .select()
+                .single();
+
+              if (newWorkspace) {
+                await supabase.from('workspace_members').insert({
+                  workspace_id: newWorkspace.id,
+                  user_id: session.user.id,
+                  role: 'owner',
+                  email: session.user.email ?? '',
+                  display_name: mappedUser.display_name,
+                });
+                await loadWorkspaces(session.user.id);
+              }
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+            setWorkspace(null);
+            setWorkspaces([]);
+            setMembership(null);
+          }
+        } catch (error) {
+          console.error('Auth state change error:', error);
+        } finally {
           setLoading(false);
         }
       },
@@ -153,56 +190,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setLoading(false);
+        return { error: error.message };
+      }
+      // Load workspaces directly instead of relying solely on onAuthStateChange
+      if (data.user) {
+        setUser(mapSupabaseUser(data.user));
+        await loadWorkspaces(data.user.id);
+      }
+      return {};
+    } catch {
+      return { error: 'Unable to connect. Please check your network and try again.' };
+    } finally {
       setLoading(false);
-      return { error: error.message };
     }
-    return {};
   };
 
   const signUp = async (email: string, password: string, name: string) => {
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: name },
-      },
-    });
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { display_name: name },
+        },
+      });
 
-    if (error) {
-      setLoading(false);
-      return { error: error.message };
-    }
-
-    // Create a default workspace for the new user
-    if (data.user) {
-      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
-      const { data: newWorkspace } = await supabase
-        .from('workspaces')
-        .insert({
-          name: `${name}'s Workspace`,
-          slug: `${slug}-${Date.now().toString(36)}`,
-          owner_id: data.user.id,
-          plan: 'free',
-          credit_balance: 10,
-        })
-        .select()
-        .single();
-
-      if (newWorkspace) {
-        await supabase.from('workspace_members').insert({
-          workspace_id: newWorkspace.id,
-          user_id: data.user.id,
-          role: 'owner',
-          email,
-          display_name: name,
-        });
+      if (error) {
+        setLoading(false);
+        return { error: error.message };
       }
-    }
 
-    return {};
+      // Create a default workspace for the new user
+      if (data.user) {
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
+        const { data: newWorkspace } = await supabase
+          .from('workspaces')
+          .insert({
+            name: `${name}'s Workspace`,
+            slug: `${slug}-${Date.now().toString(36)}`,
+            owner_id: data.user.id,
+            plan: 'free',
+            credit_balance: 10,
+          })
+          .select()
+          .single();
+
+        if (newWorkspace) {
+          await supabase.from('workspace_members').insert({
+            workspace_id: newWorkspace.id,
+            user_id: data.user.id,
+            role: 'owner',
+            email,
+            display_name: name,
+          });
+        }
+
+        setUser(mapSupabaseUser(data.user));
+        await loadWorkspaces(data.user.id);
+      }
+
+      return {};
+    } catch {
+      return { error: 'Unable to connect. Please check your network and try again.' };
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signInWithGoogle = async () => {

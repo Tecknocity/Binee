@@ -35,6 +35,9 @@ export interface WorkspaceMember {
   email: string;
   display_name: string | null;
   avatar_url: string | null;
+  invited_email: string | null;
+  status: string;
+  joined_at: string | null;
   created_at: string;
   updated_at: string;
 }
