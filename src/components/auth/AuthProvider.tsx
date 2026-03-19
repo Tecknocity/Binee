@@ -118,9 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, workspace, supabase]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
+
+        if (cancelled) return;
 
         if (session?.user) {
           const mappedUser = mapSupabaseUser(session.user);
@@ -130,60 +134,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error('Auth initialization error:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
-    initAuth();
+    // Safety timeout: if auth init takes too long, stop loading anyway
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 8000);
+
+    initAuth().then(() => clearTimeout(timeout));
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const mappedUser = mapSupabaseUser(session.user);
-          setUser(mappedUser);
-          const loadedWorkspaces = await loadWorkspaces(session.user.id);
+        try {
+          if (event === 'SIGNED_IN' && session?.user) {
+            const mappedUser = mapSupabaseUser(session.user);
+            setUser(mappedUser);
+            const loadedWorkspaces = await loadWorkspaces(session.user.id);
 
-          // Auto-create a workspace for new OAuth users who have none
-          if (loadedWorkspaces.length === 0) {
-            const displayName = mappedUser.display_name || 'My';
-            const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
-            const { data: newWorkspace } = await supabase
-              .from('workspaces')
-              .insert({
-                name: `${displayName}'s Workspace`,
-                slug: `${slug}-${Date.now().toString(36)}`,
-                owner_id: session.user.id,
-                plan: 'free',
-                credit_balance: 10,
-              })
-              .select()
-              .single();
+            // Auto-create a workspace for new OAuth users who have none
+            if (loadedWorkspaces.length === 0) {
+              const displayName = mappedUser.display_name || 'My';
+              const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
+              const { data: newWorkspace } = await supabase
+                .from('workspaces')
+                .insert({
+                  name: `${displayName}'s Workspace`,
+                  slug: `${slug}-${Date.now().toString(36)}`,
+                  owner_id: session.user.id,
+                  plan: 'free',
+                  credit_balance: 10,
+                })
+                .select()
+                .single();
 
-            if (newWorkspace) {
-              await supabase.from('workspace_members').insert({
-                workspace_id: newWorkspace.id,
-                user_id: session.user.id,
-                role: 'owner',
-                email: session.user.email ?? '',
-                display_name: mappedUser.display_name,
-              });
-              // Reload workspaces to pick up the new one
-              await loadWorkspaces(session.user.id);
+              if (newWorkspace) {
+                await supabase.from('workspace_members').insert({
+                  workspace_id: newWorkspace.id,
+                  user_id: session.user.id,
+                  role: 'owner',
+                  email: session.user.email ?? '',
+                  display_name: mappedUser.display_name,
+                });
+                // Reload workspaces to pick up the new one
+                await loadWorkspaces(session.user.id);
+              }
             }
-          }
 
-          setLoading(false);
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setWorkspace(null);
-          setWorkspaces([]);
-          setMembership(null);
+            setLoading(false);
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+            setWorkspace(null);
+            setWorkspaces([]);
+            setMembership(null);
+            setLoading(false);
+          }
+        } catch (error) {
+          console.error('Auth state change error:', error);
           setLoading(false);
         }
       },
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, [supabase, loadWorkspaces]);
 
   const signIn = async (email: string, password: string) => {

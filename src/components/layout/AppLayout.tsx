@@ -1,6 +1,7 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
 import Sidebar from '@/components/layout/Sidebar';
 import { Loader2 } from 'lucide-react';
@@ -10,11 +11,19 @@ import Image from 'next/image';
 const FULL_BLEED_PAGES = ['/chat'];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { loading } = useAuth();
+  const { user, loading } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const isFullBleed = FULL_BLEED_PAGES.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
-  if (loading) {
+  // Redirect unauthenticated users to login
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/login');
+    }
+  }, [loading, user, router]);
+
+  if (loading || !user) {
     return (
       <div className="min-h-screen bg-navy-base flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
