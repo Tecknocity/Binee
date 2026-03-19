@@ -254,7 +254,7 @@ export interface CreditTransaction {
   user_id: string | null;
   amount: number;
   balance_after: number;
-  type: 'deduction' | 'purchase' | 'bonus' | 'refund' | 'monthly_reset';
+  type: 'deduction' | 'purchase' | 'bonus' | 'refund' | 'monthly_reset' | 'subscription_grant';
   description: string;
   message_id: string | null;
   metadata: Record<string, unknown> | null;
