@@ -1,6 +1,6 @@
 // Credit service types — used by credit-service.ts and consumers
 
-export type CreditTransactionType = 'purchase' | 'bonus' | 'refund' | 'monthly_reset';
+export type CreditTransactionType = 'purchase' | 'bonus' | 'refund' | 'monthly_reset' | 'subscription_grant';
 
 export interface DeductResult {
   success: boolean;

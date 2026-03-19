@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import type { Workspace, WorkspaceMember } from '@/types/database';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
@@ -51,14 +51,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const supabase = createBrowserClient();
 
-  const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
-    // Auto-fix: ensure user has 'owner' role in workspaces they own
+  // Guard: ensure-owner is called at most once per session
+  const ensureOwnerCalled = useRef(false);
+  const ensureOwnerInFlight = useRef(false);
+
+  const callEnsureOwnerOnce = useCallback(async () => {
+    if (ensureOwnerCalled.current || ensureOwnerInFlight.current) return;
+    ensureOwnerInFlight.current = true;
     try {
       await fetch('/api/workspace/ensure-owner', { method: 'POST' });
+      ensureOwnerCalled.current = true;
     } catch {
-      // Non-critical — don't block workspace loading
+      // Non-critical — will be retried on next sign-in if needed
+    } finally {
+      ensureOwnerInFlight.current = false;
     }
+  }, []);
 
+  const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
     const { data: memberRows } = await supabase
       .from('workspace_members')
       .select('workspace_id, role, email, display_name, avatar_url, status')
@@ -137,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const mappedUser = mapSupabaseUser(session.user);
           setUser(mappedUser);
+          await callEnsureOwnerOnce();
           await loadWorkspaces(session.user.id);
         }
       } catch (error) {
@@ -178,18 +189,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
 
+            await callEnsureOwnerOnce();
             let loadedWorkspaces = await loadWorkspaces(session.user.id);
 
             // If no workspaces after initial load (e.g. OAuth user whose
-            // trigger hasn't fired yet), call ensure-owner to create one
-            // server-side (bypasses RLS) and reload.
+            // trigger hasn't fired yet), reload once more.
             if (loadedWorkspaces.length === 0) {
-              try {
-                await fetch('/api/workspace/ensure-owner', { method: 'POST' });
-                loadedWorkspaces = await loadWorkspaces(session.user.id);
-              } catch {
-                // Non-critical — ensure-owner is already called inside loadWorkspaces
-              }
+              loadedWorkspaces = await loadWorkspaces(session.user.id);
             }
 
             setLoading(false);
@@ -212,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
-  }, [supabase, loadWorkspaces]);
+  }, [supabase, loadWorkspaces, callEnsureOwnerOnce]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -260,11 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // ensure-owner (server-side, bypasses RLS) creates the workspace
         // and member row if the handle_new_user() trigger didn't fire.
-        try {
-          await fetch('/api/workspace/ensure-owner', { method: 'POST' });
-        } catch {
-          // Will be retried inside loadWorkspaces
-        }
+        await callEnsureOwnerOnce();
 
         await loadWorkspaces(data.user.id);
       }

@@ -74,12 +74,19 @@ export async function POST() {
     .maybeSingle();
 
   if (!existingProfile) {
-    await admin.from('profiles').upsert({
+    const { error: profileError } = await admin.from('profiles').upsert({
       user_id: user.id,
       email: userEmail,
       full_name: displayName,
       avatar_url: user.user_metadata?.avatar_url ?? null,
     }, { onConflict: 'user_id' });
+
+    if (profileError) {
+      console.error('ensure-owner: failed to create profile', {
+        user_id: user.id,
+        error: profileError.message,
+      });
+    }
   }
 
   const actions: string[] = [];
@@ -111,7 +118,7 @@ export async function POST() {
       );
     }
 
-    await admin.from('workspace_members').insert({
+    const { error: memberError } = await admin.from('workspace_members').insert({
       workspace_id: newWorkspace.id,
       user_id: user.id,
       role: 'owner',
@@ -122,8 +129,22 @@ export async function POST() {
       joined_at: new Date().toISOString(),
     });
 
+    if (memberError) {
+      console.error('ensure-owner: failed to create workspace_member, cleaning up orphaned workspace', {
+        workspace_id: newWorkspace.id,
+        user_id: user.id,
+        error: memberError.message,
+      });
+      // Clean up orphaned workspace
+      await admin.from('workspaces').delete().eq('id', newWorkspace.id);
+      return NextResponse.json(
+        { error: 'Failed to create workspace member', detail: memberError.message },
+        { status: 500 },
+      );
+    }
+
     // Add welcome credits transaction
-    await admin.from('credit_transactions').insert({
+    const { error: creditError } = await admin.from('credit_transactions').insert({
       workspace_id: newWorkspace.id,
       user_id: user.id,
       amount: 10,
@@ -131,6 +152,14 @@ export async function POST() {
       type: 'bonus',
       description: 'Welcome to Binee! 10 free credits.',
     });
+
+    if (creditError) {
+      console.error('ensure-owner: failed to create credit transaction', {
+        workspace_id: newWorkspace.id,
+        error: creditError.message,
+      });
+      // Non-fatal: workspace and member exist, credits just won't show in history
+    }
 
     actions.push('created_workspace', 'created_member');
     return NextResponse.json({ actions });
@@ -142,7 +171,7 @@ export async function POST() {
 
   for (const wsId of ownedIds) {
     if (!memberWorkspaceIds.has(wsId)) {
-      await admin.from('workspace_members').insert({
+      const { error: insertErr } = await admin.from('workspace_members').insert({
         workspace_id: wsId,
         user_id: user.id,
         role: 'owner',
@@ -152,7 +181,14 @@ export async function POST() {
         status: 'active',
         joined_at: new Date().toISOString(),
       });
-      actions.push(`created_member_for_${wsId}`);
+      if (insertErr) {
+        console.error('ensure-owner: failed to backfill member row', {
+          workspace_id: wsId,
+          error: insertErr.message,
+        });
+      } else {
+        actions.push(`created_member_for_${wsId}`);
+      }
     }
   }
 
@@ -162,11 +198,18 @@ export async function POST() {
   );
 
   for (const member of membersToPromote) {
-    await admin
+    const { error: promoteErr } = await admin
       .from('workspace_members')
       .update({ role: 'owner' })
       .eq('id', member.id);
-    actions.push(`promoted_${member.id}`);
+    if (promoteErr) {
+      console.error('ensure-owner: failed to promote member', {
+        member_id: member.id,
+        error: promoteErr.message,
+      });
+    } else {
+      actions.push(`promoted_${member.id}`);
+    }
   }
 
   return NextResponse.json({ actions: actions.length > 0 ? actions : ['no_changes'] });
