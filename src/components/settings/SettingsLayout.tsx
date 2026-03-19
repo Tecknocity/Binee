@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Settings, User, Shield, Users, ArrowLeft, Bell, CreditCard, Plug } from 'lucide-react';
+import { Settings, User, Shield, Users, ArrowLeft, Bell, CreditCard, Plug, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import GeneralSettings from '@/components/settings/GeneralSettings';
@@ -12,10 +12,12 @@ import TeamSettings from '@/components/settings/TeamSettings';
 import NotificationSettings from '@/components/settings/NotificationSettings';
 import BillingSettings from '@/components/settings/BillingSettings';
 import IntegrationsSettingsPage from '@/components/settings/IntegrationsSettingsPage';
+import WorkspaceSettingsPage from '@/components/settings/WorkspaceSettingsPage';
 
 const tabs = [
   { id: 'general', label: 'General', icon: Settings },
   { id: 'account', label: 'Account', icon: User },
+  { id: 'workspace', label: 'Workspace', icon: Building2 },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'privacy', label: 'Privacy', icon: Shield },
   { id: 'team', label: 'Team', icon: Users },
@@ -108,6 +110,7 @@ export default function SettingsLayout() {
         <div className="flex-1 min-w-0">
           {activeTab === 'general' && <GeneralSettings />}
           {activeTab === 'account' && <AccountSettings />}
+          {activeTab === 'workspace' && <WorkspaceSettingsPage />}
           {activeTab === 'notifications' && <NotificationSettings />}
           {activeTab === 'privacy' && <PrivacySettings />}
           {activeTab === 'team' && <TeamSettings />}
