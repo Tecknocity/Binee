@@ -1,13 +1,16 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useConversations } from '@/hooks/useConversations';
 import { useChat } from '@/hooks/useChat';
 import type { DashboardChoiceData } from '@/hooks/useChat';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import MessageThread from './MessageThread';
 import ChatInput from './ChatInput';
+import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
+import UpgradePrompt from '@/components/credits/UpgradePrompt';
 import { Hexagon } from 'lucide-react';
 
 function getGreeting(): string {
@@ -26,9 +29,12 @@ const SUGGESTED_PROMPTS = [
 
 export default function ChatPage() {
   const { user } = useAuth();
+  const { credit_balance } = useWorkspaceContext();
   const searchParams = useSearchParams();
   const router = useRouter();
   const isNew = searchParams.get('new') === '1';
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const isOutOfCredits = credit_balance <= 0;
 
   const {
     activeConversationId,
@@ -63,6 +69,11 @@ export default function ChatPage() {
 
   const handleSend = useCallback(
     (content: string) => {
+      if (isOutOfCredits) {
+        setShowCreditsModal(true);
+        return;
+      }
+
       if (!activeConversationId) {
         const newId = createConversation();
         // sendMessage needs the conversation to exist, but since hook state
@@ -72,7 +83,7 @@ export default function ChatPage() {
         sendMessage(content);
       }
     },
-    [activeConversationId, createConversation, sendMessage],
+    [activeConversationId, createConversation, sendMessage, isOutOfCredits],
   );
 
   const handleSuggestedPrompt = useCallback(
@@ -119,10 +130,14 @@ export default function ChatPage() {
             onCancelAction={handleCancelAction}
             onDashboardChoice={handleDashboardChoice}
           />
-          <ChatInput
-            onSend={handleSend}
-            disabled={isLoading}
-          />
+          {isOutOfCredits ? (
+            <UpgradePrompt />
+          ) : (
+            <ChatInput
+              onSend={handleSend}
+              disabled={isLoading}
+            />
+          )}
         </>
       ) : (
         <>
@@ -139,29 +154,40 @@ export default function ChatPage() {
 
             {/* Chat input - centered */}
             <div className="w-full max-w-2xl mb-8">
-              <ChatInput
-                onSend={handleSend}
-                disabled={isLoading}
-                placeholder="Start a new chat..."
-              />
+              {isOutOfCredits ? (
+                <UpgradePrompt />
+              ) : (
+                <ChatInput
+                  onSend={handleSend}
+                  disabled={isLoading}
+                  placeholder="Start a new chat..."
+                />
+              )}
             </div>
 
-            {/* Suggested prompts */}
-            <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
-              {SUGGESTED_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt.text}
-                  onClick={() => handleSuggestedPrompt(prompt.text)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-surface border border-border hover:border-accent/30 hover:bg-surface-hover transition-all duration-150 text-sm text-text-secondary hover:text-text-primary"
-                >
-                  <span>{prompt.icon}</span>
-                  <span>{prompt.text}</span>
-                </button>
-              ))}
-            </div>
+            {/* Suggested prompts - hide when out of credits */}
+            {!isOutOfCredits && (
+              <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
+                {SUGGESTED_PROMPTS.map((prompt) => (
+                  <button
+                    key={prompt.text}
+                    onClick={() => handleSuggestedPrompt(prompt.text)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-surface border border-border hover:border-accent/30 hover:bg-surface-hover transition-all duration-150 text-sm text-text-secondary hover:text-text-primary"
+                  >
+                    <span>{prompt.icon}</span>
+                    <span>{prompt.text}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
+
+      <OutOfCreditsModal
+        open={showCreditsModal}
+        onClose={() => setShowCreditsModal(false)}
+      />
     </div>
   );
 }
