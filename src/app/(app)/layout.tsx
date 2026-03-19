@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import { AuthProvider } from '@/components/auth/AuthProvider';
+import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppLayout from '@/components/layout/AppLayout';
 import { SidebarProvider } from '@/hooks/useSidebar';
@@ -27,13 +28,15 @@ function AppLoadingFallback() {
 export default function AppRouteLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <SidebarProvider>
-        <Suspense fallback={<AppLoadingFallback />}>
-          <ProtectedRoute>
-            <AppLayout>{children}</AppLayout>
-          </ProtectedRoute>
-        </Suspense>
-      </SidebarProvider>
+      <ProtectedRoute>
+        <WorkspaceProvider>
+          <SidebarProvider>
+            <Suspense fallback={<AppLoadingFallback />}>
+              <AppLayout>{children}</AppLayout>
+            </Suspense>
+          </SidebarProvider>
+        </WorkspaceProvider>
+      </ProtectedRoute>
     </AuthProvider>
   );
 }
