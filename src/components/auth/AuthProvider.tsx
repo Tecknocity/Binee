@@ -92,6 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: memberRow.email,
           display_name: memberRow.display_name,
           avatar_url: memberRow.avatar_url,
+          invited_email: null,
+          status: 'active',
+          joined_at: null,
           created_at: '',
           updated_at: '',
         });
@@ -187,25 +190,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setLoading(false);
-      return { error: error.message };
-    }
-    // Load workspaces directly instead of relying solely on onAuthStateChange
-    if (data.user) {
-      try {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setLoading(false);
+        return { error: error.message };
+      }
+      // Load workspaces directly instead of relying solely on onAuthStateChange
+      if (data.user) {
         setUser(mapSupabaseUser(data.user));
         await loadWorkspaces(data.user.id);
-      } catch (e) {
-        console.error('Error loading workspaces after sign in:', e);
-      } finally {
-        setLoading(false);
       }
-    } else {
+      return {};
+    } catch {
+      return { error: 'Unable to connect. Please check your network and try again.' };
+    } finally {
       setLoading(false);
     }
-    return {};
   };
 
   const signUp = async (email: string, password: string, name: string) => {
@@ -254,9 +255,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       return {};
-    } catch (e) {
-      console.error('Sign up error:', e);
-      return { error: 'An unexpected error occurred' };
+    } catch {
+      return { error: 'Unable to connect. Please check your network and try again.' };
     } finally {
       setLoading(false);
     }
