@@ -153,6 +153,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (event === 'SIGNED_IN' && session?.user) {
             const mappedUser = mapSupabaseUser(session.user);
             setUser(mappedUser);
+
+            // Auto-accept pending invitations for this user's email
+            if (session.user.email) {
+              try {
+                await fetch('/api/invitations/auto-accept', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    user_id: session.user.id,
+                    email: session.user.email,
+                  }),
+                });
+              } catch {
+                // Non-critical — don't block sign-in if auto-accept fails
+              }
+            }
+
             const loadedWorkspaces = await loadWorkspaces(session.user.id);
 
             // Auto-create a workspace for new OAuth users who have none
