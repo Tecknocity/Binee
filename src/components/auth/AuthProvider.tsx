@@ -220,6 +220,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setLoading(false);
+        // Supabase returns "Invalid login credentials" for both wrong password
+        // and non-existent user. Provide a friendlier message.
+        if (error.message === 'Invalid login credentials') {
+          return { error: 'NO_ACCOUNT_OR_WRONG_PASSWORD' };
+        }
         return { error: error.message };
       }
       // onAuthStateChange will handle setting user & loading=false

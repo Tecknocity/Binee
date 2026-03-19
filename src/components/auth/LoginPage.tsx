@@ -103,7 +103,18 @@ export function LoginPage() {
         </div>
 
         {serverError && (
-          <p className="rounded-lg bg-error/10 px-3 py-2 text-xs text-error">{serverError}</p>
+          <div className="rounded-lg bg-error/10 px-3 py-2 text-xs text-error">
+            {serverError === 'NO_ACCOUNT_OR_WRONG_PASSWORD' ? (
+              <p>
+                Invalid email or password. Don&apos;t have an account?{' '}
+                <Link href="/signup" className="font-medium underline hover:text-error/80">
+                  Create one here
+                </Link>
+              </p>
+            ) : (
+              <p>{serverError}</p>
+            )}
+          </div>
         )}
 
         <button
