@@ -38,9 +38,9 @@ BEGIN
   )
   RETURNING id INTO v_workspace_id;
 
-  -- Add user as admin member of their workspace
+  -- Add user as owner member of their workspace
   INSERT INTO workspace_members (workspace_id, user_id, role, email, invited_email, status, joined_at)
-  VALUES (v_workspace_id, NEW.id, 'admin', NEW.email, NEW.email, 'active', now());
+  VALUES (v_workspace_id, NEW.id, 'owner', NEW.email, NEW.email, 'active', now());
 
   -- Record signup bonus credit transaction
   INSERT INTO credit_transactions (workspace_id, user_id, amount, balance_after, type, description)
