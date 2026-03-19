@@ -220,6 +220,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setLoading(false);
+        // Supabase returns "Invalid login credentials" for both wrong password
+        // and non-existent user. Provide a friendlier message.
+        if (error.message === 'Invalid login credentials') {
+          return { error: 'NO_ACCOUNT_OR_WRONG_PASSWORD' };
+        }
         return { error: error.message };
       }
       // onAuthStateChange will handle setting user & loading=false
@@ -233,7 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, name: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -246,11 +251,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error.message };
       }
 
-      // The handle_new_user() database trigger automatically creates a
-      // profile, workspace, and workspace_member row. The ensure-owner
-      // API route (called in loadWorkspaces) acts as a safety net.
-      // No need to create them here — doing so caused duplicates and
-      // RLS failures (circular policy blocked the first member insert).
+      // If a session was returned (email confirmation disabled),
+      // set up user + workspace immediately — don't rely on the async
+      // onAuthStateChange event which may fire after SignupPage navigates.
+      if (data.user && data.session) {
+        const mappedUser = mapSupabaseUser(data.user);
+        setUser(mappedUser);
+
+        // ensure-owner (server-side, bypasses RLS) creates the workspace
+        // and member row if the handle_new_user() trigger didn't fire.
+        try {
+          await fetch('/api/workspace/ensure-owner', { method: 'POST' });
+        } catch {
+          // Will be retried inside loadWorkspaces
+        }
+
+        await loadWorkspaces(data.user.id);
+      }
 
       return {};
     } catch (err) {
