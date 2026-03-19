@@ -1,14 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Coins } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import UserMenu from '@/components/layout/UserMenu';
+import CreditBadge from '@/components/credits/CreditBadge';
 
 export default function Header() {
   const { user, workspace } = useAuth();
-  const { credit_balance } = useWorkspaceContext();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const initials = (user?.display_name || 'U')
@@ -34,13 +32,8 @@ export default function Header() {
 
       {/* Right: Credit balance + User avatar */}
       <div className="flex items-center gap-3">
-        {/* Credit balance badge */}
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface border border-border/50 text-text-secondary">
-          <Coins className="w-3.5 h-3.5 text-accent" />
-          <span className="text-xs font-mono font-medium">
-            {credit_balance.toLocaleString()}
-          </span>
-        </div>
+        {/* Credit balance badge — B-019 */}
+        <CreditBadge />
 
         {/* User avatar with dropdown */}
         <div className="relative">
