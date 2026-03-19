@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { usePermissions } from '@/hooks/usePermissions';
 import { createBrowserClient } from '@/lib/supabase/client';
 import {
   Building2,
@@ -28,6 +29,7 @@ const planBadges: Record<string, { label: string; color: string }> = {
 
 export default function WorkspaceSettingsPage() {
   const { workspace, membership, refreshWorkspace, loading } = useAuth();
+  const { isOwner, canEditWorkspace } = usePermissions();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -38,8 +40,6 @@ export default function WorkspaceSettingsPage() {
 
   const supabaseRef = useRef(createBrowserClient());
   const supabase = supabaseRef.current;
-  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin';
-  const isOwner = membership?.role === 'owner';
   const plan = planBadges[workspace?.plan ?? 'free'] ?? planBadges.free;
 
   // Sync name state when workspace loads or changes
@@ -166,7 +166,7 @@ export default function WorkspaceSettingsPage() {
             ) : (
               <div className="flex items-center gap-2">
                 <p className="text-text-primary font-medium">{workspace.name}</p>
-                {isAdmin && (
+                {canEditWorkspace && (
                   <button
                     onClick={() => {
                       setName(workspace.name);

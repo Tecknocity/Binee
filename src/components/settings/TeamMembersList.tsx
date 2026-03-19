@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { usePermissions } from '@/hooks/usePermissions';
 import { createBrowserClient } from '@/lib/supabase/client';
-import { Trash2, Shield, ShieldCheck, User, Loader2, Crown } from 'lucide-react';
+import { Trash2, ShieldCheck, User, Loader2, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WorkspaceMember } from '@/types/database';
 
@@ -30,13 +31,13 @@ interface TeamMembersListProps {
 }
 
 export default function TeamMembersList({ onInviteClick }: TeamMembersListProps) {
-  const { workspace, membership, user } = useAuth();
+  const { workspace, user } = useAuth();
+  const { canInviteMembers, canRemoveMembers } = usePermissions();
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<string | null>(null);
 
   const supabaseRef = useRef(createBrowserClient());
-  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin';
 
   const workspaceId = workspace?.id;
 
@@ -117,7 +118,7 @@ export default function TeamMembersList({ onInviteClick }: TeamMembersListProps)
           Team Members
           <span className="text-text-muted text-sm font-normal ml-2">({members.length})</span>
         </h2>
-        {isAdmin && (
+        {canInviteMembers && (
           <button
             onClick={onInviteClick}
             className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
@@ -182,7 +183,7 @@ export default function TeamMembersList({ onInviteClick }: TeamMembersListProps)
                 <span className="capitalize">{member.role}</span>
               </div>
 
-              {isAdmin && member.role !== 'owner' && !isCurrentUser && (
+              {canRemoveMembers && member.role !== 'owner' && !isCurrentUser && (
                 <button
                   onClick={() => handleRemove(member)}
                   disabled={removing === member.id}
