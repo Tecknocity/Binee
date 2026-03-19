@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import { AuthProvider } from '@/components/auth/AuthProvider';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppLayout from '@/components/layout/AppLayout';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { Loader2 } from 'lucide-react';
@@ -28,7 +29,9 @@ export default function AppRouteLayout({ children }: { children: React.ReactNode
     <AuthProvider>
       <SidebarProvider>
         <Suspense fallback={<AppLoadingFallback />}>
-          <AppLayout>{children}</AppLayout>
+          <ProtectedRoute>
+            <AppLayout>{children}</AppLayout>
+          </ProtectedRoute>
         </Suspense>
       </SidebarProvider>
     </AuthProvider>

@@ -24,8 +24,26 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Refresh the session if it exists
-  await supabase.auth.getUser();
+  // Refresh the session and check auth state for route protection
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const pathname = request.nextUrl.pathname;
+  const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password';
+  const isPublicPath = pathname === '/' || pathname.startsWith('/api/') || isAuthPage;
+
+  // Redirect unauthenticated users away from protected routes
+  if (!user && !isPublicPath) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = '/login';
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Redirect authenticated users away from auth pages
+  if (user && isAuthPage) {
+    const chatUrl = request.nextUrl.clone();
+    chatUrl.pathname = '/chat';
+    return NextResponse.redirect(chatUrl);
+  }
 
   return supabaseResponse;
 }
