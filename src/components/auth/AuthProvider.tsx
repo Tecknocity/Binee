@@ -61,8 +61,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: memberRows } = await supabase
       .from('workspace_members')
-      .select('workspace_id, role, email, display_name, avatar_url')
-      .eq('user_id', userId);
+      .select('workspace_id, role, email, display_name, avatar_url, status')
+      .eq('user_id', userId)
+      .in('status', ['active', 'pending']);
 
     if (!memberRows || memberRows.length === 0) {
       setWorkspaces([]);
@@ -177,34 +178,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
 
-            const loadedWorkspaces = await loadWorkspaces(session.user.id);
+            let loadedWorkspaces = await loadWorkspaces(session.user.id);
 
-            // Auto-create a workspace for new OAuth users who have none
+            // If no workspaces after initial load (e.g. OAuth user whose
+            // trigger hasn't fired yet), call ensure-owner to create one
+            // server-side (bypasses RLS) and reload.
             if (loadedWorkspaces.length === 0) {
-              const displayName = mappedUser.display_name || 'My';
-              const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
-              const { data: newWorkspace } = await supabase
-                .from('workspaces')
-                .insert({
-                  name: `${displayName}'s Workspace`,
-                  slug: `${slug}-${Date.now().toString(36)}`,
-                  owner_id: session.user.id,
-                  plan: 'free',
-                  credit_balance: 10,
-                })
-                .select()
-                .single();
-
-              if (newWorkspace) {
-                await supabase.from('workspace_members').insert({
-                  workspace_id: newWorkspace.id,
-                  user_id: session.user.id,
-                  role: 'owner',
-                  email: session.user.email ?? '',
-                  display_name: mappedUser.display_name,
-                });
-                // Reload workspaces to pick up the new one
-                await loadWorkspaces(session.user.id);
+              try {
+                await fetch('/api/workspace/ensure-owner', { method: 'POST' });
+                loadedWorkspaces = await loadWorkspaces(session.user.id);
+              } catch {
+                // Non-critical — ensure-owner is already called inside loadWorkspaces
               }
             }
 
@@ -249,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, name: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -262,31 +246,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error.message };
       }
 
-      // Create a default workspace for the new user
-      if (data.user) {
-        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace';
-        const { data: newWorkspace } = await supabase
-          .from('workspaces')
-          .insert({
-            name: `${name}'s Workspace`,
-            slug: `${slug}-${Date.now().toString(36)}`,
-            owner_id: data.user.id,
-            plan: 'free',
-            credit_balance: 10,
-          })
-          .select()
-          .single();
-
-        if (newWorkspace) {
-          await supabase.from('workspace_members').insert({
-            workspace_id: newWorkspace.id,
-            user_id: data.user.id,
-            role: 'owner',
-            email,
-            display_name: name,
-          });
-        }
-      }
+      // The handle_new_user() database trigger automatically creates a
+      // profile, workspace, and workspace_member row. The ensure-owner
+      // API route (called in loadWorkspaces) acts as a safety net.
+      // No need to create them here — doing so caused duplicates and
+      // RLS failures (circular policy blocked the first member insert).
 
       return {};
     } catch (err) {
