@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { acceptInvitation } from '@/lib/workspace/invitations';
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -34,6 +35,12 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
+      // Auto-accept any pending invitations for this user's email
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        await acceptInvitation(user.id, user.email);
+      }
+
       return response;
     }
   }
