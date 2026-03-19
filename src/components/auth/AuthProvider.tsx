@@ -316,13 +316,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Clear state even if Supabase signOut fails
+    }
     setUser(null);
     setWorkspace(null);
     setWorkspaces([]);
     setMembership(null);
+    setLoading(false);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('binee_active_workspace');
+      window.location.href = '/login';
     }
   };
 
