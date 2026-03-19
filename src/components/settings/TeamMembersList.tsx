@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePermissions } from '@/hooks/usePermissions';
 import { createBrowserClient } from '@/lib/supabase/client';
-import { Trash2, Shield, ShieldCheck, User, Loader2, Crown } from 'lucide-react';
+import { Trash2, ShieldCheck, User, Loader2, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WorkspaceMember } from '@/types/database';
 
@@ -37,30 +37,39 @@ export default function TeamMembersList({ onInviteClick }: TeamMembersListProps)
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState<string | null>(null);
 
-  const supabase = createBrowserClient();
+  const supabaseRef = useRef(createBrowserClient());
 
-  const loadMembers = useCallback(async () => {
-    if (!workspace) return;
-    setLoading(true);
-    try {
-      const { data } = await supabase
-        .from('workspace_members')
-        .select('*')
-        .eq('workspace_id', workspace.id)
-        .in('status', ['active', 'pending'])
-        .order('created_at', { ascending: true });
-
-      setMembers((data as WorkspaceMember[]) ?? []);
-    } catch (err) {
-      console.error('Failed to load members:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [workspace, supabase]);
+  const workspaceId = workspace?.id;
 
   useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+
+    const loadMembers = async () => {
+      setLoading(true);
+      try {
+        const { data } = await supabaseRef.current
+          .from('workspace_members')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .in('status', ['active', 'pending'])
+          .order('created_at', { ascending: true });
+
+        if (!cancelled) {
+          setMembers((data as WorkspaceMember[]) ?? []);
+        }
+      } catch (err) {
+        console.error('Failed to load members:', err);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
     loadMembers();
-  }, [loadMembers]);
+    return () => { cancelled = true; };
+  }, [workspaceId]);
 
   const handleRemove = async (member: WorkspaceMember) => {
     if (member.role === 'owner') return;
@@ -68,7 +77,7 @@ export default function TeamMembersList({ onInviteClick }: TeamMembersListProps)
 
     setRemoving(member.id);
     try {
-      await supabase
+      await supabaseRef.current
         .from('workspace_members')
         .update({ status: 'removed' })
         .eq('id', member.id);
