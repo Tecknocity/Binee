@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plug, RefreshCw, Loader2, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -22,6 +23,7 @@ interface ConnectionStatus {
  * for connecting, disconnecting, and manually re-syncing data.
  */
 export function ClickUpConnection() {
+  const { workspace_id } = useWorkspace();
   const [status, setStatus] = useState<ConnectionStatus>({
     connected: false,
     teamName: null,
@@ -55,7 +57,8 @@ export function ClickUpConnection() {
   }, [fetchStatus]);
 
   const handleConnect = () => {
-    window.location.href = "/api/clickup/auth";
+    if (!workspace_id) return;
+    window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}`;
   };
 
   const handleDisconnect = async () => {

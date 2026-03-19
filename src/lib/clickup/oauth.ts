@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { ClickUpOAuthTokens } from "@/types/clickup";
 import * as crypto from "crypto";
+import { encryptToken, decryptToken } from "@/lib/clickup/encryption";
 
 // ---------------------------------------------------------------------------
 // Environment configuration
@@ -11,25 +12,47 @@ const CLICKUP_CLIENT_SECRET = process.env.CLICKUP_CLIENT_SECRET ?? "";
 const CLICKUP_REDIRECT_URI =
   process.env.CLICKUP_REDIRECT_URI ??
   "http://localhost:3000/api/clickup/callback";
-const TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY ?? "";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const ENCRYPTION_ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
+// ---------------------------------------------------------------------------
+// PKCE helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates a PKCE code_verifier and code_challenge pair.
+ *
+ * The code_verifier is a cryptographically random string (43–128 chars).
+ * The code_challenge is the Base64-URL-encoded SHA-256 hash of the verifier.
+ */
+export function generatePKCE(): { verifier: string; challenge: string } {
+  // 32 random bytes → 43 base64url characters
+  const verifier = crypto.randomBytes(32).toString("base64url");
+
+  const challengeBuffer = crypto
+    .createHash("sha256")
+    .update(verifier)
+    .digest();
+  const challenge = challengeBuffer.toString("base64url");
+
+  return { verifier, challenge };
+}
 
 // ---------------------------------------------------------------------------
 // OAuth URL generation
 // ---------------------------------------------------------------------------
 
 /**
- * Generates a ClickUp OAuth authorization URL.
+ * Generates a ClickUp OAuth 2.1 authorization URL with PKCE.
+ *
  * The state parameter encodes the workspace ID so we can associate
  * the callback with the correct workspace.
  */
-export function getClickUpAuthUrl(workspaceId: string): string {
+export function getClickUpAuthUrl(
+  workspaceId: string,
+  codeChallenge: string
+): string {
   const state = Buffer.from(
     JSON.stringify({ workspaceId, ts: Date.now() })
   ).toString("base64url");
@@ -37,7 +60,10 @@ export function getClickUpAuthUrl(workspaceId: string): string {
   const params = new URLSearchParams({
     client_id: CLICKUP_CLIENT_ID,
     redirect_uri: CLICKUP_REDIRECT_URI,
+    response_type: "code",
     state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
 
   return `https://app.clickup.com/api?${params.toString()}`;
@@ -65,10 +91,11 @@ export function parseOAuthState(state: string): { workspaceId: string } {
 // ---------------------------------------------------------------------------
 
 /**
- * Exchanges an authorization code for access and refresh tokens.
+ * Exchanges an authorization code + PKCE code_verifier for access and refresh tokens.
  */
 export async function exchangeCodeForToken(
-  code: string
+  code: string,
+  codeVerifier: string
 ): Promise<ClickUpOAuthTokens> {
   const res = await fetch("https://api.clickup.com/api/v2/oauth/token", {
     method: "POST",
@@ -77,6 +104,7 @@ export async function exchangeCodeForToken(
       client_id: CLICKUP_CLIENT_ID,
       client_secret: CLICKUP_CLIENT_SECRET,
       code,
+      code_verifier: codeVerifier,
     }),
   });
 
@@ -115,54 +143,6 @@ export async function refreshAccessToken(
   }
 
   return (await res.json()) as ClickUpOAuthTokens;
-}
-
-// ---------------------------------------------------------------------------
-// Token encryption / decryption
-// ---------------------------------------------------------------------------
-
-/**
- * Encrypts a token using AES-256-GCM.
- * Returns a base64-encoded string containing IV + ciphertext + auth tag.
- */
-export function encryptToken(token: string): string {
-  const key = deriveKey(TOKEN_ENCRYPTION_KEY);
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
-
-  let encrypted = cipher.update(token, "utf8");
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  const tag = cipher.getAuthTag();
-
-  // Concatenate IV + encrypted + tag
-  const result = Buffer.concat([iv, encrypted, tag]);
-  return result.toString("base64");
-}
-
-/**
- * Decrypts a token that was encrypted with encryptToken().
- */
-export function decryptToken(encrypted: string): string {
-  const key = deriveKey(TOKEN_ENCRYPTION_KEY);
-  const buffer = Buffer.from(encrypted, "base64");
-
-  const iv = buffer.subarray(0, IV_LENGTH);
-  const tag = buffer.subarray(buffer.length - TAG_LENGTH);
-  const ciphertext = buffer.subarray(IV_LENGTH, buffer.length - TAG_LENGTH);
-
-  const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-
-  let decrypted = decipher.update(ciphertext);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
-  return decrypted.toString("utf8");
-}
-
-/**
- * Derives a 32-byte key from the encryption key string using SHA-256.
- */
-function deriveKey(secret: string): Buffer {
-  return crypto.createHash("sha256").update(secret).digest();
 }
 
 // ---------------------------------------------------------------------------
@@ -296,3 +276,6 @@ export async function disconnectClickUp(
     throw new Error(`Failed to disconnect ClickUp: ${error.message}`);
   }
 }
+
+// Re-export encryption utilities for backwards compatibility
+export { encryptToken, decryptToken } from "@/lib/clickup/encryption";
