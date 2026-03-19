@@ -324,7 +324,7 @@ export default function Sidebar() {
                     className={cn(
                       'flex items-center justify-center p-2 rounded-lg transition-colors',
                       isActive
-                        ? 'bg-surface-hover text-text-primary'
+                        ? 'bg-accent/15 text-accent'
                         : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                     )}
                     title={item.label}
@@ -451,7 +451,7 @@ export default function Sidebar() {
                     className={cn(
                       'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
                       isActive
-                        ? 'bg-surface-hover text-text-primary'
+                        ? 'bg-accent/15 text-accent'
                         : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                     )}
                   >
