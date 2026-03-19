@@ -43,8 +43,8 @@ export default function TeamMembersList({ onInviteClick }: TeamMembersListProps)
 
   useEffect(() => {
     if (!workspaceId) return;
-    let cancelled = false;
 
+    let cancelled = false;
     const loadMembers = async () => {
       setLoading(true);
       try {

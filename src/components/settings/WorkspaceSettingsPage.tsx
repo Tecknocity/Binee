@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePermissions } from '@/hooks/usePermissions';
 import { createBrowserClient } from '@/lib/supabase/client';
@@ -28,18 +28,26 @@ const planBadges: Record<string, { label: string; color: string }> = {
 };
 
 export default function WorkspaceSettingsPage() {
-  const { workspace, membership, refreshWorkspace } = useAuth();
+  const { workspace, membership, refreshWorkspace, loading } = useAuth();
   const { isOwner, canEditWorkspace } = usePermissions();
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(workspace?.name ?? '');
+  const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  const supabase = createBrowserClient();
+  const supabaseRef = useRef(createBrowserClient());
+  const supabase = supabaseRef.current;
   const plan = planBadges[workspace?.plan ?? 'free'] ?? planBadges.free;
+
+  // Sync name state when workspace loads or changes
+  useEffect(() => {
+    if (workspace?.name) {
+      setName(workspace.name);
+    }
+  }, [workspace?.name]);
 
   const handleSaveName = async () => {
     if (!workspace || !name.trim()) return;
@@ -85,10 +93,24 @@ export default function WorkspaceSettingsPage() {
     }
   };
 
-  if (!workspace) {
+  if (loading || !workspace) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-text-muted" />
+      <div className="space-y-6">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-surface border border-border rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg animate-pulse bg-navy-light" />
+              <div className="space-y-2">
+                <div className="h-4 w-32 animate-pulse rounded bg-navy-light" />
+                <div className="h-3 w-48 animate-pulse rounded bg-navy-light" />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="h-10 w-full animate-pulse rounded-lg bg-navy-light" />
+              <div className="h-10 w-2/3 animate-pulse rounded-lg bg-navy-light" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
