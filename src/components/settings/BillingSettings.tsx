@@ -1,7 +1,8 @@
 'use client';
 
 import { useAuth } from '@/components/auth/AuthProvider';
-import { Coins, Shield, Calendar, CreditCard } from 'lucide-react';
+import { usePermissions } from '@/hooks/usePermissions';
+import { Coins, ShieldAlert, Calendar, CreditCard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatCredits } from '@/lib/utils';
 import PlanCard from '@/components/settings/PlanCard';
@@ -48,9 +49,9 @@ const plans = [
 ];
 
 export default function BillingSettings() {
-  const { workspace, membership } = useAuth();
+  const { workspace } = useAuth();
+  const { canManageBilling } = usePermissions();
   const currentPlan = workspace?.plan || 'free';
-  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin';
   const planConfig = plans.find((p) => p.id === currentPlan);
   const totalCredits = planConfig?.credits || 100;
   const currentBalance = workspace?.credit_balance ?? 0;
@@ -61,13 +62,14 @@ export default function BillingSettings() {
   const renewalDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
   // Non-admin access denied
-  if (!isAdmin) {
+  if (!canManageBilling) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-12 text-center">
-        <Shield className="w-10 h-10 text-text-muted mx-auto mb-3" />
-        <h2 className="text-lg font-medium text-text-primary mb-1">Access Denied</h2>
-        <p className="text-text-secondary text-sm">
-          Only workspace admins and owners can view billing information.
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <ShieldAlert className="w-10 h-10 text-text-muted mb-3" />
+        <h2 className="text-lg font-medium text-text-primary mb-1">Admin access required</h2>
+        <p className="text-sm text-text-secondary max-w-sm">
+          Only workspace admins and owners can view billing and manage plans.
+          Contact your workspace admin for changes.
         </p>
       </div>
     );

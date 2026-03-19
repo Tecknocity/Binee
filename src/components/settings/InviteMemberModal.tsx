@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { X, Send, Loader2, CheckCircle } from 'lucide-react';
@@ -19,7 +19,8 @@ export default function InviteMemberModal({ open, onClose }: InviteMemberModalPr
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createBrowserClient();
+  const supabaseRef = useRef(createBrowserClient());
+  const supabase = supabaseRef.current;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
