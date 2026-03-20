@@ -60,7 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [membership, setMembership] = useState<WorkspaceMember | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const supabase = createBrowserClient();
+  // Stable ref for supabase client — avoid recreating on every render.
+  // Without this, every render produces a new reference which invalidates
+  // all useCallback / useEffect dependency arrays and can cause infinite loops.
+  const supabaseRef = useRef(createBrowserClient());
+  const supabase = supabaseRef.current;
 
   // Guard: ensure-owner is called at most once per session
   const ensureOwnerDone = useRef(false);
@@ -245,18 +249,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return [];
   }, [supabase, applyWorkspaceData, loadWorkspacesViaAPI]);
 
+  // Use refs so refreshWorkspace always reads the latest user/workspace
+  // without needing them in useCallback deps (which would cause the function
+  // reference to change on every state update, re-triggering consumer effects).
+  const userRef = useRef(user);
+  userRef.current = user;
+  const workspaceRef = useRef(workspace);
+  workspaceRef.current = workspace;
+
   const refreshWorkspace = useCallback(async () => {
-    if (!user || !workspace) return;
+    const currentUser = userRef.current;
+    const currentWorkspace = workspaceRef.current;
+    if (!currentUser || !currentWorkspace) return;
     const { data: ws } = await supabase
       .from('workspaces')
       .select('*')
-      .eq('id', workspace.id)
+      .eq('id', currentWorkspace.id)
       .single();
     if (ws) {
       setWorkspace(ws as Workspace);
       setWorkspaces((prev) => prev.map((w) => (w.id === ws.id ? (ws as Workspace) : w)));
     }
-  }, [user, workspace, supabase]);
+  }, [supabase]);
 
   /**
    * Shared helper: run ensure-owner, then load workspaces.
