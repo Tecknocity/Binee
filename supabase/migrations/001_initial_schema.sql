@@ -26,12 +26,6 @@ create index idx_workspaces_slug on workspaces(slug);
 
 alter table workspaces enable row level security;
 
-create policy "Users can view own workspaces" on workspaces
-  for select using (
-    owner_id = auth.uid() or
-    id in (select workspace_id from workspace_members where user_id = auth.uid())
-  );
-
 create policy "Owners can update workspaces" on workspaces
   for update using (owner_id = auth.uid());
 
@@ -70,6 +64,13 @@ create policy "Admins can manage members" on workspace_members
       select workspace_id from workspace_members wm
       where wm.user_id = auth.uid() and wm.role in ('owner', 'admin')
     )
+  );
+
+-- Deferred from workspaces section (requires workspace_members to exist)
+create policy "Users can view own workspaces" on workspaces
+  for select using (
+    owner_id = auth.uid() or
+    id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
 -- ============================================================
