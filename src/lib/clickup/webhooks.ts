@@ -232,7 +232,7 @@ async function handleTaskDeleted(
       .from("cached_tasks")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_task_id", taskId);
+      .eq("clickup_id", taskId);
   } catch (err) {
     console.error(`[Webhook] Failed to handle taskDeleted ${taskId}:`, err);
   }
@@ -289,14 +289,14 @@ async function handleListDeleted(
       .from("cached_lists")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_list_id", listId);
+      .eq("clickup_id", listId);
 
     // Also remove tasks belonging to this list
     await supabase
       .from("cached_tasks")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_list_id", listId);
+      .eq("list_id", listId);
   } catch (err) {
     console.error(`[Webhook] Failed to handle listDeleted ${listId}:`, err);
   }
@@ -347,29 +347,40 @@ async function handleSpaceDeleted(
     const supabase = getSupabaseAdmin();
 
     // Remove space and all nested cached data
-    await supabase
-      .from("cached_tasks")
-      .delete()
+    // First get lists belonging to this space so we can remove their tasks
+    const { data: spaceLists } = await supabase
+      .from("cached_lists")
+      .select("clickup_id")
       .eq("workspace_id", workspaceId)
-      .eq("clickup_space_id", spaceId);
+      .eq("space_id", spaceId);
+
+    const spaceListIds = (spaceLists ?? []).map((l: { clickup_id: string }) => l.clickup_id);
+
+    if (spaceListIds.length > 0) {
+      await supabase
+        .from("cached_tasks")
+        .delete()
+        .eq("workspace_id", workspaceId)
+        .in("list_id", spaceListIds);
+    }
 
     await supabase
       .from("cached_lists")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_space_id", spaceId);
+      .eq("space_id", spaceId);
 
     await supabase
       .from("cached_folders")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_space_id", spaceId);
+      .eq("space_id", spaceId);
 
     await supabase
       .from("cached_spaces")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_space_id", spaceId);
+      .eq("clickup_id", spaceId);
   } catch (err) {
     console.error(`[Webhook] Failed to handle spaceDeleted ${spaceId}:`, err);
   }
