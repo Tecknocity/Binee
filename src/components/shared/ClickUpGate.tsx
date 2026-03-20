@@ -2,6 +2,7 @@
 
 import { Plug, ExternalLink } from 'lucide-react';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 interface ClickUpGateProps {
   children: React.ReactNode;
@@ -14,6 +15,7 @@ interface ClickUpGateProps {
  */
 export function ClickUpGate({ children }: ClickUpGateProps) {
   const { connected, loading } = useClickUpStatus();
+  const { workspace_id } = useWorkspace();
 
   // While loading, render the page normally (avoids flash)
   if (loading) {
@@ -69,7 +71,7 @@ export function ClickUpGate({ children }: ClickUpGateProps) {
           </p>
 
           <a
-            href="/api/clickup/auth"
+            href={workspace_id ? `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}` : '/settings'}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium transition-colors bg-[#7B68EE] text-white hover:bg-[#6A5ACD] shadow-lg shadow-[#7B68EE]/20"
           >
             <Plug className="w-4 h-4" />
