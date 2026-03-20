@@ -264,32 +264,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * as a last resort.
    */
   const ensureAndLoad = useCallback(async (userId: string): Promise<Workspace[]> => {
-    // Step 1: Ensure workspace + member exist server-side (bypasses RLS)
-    const ensureOk = await callEnsureOwnerOnce();
-    console.log('ensureAndLoad: ensure-owner result =', ensureOk);
+    // Run ensure-owner and loadWorkspaces in parallel.
+    // ensure-owner is a safety net (creates workspace if missing) — loadWorkspaces
+    // doesn't need to wait for it since the workspace likely already exists.
+    const [ensureOk, loaded] = await Promise.all([
+      callEnsureOwnerOnce(),
+      loadWorkspaces(userId),
+    ]);
+    console.log('ensureAndLoad: ensure-owner =', ensureOk, ', workspaces found =', loaded.length);
 
-    // Step 2: Load workspaces (direct query → API fallback)
-    let loaded = await loadWorkspaces(userId);
-    console.log('ensureAndLoad: loadWorkspaces found', loaded.length, 'workspaces');
-
-    // Step 3: If still empty after both the ensure-owner write and the
-    // API-backed read, something is seriously wrong. Try client-side creation.
+    // If still empty after both ran in parallel, ensure-owner may have just
+    // created the workspace — retry loading once.
     if (loaded.length === 0) {
-      console.warn('ensureAndLoad: no workspaces found after API fallback, trying client-side creation');
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser) {
-        // Use the ensure-owner API's service role to create (most reliable)
-        // by calling it again with a fresh ref
-        ensureOwnerDone.current = false;
-        await callEnsureOwnerOnce();
-
-        loaded = await loadWorkspaces(userId);
-        console.log('ensureAndLoad: after retry, found', loaded.length, 'workspaces');
+      console.warn('ensureAndLoad: no workspaces found, retrying load after ensure-owner');
+      if (ensureOk) {
+        const retried = await loadWorkspaces(userId);
+        console.log('ensureAndLoad: after retry, found', retried.length, 'workspaces');
+        return retried;
       }
+      // ensure-owner failed too — try fresh
+      ensureOwnerDone.current = false;
+      await callEnsureOwnerOnce();
+      const retried = await loadWorkspaces(userId);
+      console.log('ensureAndLoad: after fresh ensure + retry, found', retried.length, 'workspaces');
+      return retried;
     }
 
     return loaded;
-  }, [callEnsureOwnerOnce, loadWorkspaces, supabase]);
+  }, [callEnsureOwnerOnce, loadWorkspaces]);
 
   // Flag to prevent onAuthStateChange from duplicating signUp/signIn work
   const manualAuthInProgress = useRef(false);

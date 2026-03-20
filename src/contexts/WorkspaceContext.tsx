@@ -171,10 +171,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   // Combined refetch: refresh workspace data + members
   const refetch = useCallback(async () => {
-    await refreshWorkspace();
-    if (workspace?.id) {
-      await fetchMembers(workspace.id);
-    }
+    await Promise.all([
+      refreshWorkspace(),
+      workspace?.id ? fetchMembers(workspace.id) : Promise.resolve(),
+    ]);
   }, [refreshWorkspace, workspace?.id, fetchMembers]);
 
   const loading = authLoading || membersLoading;
