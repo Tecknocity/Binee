@@ -91,21 +91,28 @@ export function parseOAuthState(state: string): { workspaceId: string } {
 // ---------------------------------------------------------------------------
 
 /**
- * Exchanges an authorization code + PKCE code_verifier for access and refresh tokens.
+ * Exchanges an authorization code for access and refresh tokens.
+ * If a PKCE code_verifier is provided, it is included in the request.
+ * Falls back to a standard exchange without code_verifier if not provided
+ * (ClickUp may not support PKCE in all API versions).
  */
 export async function exchangeCodeForToken(
   code: string,
-  codeVerifier: string
+  codeVerifier?: string
 ): Promise<ClickUpOAuthTokens> {
+  const body: Record<string, string> = {
+    client_id: CLICKUP_CLIENT_ID,
+    client_secret: CLICKUP_CLIENT_SECRET,
+    code,
+  };
+  if (codeVerifier) {
+    body.code_verifier = codeVerifier;
+  }
+
   const res = await fetch("https://api.clickup.com/api/v2/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: CLICKUP_CLIENT_ID,
-      client_secret: CLICKUP_CLIENT_SECRET,
-      code,
-      code_verifier: codeVerifier,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

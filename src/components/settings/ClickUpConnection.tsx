@@ -39,18 +39,31 @@ export function ClickUpConnection() {
   const [disconnecting, setDisconnecting] = useState(false);
 
   const fetchStatus = useCallback(async () => {
+    if (!workspace_id) {
+      setLoading(false);
+      return;
+    }
     try {
-      const res = await fetch("/api/clickup/status");
+      const res = await fetch(`/api/clickup/status?workspace_id=${encodeURIComponent(workspace_id)}`);
       if (res.ok) {
         const data = await res.json();
-        setStatus(data);
+        setStatus({
+          connected: data.connected ?? false,
+          teamName: data.team_name ?? null,
+          lastSyncedAt: data.last_synced_at ?? null,
+          syncStatus: data.sync_status ?? "idle",
+          syncError: data.sync_error ?? null,
+          rateLimitRemaining: null,
+          rateLimitTotal: null,
+          webhookHealthy: data.webhook_healthy ?? null,
+        });
       }
     } catch (err) {
       console.error("Failed to fetch ClickUp status:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [workspace_id]);
 
   useEffect(() => {
     fetchStatus();

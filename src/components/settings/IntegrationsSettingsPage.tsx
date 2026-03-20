@@ -430,6 +430,7 @@ function StatusBadge({ status }: { status: IntegrationStatus }) {
 }
 
 export default function IntegrationsSettingsPage() {
+  const { workspace } = useAuth();
   const integrations = useIntegrations();
   const [syncing, setSyncing] = useState<string | null>(null);
 
@@ -511,6 +512,11 @@ export default function IntegrationsSettingsPage() {
                     {integration.status === 'not_connected' && (
                       <div className="mt-3">
                         <button
+                          onClick={() => {
+                            if (integration.id === 'clickup' && workspace?.id) {
+                              window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace.id)}`;
+                            }
+                          }}
                           className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
                           style={{ backgroundColor: integration.color }}
                         >
