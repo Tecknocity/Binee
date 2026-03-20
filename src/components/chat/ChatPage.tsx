@@ -177,12 +177,19 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
         description: 'Welcome to Binee! 10 free credits.',
       });
 
-      // Create profile (best-effort)
-      await supabase.from('profiles').upsert({
+      // Create profile (best-effort, try profiles then user_profiles)
+      const { error: profileErr } = await supabase.from('profiles').upsert({
         user_id: user.id,
         email: user.email,
         full_name: displayName,
       }, { onConflict: 'user_id' });
+      if (profileErr) {
+        // profiles table may not exist — try user_profiles as fallback
+        await supabase.from('user_profiles').upsert({
+          user_id: user.id,
+          preferred_name: displayName,
+        }, { onConflict: 'user_id' });
+      }
 
       addLog('All done! Reloading...');
       setStatus('success');

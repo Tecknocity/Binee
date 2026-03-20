@@ -185,11 +185,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
     // --- Attempt 1: Direct Supabase query (fast path) ---
-    const { data: memberRows, error: memberErr } = await supabase
+    // Try with status filter; if status column doesn't exist, retry without it
+    let memberRows: { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string }[] | null = null;
+    let memberErr: { message: string } | null = null;
+
+    const firstAttempt = await supabase
       .from('workspace_members')
       .select('workspace_id, role, email, display_name, avatar_url, status')
       .eq('user_id', userId)
       .in('status', ['active', 'pending']);
+
+    if (firstAttempt.error) {
+      // Status column may not exist — retry without it
+      const fallback = await supabase
+        .from('workspace_members')
+        .select('workspace_id, role, email, display_name, avatar_url')
+        .eq('user_id', userId);
+      memberRows = fallback.data;
+      memberErr = fallback.error;
+    } else {
+      memberRows = firstAttempt.data;
+      memberErr = firstAttempt.error;
+    }
 
     // If the direct query succeeded and returned data, use it
     if (!memberErr && memberRows && memberRows.length > 0) {

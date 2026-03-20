@@ -62,38 +62,64 @@ export async function POST(request: NextRequest) {
   // Service client — bypasses RLS
   const admin = createClient(supabaseUrl, serviceRoleKey);
 
-  // Load workspace_members for this user
-  const { data: memberRows, error: memberErr } = await admin
+  // Load workspace_members for this user.
+  // Try with status filter first; if the status column doesn't exist, retry without it.
+  // Also try querying by owner_id on workspaces as a final fallback.
+  type MemberRow = { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string };
+  let memberRows: MemberRow[] = [];
+
+  const { data: statusRows, error: statusErr } = await admin
     .from('workspace_members')
     .select('workspace_id, role, email, display_name, avatar_url, status')
     .eq('user_id', userId)
     .in('status', ['active', 'pending']);
 
-  if (memberErr) {
-    // Retry without status filter if column doesn't exist
+  if (statusErr) {
+    // Status column likely doesn't exist — retry without it
+    console.warn('workspace/load: status column query failed, retrying without status filter');
     const { data: fallbackRows, error: fallbackErr } = await admin
       .from('workspace_members')
       .select('workspace_id, role, email, display_name, avatar_url')
       .eq('user_id', userId);
 
     if (fallbackErr) {
+      console.error('workspace/load: fallback query also failed', fallbackErr.message);
       return NextResponse.json({ error: 'Failed to load members', detail: fallbackErr.message }, { status: 500 });
     }
-
-    if (!fallbackRows || fallbackRows.length === 0) {
-      return NextResponse.json({ workspaces: [], members: [] });
-    }
-
-    const wsIds = fallbackRows.map((m) => m.workspace_id);
-    const { data: workspaces } = await admin.from('workspaces').select('*').in('id', wsIds);
-
-    return NextResponse.json({
-      workspaces: workspaces ?? [],
-      members: fallbackRows.map((m) => ({ ...m, status: 'active' })),
-    });
+    memberRows = (fallbackRows ?? []).map((m) => ({ ...m, status: 'active' as const }));
+  } else {
+    memberRows = statusRows ?? [];
   }
 
-  if (!memberRows || memberRows.length === 0) {
+  // If no member rows found, also check if user owns any workspaces directly
+  // (member row may be missing even though workspace exists)
+  if (memberRows.length === 0) {
+    const { data: ownedWs } = await admin
+      .from('workspaces')
+      .select('id')
+      .eq('owner_id', userId);
+
+    if (ownedWs && ownedWs.length > 0) {
+      // User owns workspaces but has no member rows — return the workspaces anyway
+      const wsIds = ownedWs.map((w) => w.id);
+      const { data: workspaces } = await admin.from('workspaces').select('*').in('id', wsIds);
+
+      // Synthesize member data from workspace ownership
+      const syntheticMembers = (workspaces ?? []).map((ws) => ({
+        workspace_id: ws.id,
+        role: 'owner',
+        email: '',
+        display_name: null,
+        avatar_url: null,
+        status: 'active',
+      }));
+
+      return NextResponse.json({
+        workspaces: workspaces ?? [],
+        members: syntheticMembers,
+      });
+    }
+
     return NextResponse.json({ workspaces: [], members: [] });
   }
 
