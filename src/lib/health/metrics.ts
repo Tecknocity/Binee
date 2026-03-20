@@ -21,26 +21,26 @@ export interface WorkspaceMetrics {
   velocityTrend: 'improving' | 'stable' | 'declining';
 }
 
-function getMockMetrics(): WorkspaceMetrics {
+function getEmptyMetrics(): WorkspaceMetrics {
   return {
-    totalTasks: 342,
-    activeTasks: 187,
-    completedTasks7d: 34,
-    completedTasks30d: 128,
-    overdueTasks: 23,
-    unassignedTasks: 14,
-    tasksDueToday: 8,
-    tasksDueThisWeek: 31,
-    avgTaskAgeDays: 12.4,
-    totalTimeTracked7d: 156.5,
-    totalTimeTracked30d: 612.3,
-    activeMembers7d: 9,
-    totalMembers: 12,
-    abandonedLists: 2,
-    totalLists: 18,
-    tasksCreated7d: 41,
-    tasksClosed7d: 34,
-    velocityTrend: 'improving',
+    totalTasks: 0,
+    activeTasks: 0,
+    completedTasks7d: 0,
+    completedTasks30d: 0,
+    overdueTasks: 0,
+    unassignedTasks: 0,
+    tasksDueToday: 0,
+    tasksDueThisWeek: 0,
+    avgTaskAgeDays: 0,
+    totalTimeTracked7d: 0,
+    totalTimeTracked30d: 0,
+    activeMembers7d: 0,
+    totalMembers: 0,
+    abandonedLists: 0,
+    totalLists: 0,
+    tasksCreated7d: 0,
+    tasksClosed7d: 0,
+    velocityTrend: 'stable',
   };
 }
 
@@ -56,9 +56,9 @@ export async function computeWorkspaceMetrics(
 ): Promise<WorkspaceMetrics> {
   const supabase = getSupabaseAdmin();
 
-  // Return mock data when Supabase is not configured
+  // Return empty metrics when Supabase is not configured
   if (!supabase) {
-    return getMockMetrics();
+    return getEmptyMetrics();
   }
   const now = new Date();
   const nowISO = now.toISOString();

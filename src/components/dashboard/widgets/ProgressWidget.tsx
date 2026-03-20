@@ -1,14 +1,24 @@
 'use client';
 
 import { Target } from 'lucide-react';
-import { getSprintProgressData } from '@/hooks/useDashboard';
+import { useSprintProgressData } from '@/hooks/useDashboard';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 interface ProgressWidgetProps {
   title?: string;
 }
 
 export default function ProgressWidget({ title }: ProgressWidgetProps) {
-  const data = getSprintProgressData();
+  const { workspace_id } = useWorkspace();
+  const { data } = useSprintProgressData(workspace_id);
+
+  if (!data.length) {
+    return (
+      <div className="flex items-center justify-center h-full text-text-muted text-sm">
+        No progress data
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

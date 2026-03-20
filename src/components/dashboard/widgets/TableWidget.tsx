@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { getOverdueTasksData, type OverdueTask } from '@/hooks/useDashboard';
+import { useOverdueTasksData, type OverdueTask } from '@/hooks/useDashboard';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 type SortKey = keyof OverdueTask;
 type SortDir = 'asc' | 'desc';
@@ -21,7 +22,8 @@ interface TableWidgetProps {
 export default function TableWidget({ title }: TableWidgetProps) {
   const [sortKey, setSortKey] = useState<SortKey>('daysOverdue');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const data = getOverdueTasksData();
+  const { workspace_id } = useWorkspace();
+  const { data } = useOverdueTasksData(workspace_id);
 
   const sorted = [...data].sort((a, b) => {
     const aVal = a[sortKey];
