@@ -253,7 +253,7 @@ export class ClickUpClient {
 
   async getTeamMembers(teamId: string): Promise<ClickUpMember[]> {
     const team = await this.getTeam(teamId);
-    return team.members;
+    return team.members.map((m) => m.user);
   }
 
   async getTimeEntries(

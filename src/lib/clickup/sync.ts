@@ -160,7 +160,7 @@ export async function upsertCachedMembers(
   const supabase = getSupabaseAdmin();
   const rows = members.map((member) => ({
     workspace_id: workspaceId,
-    clickup_id: member.id,
+    clickup_id: String(member.id),
     username: member.username,
     email: member.email,
     profile_picture: member.profilePicture,
@@ -192,7 +192,7 @@ export async function upsertCachedTimeEntries(
       workspace_id: workspaceId,
       clickup_id: entry.id,
       task_id: entry.task.id,
-      user_id: entry.user.id,
+      user_id: String(entry.user.id),
       duration: parseInt(entry.duration, 10),
       start_time: new Date(parseInt(entry.start, 10)).toISOString(),
       end_time: new Date(parseInt(entry.end, 10)).toISOString(),

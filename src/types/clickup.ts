@@ -3,7 +3,11 @@
 export interface ClickUpTeam {
   id: string;
   name: string;
-  members: ClickUpMember[];
+  members: ClickUpTeamMemberWrapper[];
+}
+
+export interface ClickUpTeamMemberWrapper {
+  user: ClickUpMember;
 }
 
 export interface ClickUpSpace {
