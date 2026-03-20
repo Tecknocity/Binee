@@ -86,11 +86,14 @@ AS $$
 $$;
 
 -- ============================================================
--- 3. Drop old problematic RLS policies on workspace_members
+-- 3. Drop ALL existing RLS policies on workspace_members (old and new)
 -- ============================================================
 DROP POLICY IF EXISTS "Members can view their workspace members" ON workspace_members;
 DROP POLICY IF EXISTS "Admins can manage members" ON workspace_members;
 DROP POLICY IF EXISTS "Owners can insert own member row" ON workspace_members;
+DROP POLICY IF EXISTS "Owners can insert members" ON workspace_members;
+DROP POLICY IF EXISTS "Admins can update members" ON workspace_members;
+DROP POLICY IF EXISTS "Admins can delete members" ON workspace_members;
 
 -- ============================================================
 -- 4. Create new non-recursive RLS policies
