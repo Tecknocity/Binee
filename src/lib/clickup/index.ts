@@ -3,7 +3,6 @@
 export { ClickUpClient, ClickUpApiError, ClickUpRateLimitError } from "@/lib/clickup/client";
 
 export {
-  generatePKCE,
   getClickUpAuthUrl,
   parseOAuthState,
   exchangeCodeForToken,

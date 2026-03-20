@@ -89,7 +89,7 @@ export class ClickUpClient {
         const res = await fetch(url.toString(), {
           method,
           headers: {
-            Authorization: accessToken,
+            Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
           body: body ? JSON.stringify(body) : undefined,

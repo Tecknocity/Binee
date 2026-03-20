@@ -9,6 +9,15 @@ const ENCRYPTION_ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 
+function ensureEncryptionKey(): void {
+  if (!TOKEN_ENCRYPTION_KEY) {
+    throw new Error(
+      "TOKEN_ENCRYPTION_KEY environment variable is not set. " +
+      "Cannot encrypt/decrypt ClickUp OAuth tokens without it."
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Token encryption / decryption (AES-256-GCM)
 // ---------------------------------------------------------------------------
@@ -18,6 +27,7 @@ const TAG_LENGTH = 16;
  * Returns a base64-encoded string containing IV + ciphertext + auth tag.
  */
 export function encryptToken(token: string): string {
+  ensureEncryptionKey();
   const key = deriveKey(TOKEN_ENCRYPTION_KEY);
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
@@ -34,6 +44,7 @@ export function encryptToken(token: string): string {
  * Decrypts a token that was encrypted with encryptToken().
  */
 export function decryptToken(encrypted: string): string {
+  ensureEncryptionKey();
   const key = deriveKey(TOKEN_ENCRYPTION_KEY);
   const buffer = Buffer.from(encrypted, "base64");
 
