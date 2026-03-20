@@ -26,12 +26,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
   }
 
-  // Check webhook health: last event should be within 24 hours if connected
+  // Check webhook health: consider healthy if:
+  // 1. Last webhook event was within 24 hours, OR
+  // 2. No events received yet but workspace was synced recently (just connected)
   let webhookHealthy = false;
-  if (workspace.clickup_connected && workspace.clickup_last_webhook_at) {
-    const lastWebhook = new Date(workspace.clickup_last_webhook_at);
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    webhookHealthy = lastWebhook > twentyFourHoursAgo;
+  if (workspace.clickup_connected) {
+    if (workspace.clickup_last_webhook_at) {
+      const lastWebhook = new Date(workspace.clickup_last_webhook_at);
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      webhookHealthy = lastWebhook > twentyFourHoursAgo;
+    } else if (workspace.clickup_last_synced_at) {
+      // No webhook events yet — healthy if workspace was synced within 24h (just connected)
+      const lastSynced = new Date(workspace.clickup_last_synced_at);
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      webhookHealthy = lastSynced > twentyFourHoursAgo;
+    }
   }
 
   return NextResponse.json({
