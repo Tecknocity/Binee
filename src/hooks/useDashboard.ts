@@ -34,8 +34,7 @@ interface CachedTeamMember {
 }
 
 interface CachedList {
-  clickup_list_id?: string;
-  clickup_id?: string;
+  clickup_id: string;
   name: string;
 }
 
