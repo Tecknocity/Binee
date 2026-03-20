@@ -93,16 +93,32 @@ export async function POST(request: NextRequest) {
   console.log('ensure-owner: running for user', user.id, userEmail);
 
   // Check if the user has any workspace_members rows
-  const { data: memberRows, error: memberQueryErr } = await admin
+  // Try with status filter first; if the column doesn't exist yet, retry without it
+  let memberRows: { id: string; workspace_id: string; role: string; status?: string }[] | null = null;
+  let memberQueryErr: { message: string; code?: string } | null = null;
+
+  const memberQuery = await admin
     .from('workspace_members')
     .select('id, workspace_id, role, status')
     .eq('user_id', user.id)
     .in('status', ['active', 'pending']);
 
+  if (memberQuery.error && memberQuery.error.message.includes('status')) {
+    // status column doesn't exist yet — retry without it
+    console.warn('ensure-owner: status column missing, querying without status filter');
+    const fallbackQuery = await admin
+      .from('workspace_members')
+      .select('id, workspace_id, role')
+      .eq('user_id', user.id);
+    memberRows = fallbackQuery.data;
+    memberQueryErr = fallbackQuery.error;
+  } else {
+    memberRows = memberQuery.data;
+    memberQueryErr = memberQuery.error;
+  }
+
   if (memberQueryErr) {
     console.error('ensure-owner: failed to query workspace_members', memberQueryErr.message);
-    // If workspace_members table doesn't exist, the column errors will show here.
-    // Return 500 so the client-side fallback kicks in.
     if (memberQueryErr.message.includes('does not exist') || memberQueryErr.code === '42P01') {
       return NextResponse.json(
         { error: 'Database table missing. Please run migrations.', detail: memberQueryErr.message },
@@ -193,7 +209,8 @@ export async function POST(request: NextRequest) {
 
     console.log('ensure-owner: created workspace', newWorkspace.id);
 
-    const { error: memberError } = await admin.from('workspace_members').insert({
+    // Try insert with all columns; if status/invited_email/joined_at don't exist, retry with minimal columns
+    let memberError = (await admin.from('workspace_members').insert({
       workspace_id: newWorkspace.id,
       user_id: user.id,
       role: 'owner',
@@ -202,7 +219,18 @@ export async function POST(request: NextRequest) {
       invited_email: userEmail,
       status: 'active',
       joined_at: new Date().toISOString(),
-    });
+    })).error;
+
+    if (memberError && (memberError.message.includes('status') || memberError.message.includes('invited_email') || memberError.message.includes('joined_at'))) {
+      console.warn('ensure-owner: some columns missing, retrying with minimal insert');
+      memberError = (await admin.from('workspace_members').insert({
+        workspace_id: newWorkspace.id,
+        user_id: user.id,
+        role: 'owner',
+        email: userEmail,
+        display_name: displayName,
+      })).error;
+    }
 
     if (memberError) {
       console.error('ensure-owner: failed to create workspace_member, cleaning up orphaned workspace', {
@@ -247,7 +275,7 @@ export async function POST(request: NextRequest) {
 
   for (const wsId of ownedIds) {
     if (!memberWorkspaceIds.has(wsId)) {
-      const { error: insertErr } = await admin.from('workspace_members').insert({
+      let insertErr = (await admin.from('workspace_members').insert({
         workspace_id: wsId,
         user_id: user.id,
         role: 'owner',
@@ -256,7 +284,19 @@ export async function POST(request: NextRequest) {
         invited_email: userEmail,
         status: 'active',
         joined_at: new Date().toISOString(),
-      });
+      })).error;
+
+      // Retry with minimal columns if some don't exist yet
+      if (insertErr && (insertErr.message.includes('status') || insertErr.message.includes('invited_email') || insertErr.message.includes('joined_at'))) {
+        insertErr = (await admin.from('workspace_members').insert({
+          workspace_id: wsId,
+          user_id: user.id,
+          role: 'owner',
+          email: userEmail,
+          display_name: displayName,
+        })).error;
+      }
+
       if (insertErr) {
         console.error('ensure-owner: failed to backfill member row', {
           workspace_id: wsId,

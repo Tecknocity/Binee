@@ -105,14 +105,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase]);
 
   const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
-    const { data: memberRows, error: memberError } = await supabase
+    // Try with status filter first; if the column doesn't exist, retry without it
+    let memberRows: { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string }[] | null = null;
+
+    const firstAttempt = await supabase
       .from('workspace_members')
       .select('workspace_id, role, email, display_name, avatar_url, status')
       .eq('user_id', userId)
       .in('status', ['active', 'pending']);
 
-    if (memberError) {
-      console.error('loadWorkspaces: failed to query workspace_members', memberError.message);
+    if (firstAttempt.error && firstAttempt.error.message.includes('status')) {
+      console.warn('loadWorkspaces: status column missing, retrying without filter');
+      const fallback = await supabase
+        .from('workspace_members')
+        .select('workspace_id, role, email, display_name, avatar_url')
+        .eq('user_id', userId);
+      memberRows = fallback.data;
+      if (fallback.error) {
+        console.error('loadWorkspaces: fallback query failed', fallback.error.message);
+      }
+    } else {
+      memberRows = firstAttempt.data;
+      if (firstAttempt.error) {
+        console.error('loadWorkspaces: failed to query workspace_members', firstAttempt.error.message);
+      }
     }
 
     if (!memberRows || memberRows.length === 0) {
@@ -201,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
-    const { error: memberErr } = await supabase
+    let memberErr = (await supabase
       .from('workspace_members')
       .insert({
         workspace_id: newWs.id,
@@ -212,7 +228,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         invited_email: email,
         status: 'active',
         joined_at: new Date().toISOString(),
-      });
+      })).error;
+
+    // Retry with minimal columns if some don't exist yet
+    if (memberErr && (memberErr.message.includes('status') || memberErr.message.includes('invited_email') || memberErr.message.includes('joined_at'))) {
+      console.warn('createWorkspaceClientSide: retrying member insert with minimal columns');
+      memberErr = (await supabase
+        .from('workspace_members')
+        .insert({
+          workspace_id: newWs.id,
+          user_id: userId,
+          role: 'owner',
+          email,
+          display_name: displayName,
+        })).error;
+    }
 
     if (memberErr) {
       console.error('createWorkspaceClientSide: member insert failed', memberErr.message);
