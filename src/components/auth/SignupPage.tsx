@@ -43,7 +43,11 @@ export function SignupPage() {
     try {
       const result = await signUp(data.email, data.password, data.fullName);
       if (result.error) {
-        setServerError(result.error);
+        if (result.error === 'CONFIRM_EMAIL') {
+          setServerError('Check your email for a confirmation link, then sign in.');
+        } else {
+          setServerError(result.error);
+        }
       } else {
         router.push('/chat');
       }

@@ -101,6 +101,14 @@ export async function POST(request: NextRequest) {
 
   if (memberQueryErr) {
     console.error('ensure-owner: failed to query workspace_members', memberQueryErr.message);
+    // If workspace_members table doesn't exist, the column errors will show here.
+    // Return 500 so the client-side fallback kicks in.
+    if (memberQueryErr.message.includes('does not exist') || memberQueryErr.code === '42P01') {
+      return NextResponse.json(
+        { error: 'Database table missing. Please run migrations.', detail: memberQueryErr.message },
+        { status: 500 },
+      );
+    }
   }
 
   // Check if the user owns any workspaces
@@ -111,6 +119,12 @@ export async function POST(request: NextRequest) {
 
   if (wsQueryErr) {
     console.error('ensure-owner: failed to query workspaces', wsQueryErr.message);
+    if (wsQueryErr.message.includes('does not exist') || wsQueryErr.code === '42P01') {
+      return NextResponse.json(
+        { error: 'Database table missing. Please run migrations.', detail: wsQueryErr.message },
+        { status: 500 },
+      );
+    }
   }
 
   // Ensure the user has a profile row

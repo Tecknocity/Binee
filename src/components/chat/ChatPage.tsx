@@ -29,12 +29,39 @@ const SUGGESTED_PROMPTS = [
 
 export default function ChatPage() {
   const { user } = useAuth();
-  const { credit_balance } = useWorkspaceContext();
+  const { credit_balance, workspace, loading: wsLoading, error: wsError } = useWorkspaceContext();
   const searchParams = useSearchParams();
   const router = useRouter();
   const isNew = searchParams.get('new') === '1';
   const [showCreditsModal, setShowCreditsModal] = useState(false);
   const isOutOfCredits = credit_balance <= 0;
+
+  // Show error state when workspace setup failed
+  if (!wsLoading && !workspace && user) {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden bg-navy-base items-center justify-center px-6">
+        <div className="max-w-md text-center space-y-4">
+          <div className="w-12 h-12 rounded-xl bg-error/15 flex items-center justify-center mx-auto">
+            <Hexagon className="w-6 h-6 text-error" />
+          </div>
+          <h2 className="text-lg font-medium text-text-primary">Workspace Setup Needed</h2>
+          <p className="text-sm text-text-secondary">
+            {wsError || 'Your workspace could not be created. This usually means the database needs to be set up.'}
+          </p>
+          <p className="text-xs text-text-muted">
+            Try signing out and back in. If the problem persists, check the browser console for errors
+            or visit <span className="font-mono text-accent">/api/auth/debug</span> for diagnostics.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-dark transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const {
     activeConversationId,
