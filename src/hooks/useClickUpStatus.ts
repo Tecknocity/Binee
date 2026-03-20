@@ -13,27 +13,19 @@ export interface ClickUpConnectionStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Demo mode — assume ClickUp is always connected.
-// TODO: Remove this flag once real ClickUp OAuth integration is complete.
-// ---------------------------------------------------------------------------
-const DEMO_MODE = true;
-
-// ---------------------------------------------------------------------------
 // Hook — shared ClickUp connection status checker
 // ---------------------------------------------------------------------------
 
 export function useClickUpStatus(): ClickUpConnectionStatus & {
   refetch: () => Promise<void>;
 } {
-  const [status, setStatus] = useState<ClickUpConnectionStatus>(
-    DEMO_MODE
-      ? { connected: true, teamName: 'Demo Workspace', loading: false }
-      : { connected: false, teamName: null, loading: true },
-  );
+  const [status, setStatus] = useState<ClickUpConnectionStatus>({
+    connected: false,
+    teamName: null,
+    loading: true,
+  });
 
   const fetchStatus = useCallback(async () => {
-    if (DEMO_MODE) return;
-
     setStatus((prev) => ({ ...prev, loading: true }));
     try {
       const res = await fetch('/api/clickup/status');
@@ -53,7 +45,7 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
   }, []);
 
   useEffect(() => {
-    if (!DEMO_MODE) fetchStatus();
+    fetchStatus();
   }, [fetchStatus]);
 
   return { ...status, refetch: fetchStatus };

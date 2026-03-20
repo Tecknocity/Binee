@@ -58,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /**
    * Calls /api/workspace/ensure-owner exactly once per AuthProvider lifetime.
+   * Passes the access token as a Bearer header so the API works immediately
+   * after signup (before cookies propagate).
    * Returns true if the call succeeded, false otherwise.
    * Concurrent callers share the same in-flight promise.
    */
@@ -71,7 +73,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const promise = (async () => {
       try {
-        const res = await fetch('/api/workspace/ensure-owner', { method: 'POST' });
+        // Get the current access token to send as Bearer header
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const res = await fetch('/api/workspace/ensure-owner', {
+          method: 'POST',
+          headers,
+        });
         if (res.ok) {
           ensureOwnerDone.current = true;
           return true;
@@ -90,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     ensureOwnerInFlight.current = promise;
     return promise;
-  }, []);
+  }, [supabase]);
 
   const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
     const { data: memberRows, error: memberError } = await supabase
