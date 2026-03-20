@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
@@ -12,39 +12,76 @@ import { cookies } from 'next/headers';
  * 2. User has workspace but no member row → creates member row as 'owner'
  * 3. User has no workspace at all → creates workspace + member row
  *
+ * Auth: Accepts Authorization Bearer token (preferred — works right after signup)
+ * or falls back to session cookies.
+ *
  * Uses service role key to bypass RLS (the first member insert can't pass
  * the "Admins can manage members" RLS policy since no member exists yet).
  */
-export async function POST() {
-  const cookieStore = await cookies();
+export async function POST(request: NextRequest) {
+  // Validate env vars early
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  // Auth client — to identify the user from their session cookie
-  const authClient = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {
-          // Read-only in route handlers
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('ensure-owner: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY not set');
+    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
+  }
+
+  if (!serviceRoleKey) {
+    console.error('ensure-owner: SUPABASE_SERVICE_ROLE_KEY not set — cannot bypass RLS');
+    return NextResponse.json({ error: 'Server misconfiguration: missing service role key' }, { status: 500 });
+  }
+
+  // --- Authenticate the user ---
+  // Try Bearer token first (works immediately after signup, no cookie delay),
+  // then fall back to session cookies.
+  let user: { id: string; email?: string; user_metadata?: Record<string, string> } | null = null;
+
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    const tokenClient = createClient(supabaseUrl, supabaseAnonKey);
+    const { data, error } = await tokenClient.auth.getUser(token);
+    if (!error && data?.user) {
+      user = data.user;
+    } else {
+      console.error('ensure-owner: Bearer token auth failed', error?.message);
+    }
+  }
+
+  // Fallback: try cookies
+  if (!user) {
+    const cookieStore = await cookies();
+    const authClient = createServerClient(
+      supabaseUrl,
+      supabaseAnonKey,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll() {
+            // Read-only in route handlers
+          },
         },
       },
-    },
-  );
+    );
+    const { data, error } = await authClient.auth.getUser();
+    if (!error && data?.user) {
+      user = data.user;
+    } else {
+      console.error('ensure-owner: cookie auth failed', error?.message ?? 'no user');
+    }
+  }
 
-  const { data: { user }, error: authError } = await authClient.auth.getUser();
-
-  if (authError || !user) {
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   // Service client — bypasses RLS for admin operations
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
+  const admin = createClient(supabaseUrl, serviceRoleKey);
 
   const userEmail = user.email ?? '';
   const displayName =
@@ -53,20 +90,30 @@ export async function POST() {
     userEmail.split('@')[0] ??
     'User';
 
-  // Check if the user has any workspace_members rows (include all non-removed statuses)
-  const { data: memberRows } = await admin
+  console.log('ensure-owner: running for user', user.id, userEmail);
+
+  // Check if the user has any workspace_members rows
+  const { data: memberRows, error: memberQueryErr } = await admin
     .from('workspace_members')
     .select('id, workspace_id, role, status')
     .eq('user_id', user.id)
     .in('status', ['active', 'pending']);
 
+  if (memberQueryErr) {
+    console.error('ensure-owner: failed to query workspace_members', memberQueryErr.message);
+  }
+
   // Check if the user owns any workspaces
-  const { data: ownedWorkspaces } = await admin
+  const { data: ownedWorkspaces, error: wsQueryErr } = await admin
     .from('workspaces')
     .select('id')
     .eq('owner_id', user.id);
 
-  // Also ensure the user has a profile row
+  if (wsQueryErr) {
+    console.error('ensure-owner: failed to query workspaces', wsQueryErr.message);
+  }
+
+  // Ensure the user has a profile row
   const { data: existingProfile } = await admin
     .from('profiles')
     .select('id')
@@ -86,6 +133,8 @@ export async function POST() {
         user_id: user.id,
         error: profileError.message,
       });
+    } else {
+      console.log('ensure-owner: created profile for', user.id);
     }
   }
 
@@ -93,11 +142,20 @@ export async function POST() {
 
   // Case 3: No workspace at all — create one + member row
   if (!ownedWorkspaces || ownedWorkspaces.length === 0) {
+    // If user has member rows for workspaces they don't own (invited),
+    // don't create a new workspace — they're already part of one
+    if (memberRows && memberRows.length > 0) {
+      console.log('ensure-owner: user has member rows but no owned workspace, skipping creation');
+      return NextResponse.json({ actions: ['has_memberships_no_owned_workspace'] });
+    }
+
     const slug =
       displayName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '') || 'my-workspace';
+
+    console.log('ensure-owner: creating new workspace for', user.id);
 
     const { data: newWorkspace, error: wsError } = await admin
       .from('workspaces')
@@ -112,11 +170,14 @@ export async function POST() {
       .single();
 
     if (wsError || !newWorkspace) {
+      console.error('ensure-owner: failed to create workspace', wsError?.message);
       return NextResponse.json(
         { error: 'Failed to create workspace', detail: wsError?.message },
         { status: 500 },
       );
     }
+
+    console.log('ensure-owner: created workspace', newWorkspace.id);
 
     const { error: memberError } = await admin.from('workspace_members').insert({
       workspace_id: newWorkspace.id,
@@ -135,13 +196,14 @@ export async function POST() {
         user_id: user.id,
         error: memberError.message,
       });
-      // Clean up orphaned workspace
       await admin.from('workspaces').delete().eq('id', newWorkspace.id);
       return NextResponse.json(
         { error: 'Failed to create workspace member', detail: memberError.message },
         { status: 500 },
       );
     }
+
+    console.log('ensure-owner: created workspace_member for', newWorkspace.id);
 
     // Add welcome credits transaction
     const { error: creditError } = await admin.from('credit_transactions').insert({
@@ -158,16 +220,16 @@ export async function POST() {
         workspace_id: newWorkspace.id,
         error: creditError.message,
       });
-      // Non-fatal: workspace and member exist, credits just won't show in history
     }
 
     actions.push('created_workspace', 'created_member');
+    console.log('ensure-owner: complete —', actions.join(', '));
     return NextResponse.json({ actions });
   }
 
   // Case 2: Has workspace(s) but no member rows — create missing member rows
-  const ownedIds = ownedWorkspaces.map((w) => w.id);
-  const memberWorkspaceIds = new Set((memberRows ?? []).map((m) => m.workspace_id));
+  const ownedIds = ownedWorkspaces.map((w: { id: string }) => w.id);
+  const memberWorkspaceIds = new Set((memberRows ?? []).map((m: { workspace_id: string }) => m.workspace_id));
 
   for (const wsId of ownedIds) {
     if (!memberWorkspaceIds.has(wsId)) {
@@ -194,7 +256,7 @@ export async function POST() {
 
   // Case 1: Has workspace + member but role isn't 'owner' — promote
   const membersToPromote = (memberRows ?? []).filter(
-    (m) => ownedIds.includes(m.workspace_id) && m.role !== 'owner',
+    (m: { workspace_id: string; role: string }) => ownedIds.includes(m.workspace_id) && m.role !== 'owner',
   );
 
   for (const member of membersToPromote) {
@@ -212,5 +274,6 @@ export async function POST() {
     }
   }
 
+  console.log('ensure-owner: complete —', actions.length > 0 ? actions.join(', ') : 'no_changes');
   return NextResponse.json({ actions: actions.length > 0 ? actions : ['no_changes'] });
 }

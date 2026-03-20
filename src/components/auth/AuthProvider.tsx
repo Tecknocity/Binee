@@ -51,29 +51,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const supabase = createBrowserClient();
 
-  // Guard: ensure-owner is called at most once per session
-  const ensureOwnerCalled = useRef(false);
-  const ensureOwnerInFlight = useRef(false);
+  // Guard: ensure-owner is called at most once per session, only marked
+  // as done when it actually succeeds (HTTP 2xx).
+  const ensureOwnerDone = useRef(false);
+  const ensureOwnerInFlight = useRef<Promise<boolean> | null>(null);
 
-  const callEnsureOwnerOnce = useCallback(async () => {
-    if (ensureOwnerCalled.current || ensureOwnerInFlight.current) return;
-    ensureOwnerInFlight.current = true;
-    try {
-      await fetch('/api/workspace/ensure-owner', { method: 'POST' });
-      ensureOwnerCalled.current = true;
-    } catch {
-      // Non-critical — will be retried on next sign-in if needed
-    } finally {
-      ensureOwnerInFlight.current = false;
+  /**
+   * Calls /api/workspace/ensure-owner exactly once per AuthProvider lifetime.
+   * Passes the access token as a Bearer header so the API works immediately
+   * after signup (before cookies propagate).
+   * Returns true if the call succeeded, false otherwise.
+   * Concurrent callers share the same in-flight promise.
+   */
+  const callEnsureOwnerOnce = useCallback(async (): Promise<boolean> => {
+    if (ensureOwnerDone.current) return true;
+
+    // If already in-flight, wait for that same request
+    if (ensureOwnerInFlight.current) {
+      return ensureOwnerInFlight.current;
     }
-  }, []);
+
+    const promise = (async () => {
+      try {
+        // Get the current access token to send as Bearer header
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const res = await fetch('/api/workspace/ensure-owner', {
+          method: 'POST',
+          headers,
+        });
+        if (res.ok) {
+          ensureOwnerDone.current = true;
+          return true;
+        }
+        // Log server errors so we can debug
+        const body = await res.text().catch(() => '');
+        console.error('ensure-owner failed:', res.status, body);
+        return false;
+      } catch (err) {
+        console.error('ensure-owner network error:', err);
+        return false;
+      } finally {
+        ensureOwnerInFlight.current = null;
+      }
+    })();
+
+    ensureOwnerInFlight.current = promise;
+    return promise;
+  }, [supabase]);
 
   const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
-    const { data: memberRows } = await supabase
+    const { data: memberRows, error: memberError } = await supabase
       .from('workspace_members')
       .select('workspace_id, role, email, display_name, avatar_url, status')
       .eq('user_id', userId)
       .in('status', ['active', 'pending']);
+
+    if (memberError) {
+      console.error('loadWorkspaces: failed to query workspace_members', memberError.message);
+    }
 
     if (!memberRows || memberRows.length === 0) {
       setWorkspaces([]);
@@ -135,6 +175,105 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, workspace, supabase]);
 
+  /**
+   * Client-side fallback: create workspace directly when ensure-owner API fails.
+   * This works because RLS allows owner_id = auth.uid() for workspace INSERT
+   * and the "Owners can insert own member row" policy allows the member INSERT.
+   */
+  const createWorkspaceClientSide = useCallback(async (userId: string, email: string, displayName: string): Promise<boolean> => {
+    console.log('createWorkspaceClientSide: attempting client-side workspace creation');
+    const slug = (displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace') + '-' + Date.now().toString(36);
+
+    const { data: newWs, error: wsErr } = await supabase
+      .from('workspaces')
+      .insert({
+        name: `${displayName}'s Workspace`,
+        slug,
+        owner_id: userId,
+        plan: 'free',
+        credit_balance: 10,
+      })
+      .select()
+      .single();
+
+    if (wsErr || !newWs) {
+      console.error('createWorkspaceClientSide: workspace insert failed', wsErr?.message);
+      return false;
+    }
+
+    const { error: memberErr } = await supabase
+      .from('workspace_members')
+      .insert({
+        workspace_id: newWs.id,
+        user_id: userId,
+        role: 'owner',
+        email,
+        display_name: displayName,
+        invited_email: email,
+        status: 'active',
+        joined_at: new Date().toISOString(),
+      });
+
+    if (memberErr) {
+      console.error('createWorkspaceClientSide: member insert failed', memberErr.message);
+      // Clean up orphan
+      await supabase.from('workspaces').delete().eq('id', newWs.id);
+      return false;
+    }
+
+    // Credit transaction (best-effort)
+    await supabase.from('credit_transactions').insert({
+      workspace_id: newWs.id,
+      user_id: userId,
+      amount: 10,
+      balance_after: 10,
+      type: 'bonus',
+      description: 'Welcome to Binee! 10 free credits.',
+    });
+
+    console.log('createWorkspaceClientSide: success');
+    return true;
+  }, [supabase]);
+
+  /**
+   * Shared helper: run ensure-owner, then load workspaces.
+   * If the first loadWorkspaces finds nothing (e.g. race with DB trigger),
+   * waits briefly and retries once. As a last resort, tries client-side creation.
+   */
+  const ensureAndLoad = useCallback(async (userId: string): Promise<Workspace[]> => {
+    const ensureOk = await callEnsureOwnerOnce();
+
+    let loaded = await loadWorkspaces(userId);
+
+    // If still empty, the DB trigger or ensure-owner may not have committed yet.
+    // Brief wait + one retry.
+    if (loaded.length === 0) {
+      await new Promise((r) => setTimeout(r, 500));
+      loaded = await loadWorkspaces(userId);
+    }
+
+    // Last resort: if ensure-owner failed and still no workspaces, try client-side
+    if (loaded.length === 0 && !ensureOk) {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        const name =
+          currentUser.user_metadata?.display_name ??
+          currentUser.user_metadata?.full_name ??
+          currentUser.email?.split('@')[0] ??
+          'User';
+        const created = await createWorkspaceClientSide(userId, currentUser.email ?? '', name);
+        if (created) {
+          loaded = await loadWorkspaces(userId);
+        }
+      }
+    }
+
+    return loaded;
+  }, [callEnsureOwnerOnce, loadWorkspaces, createWorkspaceClientSide, supabase]);
+
+  // Flag to prevent onAuthStateChange from duplicating signUp/signIn work
+  const manualAuthInProgress = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -147,8 +286,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const mappedUser = mapSupabaseUser(session.user);
           setUser(mappedUser);
-          await callEnsureOwnerOnce();
-          await loadWorkspaces(session.user.id);
+          await ensureAndLoad(session.user.id);
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -170,6 +308,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         try {
           if (event === 'SIGNED_IN' && session?.user) {
+            // If signUp/signIn is already handling this, skip to avoid races
+            if (manualAuthInProgress.current) return;
+
             const mappedUser = mapSupabaseUser(session.user);
             setUser(mappedUser);
 
@@ -189,15 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
 
-            await callEnsureOwnerOnce();
-            let loadedWorkspaces = await loadWorkspaces(session.user.id);
-
-            // If no workspaces after initial load (e.g. OAuth user whose
-            // trigger hasn't fired yet), reload once more.
-            if (loadedWorkspaces.length === 0) {
-              loadedWorkspaces = await loadWorkspaces(session.user.id);
-            }
-
+            await ensureAndLoad(session.user.id);
             setLoading(false);
           } else if (event === 'SIGNED_OUT') {
             setUser(null);
@@ -218,31 +351,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
-  }, [supabase, loadWorkspaces, callEnsureOwnerOnce]);
+  }, [supabase, ensureAndLoad]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
+    manualAuthInProgress.current = true;
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setLoading(false);
-        // Supabase returns "Invalid login credentials" for both wrong password
-        // and non-existent user. Provide a friendlier message.
         if (error.message === 'Invalid login credentials') {
           return { error: 'NO_ACCOUNT_OR_WRONG_PASSWORD' };
         }
         return { error: error.message };
       }
-      // onAuthStateChange will handle setting user & loading=false
+
+      if (data.user) {
+        const mappedUser = mapSupabaseUser(data.user);
+        setUser(mappedUser);
+        await ensureAndLoad(data.user.id);
+      }
+
+      setLoading(false);
       return {};
     } catch (err) {
       setLoading(false);
       return { error: 'Unable to connect. Please check your network and try again.' };
+    } finally {
+      manualAuthInProgress.current = false;
     }
   };
 
   const signUp = async (email: string, password: string, name: string) => {
     setLoading(true);
+    manualAuthInProgress.current = true;
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -258,23 +400,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // If a session was returned (email confirmation disabled),
-      // set up user + workspace immediately — don't rely on the async
-      // onAuthStateChange event which may fire after SignupPage navigates.
+      // set up user + workspace immediately.
       if (data.user && data.session) {
         const mappedUser = mapSupabaseUser(data.user);
         setUser(mappedUser);
 
         // ensure-owner (server-side, bypasses RLS) creates the workspace
-        // and member row if the handle_new_user() trigger didn't fire.
-        await callEnsureOwnerOnce();
-
-        await loadWorkspaces(data.user.id);
+        // and member row if the handle_new_user() trigger didn't fire yet.
+        await ensureAndLoad(data.user.id);
       }
 
+      setLoading(false);
       return {};
     } catch (err) {
       setLoading(false);
       return { error: 'Unable to connect. Please check your network and try again.' };
+    } finally {
+      manualAuthInProgress.current = false;
     }
   };
 
