@@ -52,6 +52,7 @@ ALTER TABLE workspace_members ALTER COLUMN status SET NOT NULL;
 -- (Keep the existing "Admins can manage members" as-is since FOR ALL includes INSERT,
 --  but add a more specific INSERT policy that takes priority)
 
+DROP POLICY IF EXISTS "Owners can insert own member row" ON workspace_members;
 CREATE POLICY "Owners can insert own member row" ON workspace_members
   FOR INSERT WITH CHECK (
     -- The user inserting must be the workspace owner AND inserting themselves
