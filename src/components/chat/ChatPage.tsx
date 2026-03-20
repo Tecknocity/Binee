@@ -67,17 +67,28 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
 
       if (res.ok) {
         addLog('Step 2: Loading workspaces...');
-        const { data: memberRows, error: memberErr } = await supabase
+        // Try with status filter; fall back without it if the column doesn't exist
+        let memberRows = null;
+        const attempt = await supabase
           .from('workspace_members')
           .select('workspace_id')
           .eq('user_id', user.id)
           .in('status', ['active', 'pending']);
 
-        if (memberErr) {
-          addLog(`workspace_members query FAILED: ${memberErr.message}`);
+        if (attempt.error && attempt.error.message.includes('status')) {
+          addLog('status column not found, retrying without filter...');
+          const fallback = await supabase
+            .from('workspace_members')
+            .select('workspace_id')
+            .eq('user_id', user.id);
+          memberRows = fallback.data;
+          if (fallback.error) addLog(`workspace_members query FAILED: ${fallback.error.message}`);
         } else {
-          addLog(`Found ${memberRows?.length ?? 0} workspace memberships`);
+          memberRows = attempt.data;
+          if (attempt.error) addLog(`workspace_members query FAILED: ${attempt.error.message}`);
         }
+
+        if (memberRows) addLog(`Found ${memberRows.length} workspace memberships`);
 
         if (memberRows && memberRows.length > 0) {
           addLog('Workspace created successfully! Reloading...');
@@ -119,7 +130,7 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
       addLog(`Workspace created: ${newWs.id}`);
 
       addLog('Creating workspace member row...');
-      const { error: memberErr } = await supabase
+      let memberErr = (await supabase
         .from('workspace_members')
         .insert({
           workspace_id: newWs.id,
@@ -130,7 +141,21 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
           invited_email: user.email,
           status: 'active',
           joined_at: new Date().toISOString(),
-        });
+        })).error;
+
+      // Retry with minimal columns if some don't exist yet
+      if (memberErr && (memberErr.message.includes('status') || memberErr.message.includes('invited_email') || memberErr.message.includes('joined_at') || memberErr.message.includes('recursion'))) {
+        addLog(`First insert failed (${memberErr.message}), retrying with minimal columns...`);
+        memberErr = (await supabase
+          .from('workspace_members')
+          .insert({
+            workspace_id: newWs.id,
+            user_id: user.id,
+            role: 'owner',
+            email: user.email,
+            display_name: displayName,
+          })).error;
+      }
 
       if (memberErr) {
         addLog(`workspace_members INSERT FAILED: ${memberErr.message} (code: ${memberErr.code})`);
