@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 import type { ClickUpOAuthTokens } from "@/types/clickup";
-import * as crypto from "crypto";
 import { encryptToken, decryptToken } from "@/lib/clickup/encryption";
 
 // ---------------------------------------------------------------------------
@@ -17,42 +16,19 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 // ---------------------------------------------------------------------------
-// PKCE helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Generates a PKCE code_verifier and code_challenge pair.
- *
- * The code_verifier is a cryptographically random string (43–128 chars).
- * The code_challenge is the Base64-URL-encoded SHA-256 hash of the verifier.
- */
-export function generatePKCE(): { verifier: string; challenge: string } {
-  // 32 random bytes → 43 base64url characters
-  const verifier = crypto.randomBytes(32).toString("base64url");
-
-  const challengeBuffer = crypto
-    .createHash("sha256")
-    .update(verifier)
-    .digest();
-  const challenge = challengeBuffer.toString("base64url");
-
-  return { verifier, challenge };
-}
-
-// ---------------------------------------------------------------------------
 // OAuth URL generation
 // ---------------------------------------------------------------------------
 
 /**
- * Generates a ClickUp OAuth 2.1 authorization URL with PKCE.
+ * Generates a ClickUp OAuth 2.0 authorization URL.
+ *
+ * ClickUp does NOT support PKCE — we use a standard OAuth 2.0 flow with
+ * client_id + client_secret exchanged server-side.
  *
  * The state parameter encodes the workspace ID so we can associate
  * the callback with the correct workspace.
  */
-export function getClickUpAuthUrl(
-  workspaceId: string,
-  codeChallenge: string
-): string {
+export function getClickUpAuthUrl(workspaceId: string): string {
   const state = Buffer.from(
     JSON.stringify({ workspaceId, ts: Date.now() })
   ).toString("base64url");
@@ -62,8 +38,6 @@ export function getClickUpAuthUrl(
     redirect_uri: CLICKUP_REDIRECT_URI,
     response_type: "code",
     state,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
   });
 
   return `https://app.clickup.com/api?${params.toString()}`;
@@ -92,27 +66,21 @@ export function parseOAuthState(state: string): { workspaceId: string } {
 
 /**
  * Exchanges an authorization code for access and refresh tokens.
- * If a PKCE code_verifier is provided, it is included in the request.
- * Falls back to a standard exchange without code_verifier if not provided
- * (ClickUp may not support PKCE in all API versions).
+ *
+ * ClickUp's token endpoint expects: client_id, client_secret, code.
+ * No PKCE code_verifier — ClickUp does not support it.
  */
 export async function exchangeCodeForToken(
-  code: string,
-  codeVerifier?: string
+  code: string
 ): Promise<ClickUpOAuthTokens> {
-  const body: Record<string, string> = {
-    client_id: CLICKUP_CLIENT_ID,
-    client_secret: CLICKUP_CLIENT_SECRET,
-    code,
-  };
-  if (codeVerifier) {
-    body.code_verifier = codeVerifier;
-  }
-
   const res = await fetch("https://api.clickup.com/api/v2/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      client_id: CLICKUP_CLIENT_ID,
+      client_secret: CLICKUP_CLIENT_SECRET,
+      code,
+    }),
   });
 
   if (!res.ok) {

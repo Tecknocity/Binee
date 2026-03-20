@@ -4,7 +4,6 @@ import {
   exchangeCodeForToken,
   storeTokens,
 } from "@/lib/clickup/oauth";
-import { decryptToken } from "@/lib/clickup/encryption";
 import { performInitialSync } from "@/lib/clickup/sync";
 import { registerWebhooks } from "@/lib/clickup/webhooks";
 import { ClickUpClient } from "@/lib/clickup/client";
@@ -19,14 +18,13 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
  * ClickUp redirects here with an authorization code and state parameter.
  *
  * Flow:
- * 1. Optionally retrieve PKCE code_verifier from httpOnly cookie
- * 2. Parse the state to get the workspace ID
- * 3. Exchange the code (+ code_verifier if available) for tokens server-side
- * 4. Store encrypted tokens in the workspace record
- * 5. Fetch team info and store it
- * 6. Register webhooks for real-time updates
- * 7. Trigger initial data sync (in background)
- * 8. Redirect to the settings page
+ * 1. Parse the state to get the workspace ID
+ * 2. Exchange the code for tokens server-side (client_id + client_secret)
+ * 3. Store encrypted tokens in the workspace record
+ * 4. Fetch team info and store it
+ * 5. Register webhooks for real-time updates
+ * 6. Trigger initial data sync (in background)
+ * 7. Redirect to the settings page
  */
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -49,25 +47,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(redirectUrl.toString());
   }
 
-  // Optionally retrieve the PKCE code_verifier from the encrypted cookie.
-  // If the cookie is missing or can't be decrypted, proceed without PKCE
-  // (ClickUp may not require it).
-  let codeVerifier: string | undefined;
-  const encryptedVerifier = request.cookies.get("clickup_pkce_verifier")?.value;
-  if (encryptedVerifier) {
-    try {
-      codeVerifier = decryptToken(encryptedVerifier);
-    } catch {
-      console.warn("[OAuth] Failed to decrypt PKCE code_verifier, proceeding without it");
-    }
-  }
-
   try {
     // Step 1: Parse state to get workspace ID
     const { workspaceId } = parseOAuthState(state);
 
-    // Step 2: Exchange code for tokens (server-side only)
-    const tokens = await exchangeCodeForToken(code, codeVerifier);
+    // Step 2: Exchange code for tokens (server-side only, no PKCE)
+    const tokens = await exchangeCodeForToken(code);
 
     // Step 3: Calculate token expiry and store tokens
     const expiresAt = new Date(
@@ -106,7 +91,7 @@ export async function GET(request: NextRequest) {
       console.error("[OAuth] Failed to fetch ClickUp teams:", teamError);
     }
 
-    // Step 5: Register webhooks (B-028)
+    // Step 5: Register webhooks
     if (teamId) {
       try {
         await registerWebhooks(workspaceId, teamId);
@@ -119,7 +104,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Step 6: Trigger initial sync (B-026) — fire and forget
+    // Step 6: Trigger initial sync — fire and forget
     performInitialSync(workspaceId)
       .then(async (result) => {
         const now = new Date().toISOString();
@@ -150,22 +135,14 @@ export async function GET(request: NextRequest) {
           .eq("id", workspaceId);
       });
 
-    // Step 7: Redirect to settings with success — clear the PKCE cookie
+    // Step 7: Redirect to settings with success
     const redirectUrl = new URL("/settings", APP_URL);
     redirectUrl.searchParams.set("success", "clickup_connected");
-
-    const response = NextResponse.redirect(redirectUrl.toString());
-    response.cookies.delete("clickup_pkce_verifier");
-
-    return response;
+    return NextResponse.redirect(redirectUrl.toString());
   } catch (err) {
     console.error("[OAuth] Callback processing error:", err);
     const redirectUrl = new URL("/settings", APP_URL);
     redirectUrl.searchParams.set("error", "clickup_connection_failed");
-
-    const response = NextResponse.redirect(redirectUrl.toString());
-    response.cookies.delete("clickup_pkce_verifier");
-
-    return response;
+    return NextResponse.redirect(redirectUrl.toString());
   }
 }
