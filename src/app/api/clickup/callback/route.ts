@@ -54,10 +54,10 @@ export async function GET(request: NextRequest) {
     // Step 2: Exchange code for tokens (server-side only, no PKCE)
     const tokens = await exchangeCodeForToken(code);
 
-    // Step 3: Calculate token expiry and store tokens
-    const expiresAt = new Date(
-      Date.now() + (tokens.expires_in ?? 3600) * 1000
-    );
+    // Step 3: Store tokens (ClickUp tokens currently don't expire)
+    const expiresAt = tokens.expires_in
+      ? new Date(Date.now() + tokens.expires_in * 1000)
+      : undefined;
 
     await storeTokens(
       workspaceId,
