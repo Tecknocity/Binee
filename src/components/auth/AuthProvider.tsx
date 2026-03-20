@@ -42,6 +42,17 @@ function mapSupabaseUser(supabaseUser: SupabaseUser): User {
   };
 }
 
+/**
+ * Get the current access token for server API calls.
+ */
+async function getAuthHeaders(supabase: ReturnType<typeof createBrowserClient>): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    return { Authorization: `Bearer ${session.access_token}` };
+  }
+  return {};
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -51,35 +62,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const supabase = createBrowserClient();
 
-  // Guard: ensure-owner is called at most once per session, only marked
-  // as done when it actually succeeds (HTTP 2xx).
+  // Guard: ensure-owner is called at most once per session
   const ensureOwnerDone = useRef(false);
   const ensureOwnerInFlight = useRef<Promise<boolean> | null>(null);
 
+  // Guard: prevent initAuth and onAuthStateChange from racing
+  const initAuthDone = useRef(false);
+
   /**
    * Calls /api/workspace/ensure-owner exactly once per AuthProvider lifetime.
-   * Passes the access token as a Bearer header so the API works immediately
-   * after signup (before cookies propagate).
    * Returns true if the call succeeded, false otherwise.
-   * Concurrent callers share the same in-flight promise.
    */
   const callEnsureOwnerOnce = useCallback(async (): Promise<boolean> => {
     if (ensureOwnerDone.current) return true;
 
-    // If already in-flight, wait for that same request
     if (ensureOwnerInFlight.current) {
       return ensureOwnerInFlight.current;
     }
 
     const promise = (async () => {
       try {
-        // Get the current access token to send as Bearer header
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers: Record<string, string> = {};
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        }
-
+        const headers = await getAuthHeaders(supabase);
         const res = await fetch('/api/workspace/ensure-owner', {
           method: 'POST',
           headers,
@@ -88,7 +91,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ensureOwnerDone.current = true;
           return true;
         }
-        // Log server errors so we can debug
         const body = await res.text().catch(() => '');
         console.error('ensure-owner failed:', res.status, body);
         return false;
@@ -104,51 +106,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return promise;
   }, [supabase]);
 
-  const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
-    // Try with status filter first; if the column doesn't exist, retry without it
-    let memberRows: { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string }[] | null = null;
-
-    const firstAttempt = await supabase
-      .from('workspace_members')
-      .select('workspace_id, role, email, display_name, avatar_url, status')
-      .eq('user_id', userId)
-      .in('status', ['active', 'pending']);
-
-    if (firstAttempt.error && firstAttempt.error.message.includes('status')) {
-      console.warn('loadWorkspaces: status column missing, retrying without filter');
-      const fallback = await supabase
-        .from('workspace_members')
-        .select('workspace_id, role, email, display_name, avatar_url')
-        .eq('user_id', userId);
-      memberRows = fallback.data;
-      if (fallback.error) {
-        console.error('loadWorkspaces: fallback query failed', fallback.error.message);
+  /**
+   * Load workspaces via server API (bypasses RLS — always works).
+   * This is the reliable path that doesn't depend on RLS policy state.
+   */
+  const loadWorkspacesViaAPI = useCallback(async (): Promise<{
+    workspaces: Workspace[];
+    members: { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string }[];
+  }> => {
+    try {
+      const headers = await getAuthHeaders(supabase);
+      const res = await fetch('/api/workspace/load', {
+        method: 'POST',
+        headers,
+      });
+      if (!res.ok) {
+        console.error('loadWorkspacesViaAPI: failed', res.status);
+        return { workspaces: [], members: [] };
       }
-    } else {
-      memberRows = firstAttempt.data;
-      if (firstAttempt.error) {
-        console.error('loadWorkspaces: failed to query workspace_members', firstAttempt.error.message);
-      }
+      const data = await res.json();
+      return {
+        workspaces: (data.workspaces ?? []) as Workspace[],
+        members: data.members ?? [],
+      };
+    } catch (err) {
+      console.error('loadWorkspacesViaAPI: network error', err);
+      return { workspaces: [], members: [] };
     }
+  }, [supabase]);
 
-    if (!memberRows || memberRows.length === 0) {
-      setWorkspaces([]);
-      setWorkspace(null);
-      setMembership(null);
-      return [];
-    }
-
-    const workspaceIds = memberRows.map((m) => m.workspace_id);
-
-    const { data: ws } = await supabase
-      .from('workspaces')
-      .select('*')
-      .in('id', workspaceIds);
-
-    const fetchedWorkspaces = (ws as Workspace[]) ?? [];
+  /**
+   * Apply loaded workspace data to React state.
+   * Shared by both the direct query path and the API fallback path.
+   */
+  const applyWorkspaceData = useCallback((
+    userId: string,
+    fetchedWorkspaces: Workspace[],
+    memberRows: { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string }[],
+  ) => {
     setWorkspaces(fetchedWorkspaces);
 
-    // Select the first workspace or persist the last selected one
     const storedWsId = typeof window !== 'undefined'
       ? localStorage.getItem('binee_active_workspace')
       : null;
@@ -173,10 +170,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           updated_at: '',
         });
       }
+    } else {
+      setMembership(null);
+    }
+  }, []);
+
+  /**
+   * Load workspaces: try direct Supabase query first (fast, no API hop),
+   * fall back to server API if direct query fails or returns empty.
+   *
+   * The server API uses the service role key and bypasses RLS entirely,
+   * so it works even when RLS policies are misconfigured (e.g. the
+   * infinite recursion bug in workspace_members self-referencing policies).
+   */
+  const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
+    // --- Attempt 1: Direct Supabase query (fast path) ---
+    // Try with status filter; if status column doesn't exist, retry without it
+    let memberRows: { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string }[] | null = null;
+    let memberErr: { message: string } | null = null;
+
+    const firstAttempt = await supabase
+      .from('workspace_members')
+      .select('workspace_id, role, email, display_name, avatar_url, status')
+      .eq('user_id', userId)
+      .in('status', ['active', 'pending']);
+
+    if (firstAttempt.error) {
+      // Status column may not exist — retry without it
+      const fallback = await supabase
+        .from('workspace_members')
+        .select('workspace_id, role, email, display_name, avatar_url')
+        .eq('user_id', userId);
+      memberRows = fallback.data;
+      memberErr = fallback.error;
+    } else {
+      memberRows = firstAttempt.data;
+      memberErr = firstAttempt.error;
     }
 
-    return fetchedWorkspaces;
-  }, [supabase]);
+    // If the direct query succeeded and returned data, use it
+    if (!memberErr && memberRows && memberRows.length > 0) {
+      const workspaceIds = memberRows.map((m) => m.workspace_id);
+      const { data: ws, error: wsErr } = await supabase
+        .from('workspaces')
+        .select('*')
+        .in('id', workspaceIds);
+
+      if (!wsErr && ws && ws.length > 0) {
+        const fetchedWorkspaces = ws as Workspace[];
+        applyWorkspaceData(userId, fetchedWorkspaces, memberRows);
+        return fetchedWorkspaces;
+      }
+    }
+
+    // --- Attempt 2: Server API fallback (bypasses RLS) ---
+    // This handles: RLS infinite recursion, missing columns, policy issues,
+    // timing races with trigger, or any other reason the direct query fails.
+    if (memberErr) {
+      console.warn('loadWorkspaces: direct query failed, falling back to API', memberErr.message);
+    } else {
+      console.warn('loadWorkspaces: direct query returned empty, falling back to API');
+    }
+
+    const apiResult = await loadWorkspacesViaAPI();
+    if (apiResult.workspaces.length > 0) {
+      applyWorkspaceData(userId, apiResult.workspaces, apiResult.members);
+      return apiResult.workspaces;
+    }
+
+    // Neither path found workspaces
+    setWorkspaces([]);
+    setWorkspace(null);
+    setMembership(null);
+    return [];
+  }, [supabase, applyWorkspaceData, loadWorkspacesViaAPI]);
 
   const refreshWorkspace = useCallback(async () => {
     if (!user || !workspace) return;
@@ -192,123 +259,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, workspace, supabase]);
 
   /**
-   * Client-side fallback: create workspace directly when ensure-owner API fails.
-   * This works because RLS allows owner_id = auth.uid() for workspace INSERT
-   * and the "Owners can insert own member row" policy allows the member INSERT.
-   */
-  const createWorkspaceClientSide = useCallback(async (userId: string, email: string, displayName: string): Promise<boolean> => {
-    console.log('createWorkspaceClientSide: attempting client-side workspace creation');
-    const slug = (displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace') + '-' + Date.now().toString(36);
-
-    const { data: newWs, error: wsErr } = await supabase
-      .from('workspaces')
-      .insert({
-        name: `${displayName}'s Workspace`,
-        slug,
-        owner_id: userId,
-        plan: 'free',
-        credit_balance: 10,
-      })
-      .select()
-      .single();
-
-    if (wsErr || !newWs) {
-      console.error('createWorkspaceClientSide: workspace insert failed', wsErr?.message);
-      return false;
-    }
-
-    let memberErr = (await supabase
-      .from('workspace_members')
-      .insert({
-        workspace_id: newWs.id,
-        user_id: userId,
-        role: 'owner',
-        email,
-        display_name: displayName,
-        invited_email: email,
-        status: 'active',
-        joined_at: new Date().toISOString(),
-      })).error;
-
-    // Retry with minimal columns if some don't exist yet
-    if (memberErr && (memberErr.message.includes('status') || memberErr.message.includes('invited_email') || memberErr.message.includes('joined_at'))) {
-      console.warn('createWorkspaceClientSide: retrying member insert with minimal columns');
-      memberErr = (await supabase
-        .from('workspace_members')
-        .insert({
-          workspace_id: newWs.id,
-          user_id: userId,
-          role: 'owner',
-          email,
-          display_name: displayName,
-        })).error;
-    }
-
-    if (memberErr) {
-      console.error('createWorkspaceClientSide: member insert failed', memberErr.message);
-      // Clean up orphan
-      await supabase.from('workspaces').delete().eq('id', newWs.id);
-      return false;
-    }
-
-    // Credit transaction (best-effort)
-    await supabase.from('credit_transactions').insert({
-      workspace_id: newWs.id,
-      user_id: userId,
-      amount: 10,
-      balance_after: 10,
-      type: 'bonus',
-      description: 'Welcome to Binee! 10 free credits.',
-    });
-
-    console.log('createWorkspaceClientSide: success');
-    return true;
-  }, [supabase]);
-
-  /**
    * Shared helper: run ensure-owner, then load workspaces.
-   * If the first loadWorkspaces finds nothing (e.g. race with DB trigger),
-   * waits briefly and retries once. As a last resort, tries client-side creation.
+   * If workspaces are still empty after loading, tries client-side creation
+   * as a last resort.
    */
   const ensureAndLoad = useCallback(async (userId: string): Promise<Workspace[]> => {
+    // Step 1: Ensure workspace + member exist server-side (bypasses RLS)
     const ensureOk = await callEnsureOwnerOnce();
     console.log('ensureAndLoad: ensure-owner result =', ensureOk);
 
+    // Step 2: Load workspaces (direct query → API fallback)
     let loaded = await loadWorkspaces(userId);
-    console.log('ensureAndLoad: first loadWorkspaces found', loaded.length, 'workspaces');
+    console.log('ensureAndLoad: loadWorkspaces found', loaded.length, 'workspaces');
 
-    // If still empty, the DB trigger or ensure-owner may not have committed yet.
-    // Brief wait + one retry.
+    // Step 3: If still empty after both the ensure-owner write and the
+    // API-backed read, something is seriously wrong. Try client-side creation.
     if (loaded.length === 0) {
-      await new Promise((r) => setTimeout(r, 800));
-      loaded = await loadWorkspaces(userId);
-      console.log('ensureAndLoad: retry loadWorkspaces found', loaded.length, 'workspaces');
-    }
-
-    // Last resort: try client-side creation regardless of ensure-owner result.
-    // The ensure-owner API may have succeeded (200) but the DB trigger may not
-    // have created anything (e.g. trigger doesn't exist), or the ensure-owner
-    // found existing member rows for a different workspace.
-    if (loaded.length === 0) {
-      console.log('ensureAndLoad: no workspaces found, attempting client-side creation');
+      console.warn('ensureAndLoad: no workspaces found after API fallback, trying client-side creation');
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (currentUser) {
-        const name =
-          currentUser.user_metadata?.display_name ??
-          currentUser.user_metadata?.full_name ??
-          currentUser.email?.split('@')[0] ??
-          'User';
-        const created = await createWorkspaceClientSide(userId, currentUser.email ?? '', name);
-        console.log('ensureAndLoad: client-side creation result =', created);
-        if (created) {
-          loaded = await loadWorkspaces(userId);
-          console.log('ensureAndLoad: after client-side creation, found', loaded.length, 'workspaces');
-        }
+        // Use the ensure-owner API's service role to create (most reliable)
+        // by calling it again with a fresh ref
+        ensureOwnerDone.current = false;
+        await callEnsureOwnerOnce();
+
+        loaded = await loadWorkspaces(userId);
+        console.log('ensureAndLoad: after retry, found', loaded.length, 'workspaces');
       }
     }
 
     return loaded;
-  }, [callEnsureOwnerOnce, loadWorkspaces, createWorkspaceClientSide, supabase]);
+  }, [callEnsureOwnerOnce, loadWorkspaces, supabase]);
 
   // Flag to prevent onAuthStateChange from duplicating signUp/signIn work
   const manualAuthInProgress = useRef(false);
@@ -331,6 +312,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Auth initialization error:', error);
       } finally {
         if (!cancelled) {
+          initAuthDone.current = true;
           setLoading(false);
         }
       }
@@ -347,8 +329,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         try {
           if (event === 'SIGNED_IN' && session?.user) {
-            // If signUp/signIn is already handling this, skip to avoid races
+            // Skip if signUp/signIn is already handling this
             if (manualAuthInProgress.current) return;
+
+            // Skip if initAuth already handled this session
+            // (onAuthStateChange fires SIGNED_IN on mount when a session exists)
+            if (!initAuthDone.current) return;
 
             const mappedUser = mapSupabaseUser(session.user);
             setUser(mappedUser);
@@ -365,7 +351,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   }),
                 });
               } catch {
-                // Non-critical — don't block sign-in if auto-accept fails
+                // Non-critical
               }
             }
 
@@ -438,28 +424,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error.message };
       }
 
-      // Detect fake signup: Supabase returns data.user without error even
-      // for already-registered emails (security feature to not reveal
-      // whether an account exists). Check identities array.
+      // Detect fake signup
       if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
         setLoading(false);
         return { error: 'An account with this email may already exist. Try signing in instead.' };
       }
 
-      // If email confirmation is required, data.session will be null.
-      // In that case, inform the user to check their email.
+      // Email confirmation required
       if (data.user && !data.session) {
         setLoading(false);
         return { error: 'CONFIRM_EMAIL' };
       }
 
-      // Session exists (email confirmation disabled) — set up user + workspace.
+      // Session exists — set up user + workspace
       if (data.user && data.session) {
         const mappedUser = mapSupabaseUser(data.user);
         setUser(mappedUser);
 
-        // ensure-owner (server-side, bypasses RLS) creates the workspace
-        // and member row if the handle_new_user() trigger didn't fire yet.
         const loaded = await ensureAndLoad(data.user.id);
 
         if (loaded.length === 0) {
@@ -492,7 +473,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateUser = async (data: { display_name?: string; avatar_url?: string | null }) => {
     const { error } = await supabase.auth.updateUser({ data });
     if (error) return { error: error.message };
-    // Re-fetch session to get updated metadata
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       setUser(mapSupabaseUser(session.user));
@@ -501,20 +481,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    // Clear React state immediately
     setUser(null);
     setWorkspace(null);
     setWorkspaces([]);
     setMembership(null);
     setLoading(false);
 
-    // Fire Supabase signOut but don't wait — it may hang or fail
     supabase.auth.signOut().catch(() => {});
 
     if (typeof window !== 'undefined') {
       localStorage.removeItem('binee_active_workspace');
-      // Clear all Supabase auth cookies so the middleware
-      // won't redirect back to /chat with a stale session
       document.cookie.split(';').forEach((c) => {
         const name = c.trim().split('=')[0];
         if (name.startsWith('sb-')) {

@@ -44,21 +44,79 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const supabase = createBrowserClient();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Fetch workspace members when workspace changes
+  // Fetch workspace members when workspace changes.
+  // Falls back to server API if direct query fails (RLS issues).
   const fetchMembers = useCallback(async (workspaceId: string) => {
     setMembersLoading(true);
     try {
-      const { data, error: fetchError } = await supabase
+      // Try direct Supabase query first (fast path)
+      // Try with status filter; if it fails (column missing), retry without it
+      let directData: WorkspaceMember[] | null = null;
+      let directError: { message: string } | null = null;
+
+      const firstAttempt = await supabase
         .from('workspace_members')
         .select('*')
         .eq('workspace_id', workspaceId)
         .eq('status', 'active');
 
-      if (fetchError) {
-        console.error('Failed to fetch workspace members:', fetchError);
+      if (firstAttempt.error) {
+        // Status column may not exist — retry without filter
+        const fallback = await supabase
+          .from('workspace_members')
+          .select('*')
+          .eq('workspace_id', workspaceId);
+        directData = fallback.data as WorkspaceMember[] | null;
+        directError = fallback.error;
+      } else {
+        directData = firstAttempt.data as WorkspaceMember[] | null;
+        directError = firstAttempt.error;
+      }
+
+      if (!directError && directData && directData.length > 0) {
+        setMembers(directData);
         return;
       }
-      setMembers((data as WorkspaceMember[]) ?? []);
+
+      if (directError) {
+        console.warn('fetchMembers: direct query failed, falling back to API', directError.message);
+      }
+
+      // Fallback: use server API to load (bypasses RLS)
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+        const res = await fetch('/api/workspace/load', { method: 'POST', headers });
+        if (res.ok) {
+          const apiData = await res.json();
+          const wsMembers = (apiData.members ?? [])
+            .filter((m: { workspace_id: string }) => m.workspace_id === workspaceId)
+            .map((m: Record<string, unknown>) => ({
+              id: '',
+              workspace_id: m.workspace_id,
+              user_id: '',
+              role: m.role,
+              email: m.email,
+              display_name: m.display_name,
+              avatar_url: m.avatar_url,
+              invited_email: null,
+              status: m.status ?? 'active',
+              joined_at: null,
+              created_at: '',
+              updated_at: '',
+            }));
+          setMembers(wsMembers as WorkspaceMember[]);
+          return;
+        }
+      } catch (apiErr) {
+        console.error('fetchMembers: API fallback also failed', apiErr);
+      }
+
+      // Both paths failed
+      setMembers(directData ?? []);
     } finally {
       setMembersLoading(false);
     }

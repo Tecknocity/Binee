@@ -96,18 +96,32 @@ export async function GET(request: NextRequest) {
   // if profile/workspace rows were created automatically on signup.
   report.trigger_note = 'Trigger existence is inferred from user data below. If profile/workspace are missing, the trigger likely does not exist.';
 
-  // Check user's data
+  // Check user's data — try profiles table, fall back to user_profiles
   const { data: profile, error: profileErr } = await admin
     .from('profiles')
     .select('id, user_id, email, full_name')
     .eq('user_id', userId)
     .maybeSingle();
 
-  report.profile = profileErr
-    ? { error: profileErr.message }
-    : profile
-      ? { exists: true, ...profile }
-      : { exists: false };
+  if (profileErr && (profileErr.message.includes('does not exist') || profileErr.code === '42P01')) {
+    // profiles table doesn't exist — check user_profiles instead
+    const { data: userProfile, error: upErr } = await admin
+      .from('user_profiles')
+      .select('id, user_id, preferred_name')
+      .eq('user_id', userId)
+      .maybeSingle();
+    report.profile = upErr
+      ? { error: upErr.message, note: 'profiles table missing, checked user_profiles' }
+      : userProfile
+        ? { exists: true, table: 'user_profiles', ...userProfile }
+        : { exists: false, note: 'profiles table missing, no user_profiles row either' };
+  } else {
+    report.profile = profileErr
+      ? { error: profileErr.message }
+      : profile
+        ? { exists: true, ...profile }
+        : { exists: false };
+  }
 
   const { data: ownedWs, error: wsErr } = await admin
     .from('workspaces')

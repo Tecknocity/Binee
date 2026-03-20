@@ -143,29 +143,43 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Ensure the user has a profile row
-  const { data: existingProfile } = await admin
-    .from('profiles')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  // Ensure the user has a profile row.
+  // Try `profiles` table first; if it doesn't exist, fall back to `user_profiles`.
+  // The preview DB may only have `user_profiles`, while the migration creates `profiles`.
+  try {
+    const { data: existingProfile } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-  if (!existingProfile) {
-    const { error: profileError } = await admin.from('profiles').upsert({
-      user_id: user.id,
-      email: userEmail,
-      full_name: displayName,
-      avatar_url: user.user_metadata?.avatar_url ?? null,
-    }, { onConflict: 'user_id' });
-
-    if (profileError) {
-      console.error('ensure-owner: failed to create profile', {
+    if (!existingProfile) {
+      const { error: profileError } = await admin.from('profiles').upsert({
         user_id: user.id,
-        error: profileError.message,
-      });
-    } else {
-      console.log('ensure-owner: created profile for', user.id);
+        email: userEmail,
+        full_name: displayName,
+        avatar_url: user.user_metadata?.avatar_url ?? null,
+      }, { onConflict: 'user_id' });
+
+      if (profileError) {
+        // If profiles table doesn't exist, try user_profiles as fallback
+        if (profileError.message.includes('does not exist') || profileError.code === '42P01') {
+          console.warn('ensure-owner: profiles table missing, trying user_profiles');
+          await admin.from('user_profiles').upsert({
+            user_id: user.id,
+            preferred_name: displayName,
+            avatar_url: user.user_metadata?.avatar_url ?? null,
+          }, { onConflict: 'user_id' });
+        } else {
+          console.error('ensure-owner: failed to create profile', profileError.message);
+        }
+      } else {
+        console.log('ensure-owner: created profile for', user.id);
+      }
     }
+  } catch (profileErr) {
+    // Non-fatal — don't block workspace creation for profile issues
+    console.error('ensure-owner: profile creation error (non-fatal)', profileErr);
   }
 
   const actions: string[] = [];
