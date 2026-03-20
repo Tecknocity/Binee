@@ -11,7 +11,8 @@ import MessageThread from './MessageThread';
 import ChatInput from './ChatInput';
 import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
 import UpgradePrompt from '@/components/credits/UpgradePrompt';
-import { Hexagon } from 'lucide-react';
+import { Hexagon, Loader2 } from 'lucide-react';
+import { createBrowserClient } from '@/lib/supabase/client';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -27,6 +28,199 @@ const SUGGESTED_PROMPTS = [
   { text: 'Build a dashboard for team performance', icon: '📈' },
 ];
 
+/**
+ * Interactive workspace setup error screen.
+ * Attempts to create the workspace via ensure-owner API and shows
+ * exactly what's happening / what's failing.
+ */
+function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: { id: string; email: string; display_name: string } }) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [logs, setLogs] = useState<string[]>([]);
+  const { signOut } = useAuth();
+
+  const addLog = (msg: string) => setLogs((prev) => [...prev, msg]);
+
+  const handleCreateWorkspace = async () => {
+    setStatus('loading');
+    setLogs([]);
+    addLog('Starting workspace setup...');
+
+    const supabase = createBrowserClient();
+
+    // Step 1: Try ensure-owner API
+    addLog('Step 1: Calling /api/workspace/ensure-owner...');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      } else {
+        addLog('WARNING: No access token found in session');
+      }
+
+      const res = await fetch('/api/workspace/ensure-owner', {
+        method: 'POST',
+        headers,
+      });
+      const body = await res.json().catch(() => ({}));
+      addLog(`ensure-owner response: ${res.status} ${JSON.stringify(body)}`);
+
+      if (res.ok) {
+        addLog('Step 2: Loading workspaces...');
+        const { data: memberRows, error: memberErr } = await supabase
+          .from('workspace_members')
+          .select('workspace_id')
+          .eq('user_id', user.id)
+          .in('status', ['active', 'pending']);
+
+        if (memberErr) {
+          addLog(`workspace_members query FAILED: ${memberErr.message}`);
+        } else {
+          addLog(`Found ${memberRows?.length ?? 0} workspace memberships`);
+        }
+
+        if (memberRows && memberRows.length > 0) {
+          addLog('Workspace created successfully! Reloading...');
+          setStatus('success');
+          setTimeout(() => window.location.reload(), 1000);
+          return;
+        }
+      }
+    } catch (err) {
+      addLog(`ensure-owner network error: ${err}`);
+    }
+
+    // Step 2: Try client-side creation directly
+    addLog('Step 2: Trying client-side workspace creation...');
+    try {
+      const displayName = user.display_name || 'User';
+      const slug = (displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'my-workspace') + '-' + Date.now().toString(36);
+
+      addLog(`Creating workspace: "${displayName}'s Workspace" (slug: ${slug})`);
+      const { data: newWs, error: wsErr } = await supabase
+        .from('workspaces')
+        .insert({
+          name: `${displayName}'s Workspace`,
+          slug,
+          owner_id: user.id,
+          plan: 'free',
+          credit_balance: 10,
+        })
+        .select()
+        .single();
+
+      if (wsErr) {
+        addLog(`Workspace INSERT FAILED: ${wsErr.message} (code: ${wsErr.code})`);
+        addLog(`This likely means an RLS policy is blocking the insert, or the table doesn't exist.`);
+        setStatus('error');
+        return;
+      }
+
+      addLog(`Workspace created: ${newWs.id}`);
+
+      addLog('Creating workspace member row...');
+      const { error: memberErr } = await supabase
+        .from('workspace_members')
+        .insert({
+          workspace_id: newWs.id,
+          user_id: user.id,
+          role: 'owner',
+          email: user.email,
+          display_name: displayName,
+          invited_email: user.email,
+          status: 'active',
+          joined_at: new Date().toISOString(),
+        });
+
+      if (memberErr) {
+        addLog(`workspace_members INSERT FAILED: ${memberErr.message} (code: ${memberErr.code})`);
+        addLog('Cleaning up orphaned workspace...');
+        await supabase.from('workspaces').delete().eq('id', newWs.id);
+        setStatus('error');
+        return;
+      }
+
+      addLog('Member row created! Adding welcome credits...');
+
+      // Credit transaction (best-effort)
+      await supabase.from('credit_transactions').insert({
+        workspace_id: newWs.id,
+        user_id: user.id,
+        amount: 10,
+        balance_after: 10,
+        type: 'bonus',
+        description: 'Welcome to Binee! 10 free credits.',
+      });
+
+      // Create profile (best-effort)
+      await supabase.from('profiles').upsert({
+        user_id: user.id,
+        email: user.email,
+        full_name: displayName,
+      }, { onConflict: 'user_id' });
+
+      addLog('All done! Reloading...');
+      setStatus('success');
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (err) {
+      addLog(`Unexpected error: ${err}`);
+      setStatus('error');
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-screen overflow-hidden bg-navy-base items-center justify-center px-6">
+      <div className="max-w-lg w-full text-center space-y-4">
+        <div className="w-12 h-12 rounded-xl bg-error/15 flex items-center justify-center mx-auto">
+          <Hexagon className="w-6 h-6 text-error" />
+        </div>
+        <h2 className="text-lg font-medium text-text-primary">Workspace Setup Needed</h2>
+        <p className="text-sm text-text-secondary">
+          {wsError || 'Your workspace could not be created automatically. Click the button below to try again.'}
+        </p>
+
+        <div className="flex gap-3 justify-center">
+          <button
+            onClick={handleCreateWorkspace}
+            disabled={status === 'loading' || status === 'success'}
+            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-dark transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {status === 'loading' && <Loader2 size={14} className="animate-spin" />}
+            {status === 'success' ? 'Success! Reloading...' : status === 'loading' ? 'Setting up...' : 'Create Workspace'}
+          </button>
+          <button
+            onClick={() => signOut()}
+            className="px-4 py-2 rounded-lg border border-border text-text-secondary text-sm hover:bg-surface transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
+
+        {logs.length > 0 && (
+          <div className="mt-4 text-left bg-navy-light border border-border rounded-lg p-3 max-h-64 overflow-y-auto">
+            <p className="text-xs font-medium text-text-muted mb-2">Setup Log:</p>
+            {logs.map((log, i) => (
+              <p key={i} className={`text-xs font-mono leading-relaxed ${
+                log.includes('FAILED') || log.includes('ERROR') || log.includes('WARNING')
+                  ? 'text-error'
+                  : log.includes('success') || log.includes('Success') || log.includes('created')
+                    ? 'text-green-400'
+                    : 'text-text-muted'
+              }`}>
+                {log}
+              </p>
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs text-text-muted">
+          If this keeps failing, visit <a href="/api/auth/debug" target="_blank" className="font-mono text-accent hover:underline">/api/auth/debug</a> for full diagnostics.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const { user } = useAuth();
   const { credit_balance, workspace, loading: wsLoading, error: wsError } = useWorkspaceContext();
@@ -36,47 +230,12 @@ export default function ChatPage() {
   const [showCreditsModal, setShowCreditsModal] = useState(false);
   const isOutOfCredits = credit_balance <= 0;
 
-  // Show error state when workspace setup failed
-  if (!wsLoading && !workspace && user) {
-    return (
-      <div className="flex flex-col h-screen overflow-hidden bg-navy-base items-center justify-center px-6">
-        <div className="max-w-md text-center space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-error/15 flex items-center justify-center mx-auto">
-            <Hexagon className="w-6 h-6 text-error" />
-          </div>
-          <h2 className="text-lg font-medium text-text-primary">Workspace Setup Needed</h2>
-          <p className="text-sm text-text-secondary">
-            {wsError || 'Your workspace could not be created. This usually means the database needs to be set up.'}
-          </p>
-          <p className="text-xs text-text-muted">
-            Try signing out and back in. If the problem persists, check the browser console for errors
-            or visit <span className="font-mono text-accent">/api/auth/debug</span> for diagnostics.
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-dark transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // All hooks must be called before any early return (React rules of hooks)
   const {
     activeConversationId,
     createConversation,
     setActiveConversation,
   } = useConversations();
-
-  // When ?new=1 is in URL, clear the active conversation so we show the welcome screen
-  useEffect(() => {
-    if (isNew) {
-      setActiveConversation(null);
-      // Clean up the URL without re-rendering
-      router.replace('/chat', { scroll: false });
-    }
-  }, [isNew, setActiveConversation, router]);
 
   // If we're in "new" mode, treat activeConversationId as null
   const effectiveConversationId = isNew ? null : activeConversationId;
@@ -89,6 +248,14 @@ export default function ChatPage() {
     selectDashboardChoice,
     loadConversation,
   } = useChat(effectiveConversationId);
+
+  // When ?new=1 is in URL, clear the active conversation so we show the welcome screen
+  useEffect(() => {
+    if (isNew) {
+      setActiveConversation(null);
+      router.replace('/chat', { scroll: false });
+    }
+  }, [isNew, setActiveConversation, router]);
 
   useEffect(() => {
     loadConversation(effectiveConversationId);
@@ -103,8 +270,6 @@ export default function ChatPage() {
 
       if (!activeConversationId) {
         const newId = createConversation();
-        // sendMessage needs the conversation to exist, but since hook state
-        // won't update until next render, we call it directly
         sendMessage(content, newId);
       } else {
         sendMessage(content);
@@ -133,7 +298,6 @@ export default function ChatPage() {
   const handleDashboardChoice = useCallback(
     (messageId: string, choice: DashboardChoiceData) => {
       selectDashboardChoice(messageId, choice.id);
-      // Send the user's choice as a follow-up message so AI can act on it
       if (choice.type === 'new_dashboard') {
         handleSend('Create a new dashboard for this.');
       } else if (choice.dashboardName) {
@@ -142,6 +306,11 @@ export default function ChatPage() {
     },
     [selectDashboardChoice, handleSend],
   );
+
+  // Show error state when workspace setup failed — with interactive fix
+  if (!wsLoading && !workspace && user) {
+    return <WorkspaceSetupError wsError={wsError} user={user} />;
+  }
 
   const hasMessages = messages.length > 0;
   const firstName = user?.display_name?.split(' ')[0] || 'there';
