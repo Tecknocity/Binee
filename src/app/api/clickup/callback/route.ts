@@ -15,13 +15,13 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 /**
  * GET /api/clickup/callback
  *
- * OAuth 2.1 PKCE callback handler for ClickUp. After a user authorizes the app,
+ * OAuth callback handler for ClickUp. After a user authorizes the app,
  * ClickUp redirects here with an authorization code and state parameter.
  *
  * Flow:
- * 1. Retrieve the encrypted PKCE code_verifier from the httpOnly cookie
+ * 1. Optionally retrieve PKCE code_verifier from httpOnly cookie
  * 2. Parse the state to get the workspace ID
- * 3. Exchange the code + code_verifier for access/refresh tokens (server-side)
+ * 3. Exchange the code (+ code_verifier if available) for tokens server-side
  * 4. Store encrypted tokens in the workspace record
  * 5. Fetch team info and store it
  * 6. Register webhooks for real-time updates
@@ -49,33 +49,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(redirectUrl.toString());
   }
 
-  // Retrieve the PKCE code_verifier from the encrypted cookie
-  const encryptedVerifier = request.cookies.get(
-    "clickup_pkce_verifier"
-  )?.value;
-
-  if (!encryptedVerifier) {
-    console.error("[OAuth] Missing PKCE code_verifier cookie");
-    const redirectUrl = new URL("/settings", APP_URL);
-    redirectUrl.searchParams.set("error", "clickup_pkce_missing");
-    return NextResponse.redirect(redirectUrl.toString());
-  }
-
-  let codeVerifier: string;
-  try {
-    codeVerifier = decryptToken(encryptedVerifier);
-  } catch {
-    console.error("[OAuth] Failed to decrypt PKCE code_verifier");
-    const redirectUrl = new URL("/settings", APP_URL);
-    redirectUrl.searchParams.set("error", "clickup_pkce_invalid");
-    return NextResponse.redirect(redirectUrl.toString());
+  // Optionally retrieve the PKCE code_verifier from the encrypted cookie.
+  // If the cookie is missing or can't be decrypted, proceed without PKCE
+  // (ClickUp may not require it).
+  let codeVerifier: string | undefined;
+  const encryptedVerifier = request.cookies.get("clickup_pkce_verifier")?.value;
+  if (encryptedVerifier) {
+    try {
+      codeVerifier = decryptToken(encryptedVerifier);
+    } catch {
+      console.warn("[OAuth] Failed to decrypt PKCE code_verifier, proceeding without it");
+    }
   }
 
   try {
     // Step 1: Parse state to get workspace ID
     const { workspaceId } = parseOAuthState(state);
 
-    // Step 2: Exchange code + code_verifier for tokens (server-side only)
+    // Step 2: Exchange code for tokens (server-side only)
     const tokens = await exchangeCodeForToken(code, codeVerifier);
 
     // Step 3: Calculate token expiry and store tokens

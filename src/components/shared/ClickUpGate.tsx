@@ -2,6 +2,7 @@
 
 import { Plug, ExternalLink } from 'lucide-react';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 interface ClickUpGateProps {
   children: React.ReactNode;
@@ -14,6 +15,7 @@ interface ClickUpGateProps {
  */
 export function ClickUpGate({ children }: ClickUpGateProps) {
   const { connected, loading } = useClickUpStatus();
+  const { workspace_id } = useWorkspace();
 
   // While loading, render the page normally (avoids flash)
   if (loading) {
@@ -25,15 +27,15 @@ export function ClickUpGate({ children }: ClickUpGateProps) {
   }
 
   return (
-    <div className="relative min-h-[60vh]">
-      {/* Blurred background content */}
-      <div className="pointer-events-none select-none blur-sm opacity-40">
+    <div className="relative w-full overflow-hidden" style={{ minHeight: '60vh' }}>
+      {/* Blurred background content — clipped to container */}
+      <div className="pointer-events-none select-none blur-sm opacity-40 overflow-hidden max-h-[80vh]">
         {children}
       </div>
 
-      {/* Overlay */}
-      <div className="absolute inset-0 flex items-center justify-center z-10">
-        <div className="rounded-2xl bg-surface border border-border p-10 shadow-2xl max-w-md text-center">
+      {/* Overlay — absolutely positioned and centered within the container */}
+      <div className="absolute inset-0 flex items-center justify-center z-10 p-4">
+        <div className="rounded-2xl bg-surface border border-border p-10 shadow-2xl max-w-md w-full text-center">
           {/* ClickUp icon */}
           <div className="mx-auto mb-5 w-16 h-16 rounded-2xl bg-[#7B68EE]/10 flex items-center justify-center">
             <svg
@@ -69,7 +71,7 @@ export function ClickUpGate({ children }: ClickUpGateProps) {
           </p>
 
           <a
-            href="/api/clickup/auth"
+            href={workspace_id ? `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}` : '/settings'}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium transition-colors bg-[#7B68EE] text-white hover:bg-[#6A5ACD] shadow-lg shadow-[#7B68EE]/20"
           >
             <Plug className="w-4 h-4" />
@@ -80,7 +82,7 @@ export function ClickUpGate({ children }: ClickUpGateProps) {
           <p className="text-xs text-text-muted mt-4">
             You can also connect from{' '}
             <a
-              href="/settings"
+              href="/settings?tab=integrations"
               className="text-accent hover:underline"
             >
               Settings

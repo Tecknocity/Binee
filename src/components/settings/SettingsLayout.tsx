@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Settings, User, Shield, Users, ArrowLeft, Bell, CreditCard, Plug, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { useAuth } from '@/components/auth/AuthProvider';
 import GeneralSettings from '@/components/settings/GeneralSettings';
 import AccountSettings from '@/components/settings/AccountSettings';
 import PrivacySettings from '@/components/settings/PrivacySettings';
@@ -32,8 +33,20 @@ const validTabs = new Set<string>(tabs.map((t) => t.id));
 export default function SettingsLayout() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { refreshWorkspace } = useAuth();
+  const hasHandledOAuth = useRef(false);
+
   const tabParam = searchParams.get('tab');
-  const initialTab = (tabParam && validTabs.has(tabParam) ? tabParam : 'general') as TabId;
+  const successParam = searchParams.get('success');
+  const errorParam = searchParams.get('error');
+
+  // If redirected from OAuth callback, default to integrations tab
+  const hasOAuthResult = !!successParam || !!errorParam?.startsWith('clickup');
+  const initialTab = (tabParam && validTabs.has(tabParam)
+    ? tabParam
+    : hasOAuthResult
+      ? 'integrations'
+      : 'general') as TabId;
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
   // Sync tab from URL when navigating back to settings with a different ?tab=
@@ -42,6 +55,16 @@ export default function SettingsLayout() {
       setActiveTab(tabParam as TabId);
     }
   }, [tabParam, activeTab]);
+
+  // After ClickUp OAuth success, refresh workspace data so UI reflects connected state
+  useEffect(() => {
+    if (successParam === 'clickup_connected' && !hasHandledOAuth.current) {
+      hasHandledOAuth.current = true;
+      refreshWorkspace();
+      // Clean up the URL query params
+      router.replace('/settings?tab=integrations', { scroll: false });
+    }
+  }, [successParam, refreshWorkspace, router]);
 
   const handleTabChange = (id: TabId) => {
     setActiveTab(id);
