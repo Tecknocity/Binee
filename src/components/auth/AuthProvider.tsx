@@ -242,18 +242,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const ensureAndLoad = useCallback(async (userId: string): Promise<Workspace[]> => {
     const ensureOk = await callEnsureOwnerOnce();
+    console.log('ensureAndLoad: ensure-owner result =', ensureOk);
 
     let loaded = await loadWorkspaces(userId);
+    console.log('ensureAndLoad: first loadWorkspaces found', loaded.length, 'workspaces');
 
     // If still empty, the DB trigger or ensure-owner may not have committed yet.
     // Brief wait + one retry.
     if (loaded.length === 0) {
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 800));
       loaded = await loadWorkspaces(userId);
+      console.log('ensureAndLoad: retry loadWorkspaces found', loaded.length, 'workspaces');
     }
 
-    // Last resort: if ensure-owner failed and still no workspaces, try client-side
-    if (loaded.length === 0 && !ensureOk) {
+    // Last resort: try client-side creation regardless of ensure-owner result.
+    // The ensure-owner API may have succeeded (200) but the DB trigger may not
+    // have created anything (e.g. trigger doesn't exist), or the ensure-owner
+    // found existing member rows for a different workspace.
+    if (loaded.length === 0) {
+      console.log('ensureAndLoad: no workspaces found, attempting client-side creation');
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (currentUser) {
         const name =
@@ -262,8 +269,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           currentUser.email?.split('@')[0] ??
           'User';
         const created = await createWorkspaceClientSide(userId, currentUser.email ?? '', name);
+        console.log('ensureAndLoad: client-side creation result =', created);
         if (created) {
           loaded = await loadWorkspaces(userId);
+          console.log('ensureAndLoad: after client-side creation, found', loaded.length, 'workspaces');
         }
       }
     }
@@ -399,20 +408,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: error.message };
       }
 
-      // If a session was returned (email confirmation disabled),
-      // set up user + workspace immediately.
+      // Detect fake signup: Supabase returns data.user without error even
+      // for already-registered emails (security feature to not reveal
+      // whether an account exists). Check identities array.
+      if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
+        setLoading(false);
+        return { error: 'An account with this email may already exist. Try signing in instead.' };
+      }
+
+      // If email confirmation is required, data.session will be null.
+      // In that case, inform the user to check their email.
+      if (data.user && !data.session) {
+        setLoading(false);
+        return { error: 'CONFIRM_EMAIL' };
+      }
+
+      // Session exists (email confirmation disabled) — set up user + workspace.
       if (data.user && data.session) {
         const mappedUser = mapSupabaseUser(data.user);
         setUser(mappedUser);
 
         // ensure-owner (server-side, bypasses RLS) creates the workspace
         // and member row if the handle_new_user() trigger didn't fire yet.
-        await ensureAndLoad(data.user.id);
+        const loaded = await ensureAndLoad(data.user.id);
+
+        if (loaded.length === 0) {
+          console.error('signUp: workspace creation failed — no workspaces after ensureAndLoad');
+          setLoading(false);
+          return { error: 'Account created but workspace setup failed. Please try signing out and back in, or contact support.' };
+        }
       }
 
       setLoading(false);
       return {};
     } catch (err) {
+      console.error('signUp: unexpected error', err);
       setLoading(false);
       return { error: 'Unable to connect. Please check your network and try again.' };
     } finally {
