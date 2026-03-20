@@ -10,7 +10,8 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { getPriorityBreakdownData } from '@/hooks/useDashboard';
+import { usePriorityBreakdownData } from '@/hooks/useDashboard';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 const PRIORITY_COLORS = {
   urgent: '#EF4444',
@@ -52,7 +53,8 @@ interface PriorityBreakdownWidgetProps {
 }
 
 export default function PriorityBreakdownWidget({ title }: PriorityBreakdownWidgetProps) {
-  const data = getPriorityBreakdownData();
+  const { workspace_id } = useWorkspace();
+  const { data } = usePriorityBreakdownData(workspace_id);
 
   if (!data.length) {
     return (

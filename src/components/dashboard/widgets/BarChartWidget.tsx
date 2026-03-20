@@ -9,7 +9,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { getBarChartData } from '@/hooks/useDashboard';
+import { useBarChartData } from '@/hooks/useDashboard';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -26,7 +27,8 @@ interface BarChartWidgetProps {
 }
 
 export default function BarChartWidget({ title }: BarChartWidgetProps) {
-  const data = getBarChartData();
+  const { workspace_id } = useWorkspace();
+  const { data } = useBarChartData(workspace_id);
 
   if (!data.length) {
     return (

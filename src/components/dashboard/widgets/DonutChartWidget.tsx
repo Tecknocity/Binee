@@ -1,7 +1,8 @@
 'use client';
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { getTaskStatusData } from '@/hooks/useDashboard';
+import { useTaskStatusData } from '@/hooks/useDashboard';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 const STATUS_COLORS: Record<string, string> = {
   'In Progress': '#854DF9',
@@ -26,7 +27,8 @@ interface DonutChartWidgetProps {
 }
 
 export default function DonutChartWidget({ title }: DonutChartWidgetProps) {
-  const data = getTaskStatusData();
+  const { workspace_id } = useWorkspace();
+  const { data } = useTaskStatusData(workspace_id);
 
   if (!data.length) {
     return (

@@ -15,7 +15,8 @@ interface ClickUpGateProps {
  */
 export function ClickUpGate({ children }: ClickUpGateProps) {
   const { connected, loading } = useClickUpStatus();
-  const { workspace_id } = useWorkspace();
+  const { workspace_id, membership } = useWorkspace();
+  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin';
 
   // While loading, render the page normally (avoids flash)
   if (loading) {
@@ -65,29 +66,40 @@ export function ClickUpGate({ children }: ClickUpGateProps) {
           </h2>
 
           <p className="text-sm text-text-secondary leading-relaxed mb-6">
-            We can&apos;t show you data because your ClickUp workspace is not connected.
-            Connect your account so Binee can sync your tasks, projects, and team
-            activity to power your dashboards and insights.
+            {isAdmin
+              ? "We can't show you data because your ClickUp workspace is not connected. Connect your account so Binee can sync your tasks, projects, and team activity to power your dashboards and insights."
+              : "Your workspace's ClickUp is not connected yet. Ask a workspace owner or admin to connect ClickUp from the Settings page."}
           </p>
 
-          <a
-            href={workspace_id ? `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}` : '/settings'}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium transition-colors bg-[#7B68EE] text-white hover:bg-[#6A5ACD] shadow-lg shadow-[#7B68EE]/20"
-          >
-            <Plug className="w-4 h-4" />
-            Connect ClickUp
-            <ExternalLink className="w-3.5 h-3.5 ml-1" />
-          </a>
+          {isAdmin ? (
+            <>
+              <a
+                href={workspace_id ? `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}` : '/settings'}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium transition-colors bg-[#7B68EE] text-white hover:bg-[#6A5ACD] shadow-lg shadow-[#7B68EE]/20"
+              >
+                <Plug className="w-4 h-4" />
+                Connect ClickUp
+                <ExternalLink className="w-3.5 h-3.5 ml-1" />
+              </a>
 
-          <p className="text-xs text-text-muted mt-4">
-            You can also connect from{' '}
+              <p className="text-xs text-text-muted mt-4">
+                You can also connect from{' '}
+                <a
+                  href="/settings?tab=integrations"
+                  className="text-accent hover:underline"
+                >
+                  Settings
+                </a>
+              </p>
+            </>
+          ) : (
             <a
               href="/settings?tab=integrations"
-              className="text-accent hover:underline"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium transition-colors border border-border text-text-primary hover:bg-surface-hover"
             >
-              Settings
+              View Integrations
             </a>
-          </p>
+          )}
         </div>
       </div>
     </div>

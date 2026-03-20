@@ -1,7 +1,8 @@
 'use client';
 
 import { CheckCircle2, MessageSquare, GitPullRequest, AlertCircle, Clock, UserPlus } from 'lucide-react';
-import { getRecentActivityData } from '@/hooks/useDashboard';
+import { useRecentActivityData } from '@/hooks/useDashboard';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 const activityIcons: Record<string, typeof CheckCircle2> = {
   completed: CheckCircle2,
@@ -26,7 +27,8 @@ interface RecentActivityWidgetProps {
 }
 
 export default function RecentActivityWidget({ title }: RecentActivityWidgetProps) {
-  const data = getRecentActivityData();
+  const { workspace_id } = useWorkspace();
+  const { data } = useRecentActivityData(workspace_id);
 
   if (!data.length) {
     return (

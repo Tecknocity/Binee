@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generatePKCE, getClickUpAuthUrl } from "@/lib/clickup/oauth";
 import { encryptToken } from "@/lib/clickup/encryption";
+import { createServerClient } from "@/lib/supabase/server";
 
 /**
  * GET /api/clickup/auth?workspace_id=xxx
  *
  * Initiates the ClickUp OAuth 2.1 PKCE flow:
- * 1. Generates a PKCE code_verifier / code_challenge pair
- * 2. Encrypts the code_verifier and stores it in an httpOnly cookie
- * 3. Redirects the user to ClickUp's authorization page
+ * 1. Verifies the user is an owner or admin of the workspace
+ * 2. Generates a PKCE code_verifier / code_challenge pair
+ * 3. Encrypts the code_verifier and stores it in an httpOnly cookie
+ * 4. Redirects the user to ClickUp's authorization page
  *
  * The code_verifier is retrieved later by the callback route to complete
  * the token exchange, ensuring the client_secret never leaves the server.
@@ -20,6 +22,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { error: "workspace_id query parameter is required" },
       { status: 400 }
+    );
+  }
+
+  // Verify user is authenticated and has owner/admin role
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Authentication required" },
+      { status: 401 }
+    );
+  }
+
+  const { data: member } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!member || (member.role !== "owner" && member.role !== "admin")) {
+    return NextResponse.json(
+      { error: "Only workspace owners and admins can connect ClickUp" },
+      { status: 403 }
     );
   }
 

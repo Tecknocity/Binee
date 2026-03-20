@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { CheckCircle, AlertCircle, Clock, RefreshCw, Loader2, Plug, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -430,14 +431,47 @@ function StatusBadge({ status }: { status: IntegrationStatus }) {
 }
 
 export default function IntegrationsSettingsPage() {
-  const { workspace } = useAuth();
+  const { workspace, refreshWorkspace } = useAuth();
+  const { membership } = useWorkspace();
+  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin';
   const integrations = useIntegrations();
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   const handleSync = async (id: string) => {
+    if (!workspace?.id || id !== 'clickup') return;
     setSyncing(id);
-    await new Promise((r) => setTimeout(r, 2000));
-    setSyncing(null);
+    try {
+      await fetch('/api/clickup/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspace.id }),
+      });
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const handleDisconnect = async (id: string) => {
+    if (!workspace?.id || id !== 'clickup') return;
+    if (!confirm('Are you sure you want to disconnect ClickUp? This will remove all cached data.')) return;
+    setDisconnecting(id);
+    try {
+      const res = await fetch('/api/clickup/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspace.id }),
+      });
+      if (res.ok) {
+        await refreshWorkspace();
+      }
+    } catch (err) {
+      console.error('Disconnect failed:', err);
+    } finally {
+      setDisconnecting(null);
+    }
   };
 
   return (
@@ -489,8 +523,8 @@ export default function IntegrationsSettingsPage() {
                       {integration.description}
                     </p>
 
-                    {/* Actions for connected/connectable integrations */}
-                    {integration.status === 'connected' && (
+                    {/* Actions for connected/connectable integrations — owner/admin only */}
+                    {integration.status === 'connected' && isAdmin && (
                       <div className="flex items-center gap-3 mt-3">
                         <button
                           onClick={() => handleSync(integration.id)}
@@ -504,12 +538,19 @@ export default function IntegrationsSettingsPage() {
                           )}
                           Sync now
                         </button>
-                        <button className="flex items-center gap-1.5 px-3 py-1.5 border border-error/30 rounded-lg text-xs text-error hover:bg-error/10 transition-colors">
-                          Disconnect
+                        <button
+                          onClick={() => handleDisconnect(integration.id)}
+                          disabled={disconnecting === integration.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 border border-error/30 rounded-lg text-xs text-error hover:bg-error/10 transition-colors disabled:opacity-50"
+                        >
+                          {disconnecting === integration.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : null}
+                          {disconnecting === integration.id ? 'Disconnecting...' : 'Disconnect'}
                         </button>
                       </div>
                     )}
-                    {integration.status === 'not_connected' && (
+                    {integration.status === 'not_connected' && isAdmin && (
                       <div className="mt-3">
                         <button
                           onClick={() => {
@@ -525,6 +566,11 @@ export default function IntegrationsSettingsPage() {
                           <ExternalLink className="w-3 h-3 ml-0.5" />
                         </button>
                       </div>
+                    )}
+                    {integration.status === 'not_connected' && !isAdmin && (
+                      <p className="text-xs text-text-muted mt-2">
+                        Ask a workspace owner or admin to connect this integration.
+                      </p>
                     )}
                   </div>
                 </div>

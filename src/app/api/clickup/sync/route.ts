@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { performInitialSync } from '@/lib/clickup/sync';
+import { createServerClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -8,6 +9,22 @@ export async function POST(request: Request) {
 
   if (!workspace_id) {
     return NextResponse.json({ error: 'workspace_id required' }, { status: 400 });
+  }
+
+  // Verify user is owner/admin
+  const authSupabase = await createServerClient();
+  const { data: { user } } = await authSupabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  const { data: member } = await authSupabase
+    .from('workspace_members')
+    .select('role')
+    .eq('workspace_id', workspace_id)
+    .eq('user_id', user.id)
+    .single();
+  if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
+    return NextResponse.json({ error: 'Only workspace owners and admins can sync ClickUp' }, { status: 403 });
   }
 
   const supabase = createClient(
@@ -36,7 +53,7 @@ export async function POST(request: Request) {
     .eq('id', workspace_id);
 
   try {
-    const result = await performInitialSync(workspace_id, workspace.clickup_team_id);
+    const result = await performInitialSync(workspace_id);
 
     // Mark sync as complete
     const now = new Date().toISOString();

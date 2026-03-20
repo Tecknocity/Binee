@@ -9,7 +9,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { getLineChartData } from '@/hooks/useDashboard';
+import { useLineChartData } from '@/hooks/useDashboard';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -26,7 +27,8 @@ interface LineChartWidgetProps {
 }
 
 export default function LineChartWidget({ title }: LineChartWidgetProps) {
-  const data = getLineChartData();
+  const { workspace_id } = useWorkspace();
+  const { data } = useLineChartData(workspace_id);
 
   if (!data.length) {
     return (

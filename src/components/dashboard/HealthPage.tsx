@@ -19,6 +19,7 @@ import {
   AreaChart,
 } from 'recharts';
 import { useHealth } from '@/hooks/useHealth';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import HealthScoreCircle from './HealthScoreCircle';
 import IssueCard from './IssueCard';
 
@@ -58,8 +59,9 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export default function HealthPage() {
+  const { workspace_id } = useWorkspace();
   const { healthResult, metrics, historicalScores, isLoading, lastCheckAt, runCheck } =
-    useHealth();
+    useHealth(workspace_id ?? undefined);
 
   if (isLoading && !healthResult) {
     return (

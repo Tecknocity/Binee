@@ -1,318 +1,368 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { createBrowserClient } from '@/lib/supabase/client';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import type { Dashboard, DashboardWidget } from '@/types/database';
 
-// ----- Mock data -----
+// ---------------------------------------------------------------------------
+// Types for cached data
+// ---------------------------------------------------------------------------
 
-const mockDashboards: Dashboard[] = [
-  {
-    id: 'dash-1',
-    workspace_id: 'mock-workspace',
-    name: 'Project Overview',
-    description: 'Key project metrics and team performance',
-    layout: [],
-    is_default: true,
-    created_by: 'user-1',
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'dash-2',
-    workspace_id: 'mock-workspace',
-    name: 'Sprint Tracker',
-    description: 'Current sprint progress and velocity',
-    layout: [],
-    is_default: false,
-    created_by: 'user-1',
-    created_at: '2026-03-01T12:00:00Z',
-    updated_at: '2026-03-09T15:45:00Z',
-  },
-];
-
-const mockWidgets: DashboardWidget[] = [
-  {
-    id: 'widget-1',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'summary',
-    title: 'Active Tasks',
-    config: {
-      dataSource: 'tasks',
-      metric: 'count',
-      filter: 'active',
-      icon: 'CheckSquare',
-      value: 187,
-      change: 12,
-      changeDirection: 'up',
-    },
-    position: { x: 0, y: 0, w: 1, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-2',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'summary',
-    title: 'Overdue Tasks',
-    config: {
-      dataSource: 'tasks',
-      metric: 'count',
-      filter: 'overdue',
-      icon: 'AlertTriangle',
-      value: 23,
-      change: -8,
-      changeDirection: 'down',
-    },
-    position: { x: 1, y: 0, w: 1, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-3',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'summary',
-    title: 'Completion Rate',
-    config: {
-      dataSource: 'tasks',
-      metric: 'percentage',
-      filter: 'completion_rate',
-      icon: 'TrendingUp',
-      value: 82.9,
-      suffix: '%',
-      change: 5.2,
-      changeDirection: 'up',
-    },
-    position: { x: 2, y: 0, w: 1, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-4',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'summary',
-    title: 'Team Velocity',
-    config: {
-      dataSource: 'tasks',
-      metric: 'count',
-      filter: 'velocity',
-      icon: 'Zap',
-      value: 34,
-      suffix: '/wk',
-      change: 3,
-      changeDirection: 'up',
-    },
-    position: { x: 3, y: 0, w: 1, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-5',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'bar',
-    title: 'Tasks Completed by Member',
-    config: {
-      dataSource: 'tasks',
-      metric: 'count',
-      groupBy: 'assignee',
-      timeRange: '30d',
-    },
-    position: { x: 0, y: 1, w: 2, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-6',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'line',
-    title: 'Tasks Completed Over Time',
-    config: {
-      dataSource: 'tasks',
-      metric: 'count',
-      groupBy: 'week',
-      timeRange: '8w',
-    },
-    position: { x: 2, y: 1, w: 2, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-7',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'table',
-    title: 'Overdue Tasks',
-    config: {
-      dataSource: 'tasks',
-      filter: 'overdue',
-      columns: ['name', 'assignee', 'due_date', 'priority', 'list'],
-      timeRange: '30d',
-    },
-    position: { x: 0, y: 2, w: 3, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-8',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'donut',
-    title: 'Task Status Distribution',
-    config: { dataSource: 'tasks', metric: 'count', groupBy: 'status' },
-    position: { x: 0, y: 3, w: 2, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-9',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'time_tracking',
-    title: 'Hours Logged This Week',
-    config: { dataSource: 'time_entries', metric: 'hours', groupBy: 'day', timeRange: '7d' },
-    position: { x: 2, y: 3, w: 2, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-10',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'workload',
-    title: 'Team Workload',
-    config: { dataSource: 'tasks', metric: 'count', groupBy: 'assignee' },
-    position: { x: 0, y: 4, w: 2, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-11',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'priority',
-    title: 'Priority Breakdown by List',
-    config: { dataSource: 'tasks', metric: 'count', groupBy: 'priority' },
-    position: { x: 2, y: 4, w: 2, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-12',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'progress',
-    title: 'Sprint & Milestone Progress',
-    config: { dataSource: 'tasks', metric: 'progress' },
-    position: { x: 0, y: 5, w: 3, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-  {
-    id: 'widget-13',
-    workspace_id: 'mock-workspace',
-    dashboard_id: 'dash-1',
-    type: 'activity',
-    title: 'Recent Activity',
-    config: { dataSource: 'tasks', metric: 'activity' },
-    position: { x: 0, y: 6, w: 3, h: 1 },
-    created_at: '2026-02-15T10:00:00Z',
-    updated_at: '2026-03-10T08:30:00Z',
-  },
-];
-
-// ----- New widget mock data generators -----
-
-export function getTaskStatusData() {
-  return [
-    { name: 'In Progress', value: 64 },
-    { name: 'To Do', value: 52 },
-    { name: 'In Review', value: 28 },
-    { name: 'Done', value: 34 },
-    { name: 'Blocked', value: 9 },
-  ];
+interface CachedTask {
+  clickup_id: string;
+  list_id: string;
+  name: string;
+  status: string | null;
+  priority: number | null;
+  assignees: { id?: string; username?: string }[] | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+  time_spent: number | null;
 }
 
-export function getSprintProgressData() {
-  return [
-    { name: 'Sprint 14 — Auth Revamp', completed: 18, total: 22, expectedPct: 75, daysLeft: 4 },
-    { name: 'Sprint 15 — Dashboard V2', completed: 8, total: 26, expectedPct: 30, daysLeft: 11 },
-    { name: 'Q1 Milestone — Beta Launch', completed: 142, total: 180, expectedPct: 80, daysLeft: 16 },
-  ];
+interface CachedTimeEntry {
+  duration: number;
+  start_time: string;
+  user_id: string;
 }
 
-export function getTimeTrackingData() {
-  return [
-    { day: 'Mon', hours: 28.5 },
-    { day: 'Tue', hours: 32.0 },
-    { day: 'Wed', hours: 26.5 },
-    { day: 'Thu', hours: 34.0 },
-    { day: 'Fri', hours: 30.5 },
-    { day: 'Sat', hours: 4.0 },
-    { day: 'Sun', hours: 1.0 },
-  ];
+interface CachedTeamMember {
+  clickup_id: string;
+  username: string;
 }
 
-export function getWorkloadData() {
-  return [
-    { name: 'Sarah K.', completed: 12, inProgress: 8, overdue: 2, total: 22 },
-    { name: 'James M.', completed: 9, inProgress: 10, overdue: 4, total: 23 },
-    { name: 'Emily R.', completed: 14, inProgress: 5, overdue: 1, total: 20 },
-    { name: 'David L.', completed: 7, inProgress: 9, overdue: 3, total: 19 },
-    { name: 'Maria C.', completed: 10, inProgress: 6, overdue: 2, total: 18 },
-  ];
+interface CachedList {
+  clickup_list_id?: string;
+  clickup_id?: string;
+  name: string;
 }
 
-export function getPriorityBreakdownData() {
-  return [
-    { list: 'Backend', urgent: 3, high: 8, normal: 14, low: 5 },
-    { list: 'Frontend', urgent: 1, high: 6, normal: 18, low: 8 },
-    { list: 'Design', urgent: 0, high: 4, normal: 10, low: 6 },
-    { list: 'Bugs', urgent: 5, high: 9, normal: 7, low: 2 },
-    { list: 'Infra', urgent: 2, high: 5, normal: 6, low: 3 },
-  ];
+// ---------------------------------------------------------------------------
+// Real data fetchers — query Supabase cached tables
+// ---------------------------------------------------------------------------
+
+const supabase = createBrowserClient();
+
+export function useTaskStatusData(workspaceId: string | null) {
+  const [data, setData] = useState<{ name: string; value: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const { data: tasks } = await supabase
+        .from('cached_tasks')
+        .select('status')
+        .eq('workspace_id', workspaceId);
+      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+      const counts: Record<string, number> = {};
+      for (const t of tasks) {
+        const s = t.status ?? 'Unknown';
+        counts[s] = (counts[s] ?? 0) + 1;
+      }
+      setData(Object.entries(counts).map(([name, value]) => ({ name, value })));
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
 }
 
-export function getRecentActivityData() {
-  return [
-    { id: 'a1', type: 'completed', user: 'Sarah K.', action: 'completed', target: 'Implement OAuth flow', time: '12 min ago' },
-    { id: 'a2', type: 'commented', user: 'James M.', action: 'commented on', target: 'API rate limiting PR', time: '28 min ago' },
-    { id: 'a3', type: 'flagged', user: 'Emily R.', action: 'flagged', target: 'Login redirect bug', time: '45 min ago' },
-    { id: 'a4', type: 'created', user: 'David L.', action: 'created', target: 'Database migration task', time: '1h ago' },
-    { id: 'a5', type: 'assigned', user: 'Maria C.', action: 'was assigned to', target: 'Review onboarding flow', time: '1.5h ago' },
-    { id: 'a6', type: 'completed', user: 'James M.', action: 'completed', target: 'Fix pagination offset', time: '2h ago' },
-    { id: 'a7', type: 'updated', user: 'Sarah K.', action: 'updated due date for', target: 'Design system tokens', time: '2.5h ago' },
-    { id: 'a8', type: 'commented', user: 'David L.', action: 'commented on', target: 'Staging deploy config', time: '3h ago' },
-  ];
+export function useSprintProgressData(workspaceId: string | null) {
+  const [data, setData] = useState<{ name: string; completed: number; total: number; expectedPct: number; daysLeft: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const { data: lists } = await supabase
+        .from('cached_lists')
+        .select('clickup_id, name')
+        .eq('workspace_id', workspaceId);
+      if (!lists || lists.length === 0) { setData([]); setLoading(false); return; }
+
+      const { data: tasks } = await supabase
+        .from('cached_tasks')
+        .select('list_id, status')
+        .eq('workspace_id', workspaceId);
+
+      const items = lists.slice(0, 5).map((list) => {
+        const listTasks = (tasks ?? []).filter((t) => t.list_id === list.clickup_id);
+        const completed = listTasks.filter((t) =>
+          t.status?.toLowerCase().includes('complete') || t.status?.toLowerCase().includes('closed')
+        ).length;
+        return {
+          name: list.name,
+          completed,
+          total: listTasks.length,
+          expectedPct: listTasks.length > 0 ? Math.round((completed / listTasks.length) * 100) : 0,
+          daysLeft: 0,
+        };
+      }).filter((item) => item.total > 0);
+      setData(items);
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
 }
 
-// ----- Chart data generators -----
+export function useTimeTrackingData(workspaceId: string | null) {
+  const [data, setData] = useState<{ day: string; hours: number }[]>([]);
+  const [loading, setLoading] = useState(true);
 
-export function getBarChartData() {
-  return [
-    { name: 'Sarah K.', completed: 28, color: '#854DF9' },
-    { name: 'James M.', completed: 24, color: '#9D6FFA' },
-    { name: 'Emily R.', completed: 21, color: '#854DF9' },
-    { name: 'David L.', completed: 18, color: '#9D6FFA' },
-    { name: 'Maria C.', completed: 15, color: '#854DF9' },
-  ];
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: entries } = await supabase
+        .from('cached_time_entries')
+        .select('duration, start_time')
+        .eq('workspace_id', workspaceId)
+        .gte('start_time', sevenDaysAgo);
+
+      if (!entries || entries.length === 0) { setData([]); setLoading(false); return; }
+
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const dayHours: Record<string, number> = {};
+      for (const e of entries) {
+        const day = dayNames[new Date(e.start_time).getDay()];
+        dayHours[day] = (dayHours[day] ?? 0) + (e.duration / 3_600_000);
+      }
+      const orderedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      setData(orderedDays.map((day) => ({ day, hours: Math.round((dayHours[day] ?? 0) * 10) / 10 })));
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
 }
 
-export function getLineChartData() {
-  return [
-    { week: 'Jan 13', completed: 22 },
-    { week: 'Jan 20', completed: 28 },
-    { week: 'Jan 27', completed: 25 },
-    { week: 'Feb 3', completed: 31 },
-    { week: 'Feb 10', completed: 27 },
-    { week: 'Feb 17', completed: 35 },
-    { week: 'Feb 24', completed: 30 },
-    { week: 'Mar 3', completed: 34 },
-  ];
+export function useWorkloadData(workspaceId: string | null) {
+  const [data, setData] = useState<{ name: string; completed: number; inProgress: number; overdue: number; total: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const { data: tasks } = await supabase
+        .from('cached_tasks')
+        .select('status, assignees, due_date')
+        .eq('workspace_id', workspaceId) as { data: CachedTask[] | null };
+
+      const { data: members } = await supabase
+        .from('cached_team_members')
+        .select('clickup_id, username')
+        .eq('workspace_id', workspaceId);
+
+      if (!tasks || tasks.length === 0 || !members) { setData([]); setLoading(false); return; }
+
+      const now = new Date().toISOString();
+      const memberMap = new Map(members.map((m) => [m.clickup_id, m.username]));
+      const workload: Record<string, { completed: number; inProgress: number; overdue: number; total: number }> = {};
+
+      for (const task of tasks) {
+        const assignees = Array.isArray(task.assignees) ? task.assignees : [];
+        for (const a of assignees) {
+          const id = typeof a === 'object' && a !== null ? a.id : String(a);
+          if (!id) continue;
+          const name = memberMap.get(String(id)) ?? String(id);
+          if (!workload[name]) workload[name] = { completed: 0, inProgress: 0, overdue: 0, total: 0 };
+          workload[name].total++;
+          const isComplete = task.status?.toLowerCase().includes('complete') || task.status?.toLowerCase().includes('closed');
+          const isOverdue = !isComplete && task.due_date && task.due_date < now;
+          if (isComplete) workload[name].completed++;
+          else if (isOverdue) workload[name].overdue++;
+          else workload[name].inProgress++;
+        }
+      }
+
+      const sorted = Object.entries(workload)
+        .sort(([, a], [, b]) => b.total - a.total)
+        .slice(0, 10)
+        .map(([name, stats]) => ({ name, ...stats }));
+      setData(sorted);
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
+}
+
+export function usePriorityBreakdownData(workspaceId: string | null) {
+  const [data, setData] = useState<{ list: string; urgent: number; high: number; normal: number; low: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const { data: lists } = await supabase
+        .from('cached_lists')
+        .select('clickup_id, name')
+        .eq('workspace_id', workspaceId);
+      const { data: tasks } = await supabase
+        .from('cached_tasks')
+        .select('list_id, priority')
+        .eq('workspace_id', workspaceId);
+
+      if (!lists || !tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+
+      // ClickUp priorities: 1=urgent, 2=high, 3=normal, 4=low
+      const items = lists.map((list) => {
+        const listTasks = tasks.filter((t) => t.list_id === list.clickup_id);
+        return {
+          list: list.name,
+          urgent: listTasks.filter((t) => t.priority === 1).length,
+          high: listTasks.filter((t) => t.priority === 2).length,
+          normal: listTasks.filter((t) => t.priority === 3).length,
+          low: listTasks.filter((t) => t.priority === 4).length,
+        };
+      }).filter((item) => item.urgent + item.high + item.normal + item.low > 0);
+      setData(items.slice(0, 10));
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
+}
+
+export function useRecentActivityData(workspaceId: string | null) {
+  const [data, setData] = useState<{ id: string; type: string; user: string; action: string; target: string; time: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const { data: tasks } = await supabase
+        .from('cached_tasks')
+        .select('clickup_id, name, status, assignees, updated_at')
+        .eq('workspace_id', workspaceId)
+        .order('updated_at', { ascending: false })
+        .limit(15) as { data: CachedTask[] | null };
+
+      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+
+      const now = Date.now();
+      const activities = tasks.map((t) => {
+        const assignees = Array.isArray(t.assignees) ? t.assignees : [];
+        const userName = assignees.length > 0 && typeof assignees[0] === 'object' && assignees[0]?.username
+          ? assignees[0].username
+          : 'Someone';
+        const isComplete = t.status?.toLowerCase().includes('complete') || t.status?.toLowerCase().includes('closed');
+        const diffMs = now - new Date(t.updated_at).getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        const time = diffMins < 1 ? 'just now' : diffMins < 60 ? `${diffMins}m ago` : diffHours < 24 ? `${diffHours}h ago` : `${diffDays}d ago`;
+
+        return {
+          id: t.clickup_id,
+          type: isComplete ? 'completed' : 'updated',
+          user: userName,
+          action: isComplete ? 'completed' : 'updated',
+          target: t.name,
+          time,
+        };
+      });
+      setData(activities);
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
+}
+
+export function useBarChartData(workspaceId: string | null) {
+  const [data, setData] = useState<{ name: string; completed: number; color: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const { data: tasks } = await supabase
+        .from('cached_tasks')
+        .select('status, assignees')
+        .eq('workspace_id', workspaceId) as { data: CachedTask[] | null };
+      const { data: members } = await supabase
+        .from('cached_team_members')
+        .select('clickup_id, username')
+        .eq('workspace_id', workspaceId);
+
+      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+
+      const memberMap = new Map((members ?? []).map((m) => [m.clickup_id, m.username]));
+      const counts: Record<string, number> = {};
+
+      for (const t of tasks) {
+        const isComplete = t.status?.toLowerCase().includes('complete') || t.status?.toLowerCase().includes('closed');
+        if (!isComplete) continue;
+        const assignees = Array.isArray(t.assignees) ? t.assignees : [];
+        for (const a of assignees) {
+          const id = typeof a === 'object' && a !== null ? a.id : String(a);
+          if (!id) continue;
+          const name = memberMap.get(String(id)) ?? String(id);
+          counts[name] = (counts[name] ?? 0) + 1;
+        }
+      }
+
+      const colors = ['#854DF9', '#9D6FFA', '#854DF9', '#9D6FFA', '#854DF9'];
+      const sorted = Object.entries(counts)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 10)
+        .map(([name, completed], i) => ({ name, completed, color: colors[i % colors.length] }));
+      setData(sorted);
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
+}
+
+export function useLineChartData(workspaceId: string | null) {
+  const [data, setData] = useState<{ week: string; completed: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const eightWeeksAgo = new Date(Date.now() - 56 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: tasks } = await supabase
+        .from('cached_tasks')
+        .select('status, updated_at')
+        .eq('workspace_id', workspaceId)
+        .gte('updated_at', eightWeeksAgo);
+
+      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+
+      const weekBuckets: Record<string, number> = {};
+      const now = new Date();
+      for (let i = 7; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i * 7);
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        weekBuckets[label] = 0;
+      }
+
+      const weekLabels = Object.keys(weekBuckets);
+      for (const t of tasks) {
+        const isComplete = t.status?.toLowerCase().includes('complete') || t.status?.toLowerCase().includes('closed');
+        if (!isComplete) continue;
+        const updatedDate = new Date(t.updated_at);
+        const weeksAgo = Math.floor((now.getTime() - updatedDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        const idx = weekLabels.length - 1 - weeksAgo;
+        if (idx >= 0 && idx < weekLabels.length) {
+          weekBuckets[weekLabels[idx]]++;
+        }
+      }
+
+      setData(weekLabels.map((week) => ({ week, completed: weekBuckets[week] })));
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
 }
 
 export interface OverdueTask {
@@ -325,22 +375,64 @@ export interface OverdueTask {
   daysOverdue: number;
 }
 
-export function getOverdueTasksData(): OverdueTask[] {
-  return [
-    { id: 't1', name: 'Update API documentation', assignee: 'James M.', dueDate: '2026-03-04', priority: 'high', list: 'Backend', daysOverdue: 7 },
-    { id: 't2', name: 'Fix login redirect bug', assignee: 'Emily R.', dueDate: '2026-03-06', priority: 'urgent', list: 'Bugs', daysOverdue: 5 },
-    { id: 't3', name: 'Design onboarding flow v2', assignee: 'Sarah K.', dueDate: '2026-03-07', priority: 'high', list: 'Design', daysOverdue: 4 },
-    { id: 't4', name: 'Write unit tests for billing', assignee: 'David L.', dueDate: '2026-03-08', priority: 'normal', list: 'Backend', daysOverdue: 3 },
-    { id: 't5', name: 'Migrate database schema', assignee: 'James M.', dueDate: '2026-03-08', priority: 'urgent', list: 'Infrastructure', daysOverdue: 3 },
-    { id: 't6', name: 'Review PR #342', assignee: 'Maria C.', dueDate: '2026-03-09', priority: 'normal', list: 'Code Review', daysOverdue: 2 },
-    { id: 't7', name: 'Update privacy policy page', assignee: 'Sarah K.', dueDate: '2026-03-09', priority: 'low', list: 'Legal', daysOverdue: 2 },
-    { id: 't8', name: 'Set up staging environment', assignee: 'David L.', dueDate: '2026-03-10', priority: 'high', list: 'Infrastructure', daysOverdue: 1 },
-    { id: 't9', name: 'Optimize image loading', assignee: 'Emily R.', dueDate: '2026-03-10', priority: 'normal', list: 'Frontend', daysOverdue: 1 },
-    { id: 't10', name: 'Create weekly report template', assignee: 'Maria C.', dueDate: '2026-03-10', priority: 'low', list: 'Operations', daysOverdue: 1 },
-  ];
+export function useOverdueTasksData(workspaceId: string | null) {
+  const [data, setData] = useState<OverdueTask[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    (async () => {
+      const now = new Date().toISOString();
+      const { data: tasks } = await supabase
+        .from('cached_tasks')
+        .select('clickup_id, name, status, priority, assignees, due_date, list_id')
+        .eq('workspace_id', workspaceId)
+        .lt('due_date', now)
+        .order('due_date', { ascending: true }) as { data: (CachedTask & { list_id: string })[] | null };
+
+      const { data: lists } = await supabase
+        .from('cached_lists')
+        .select('clickup_id, name')
+        .eq('workspace_id', workspaceId);
+
+      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+
+      const listMap = new Map((lists ?? []).map((l) => [l.clickup_id, l.name]));
+      const priorityMap: Record<number, OverdueTask['priority']> = { 1: 'urgent', 2: 'high', 3: 'normal', 4: 'low' };
+
+      const overdue = tasks
+        .filter((t) => {
+          const s = t.status?.toLowerCase() ?? '';
+          return !s.includes('complete') && !s.includes('closed');
+        })
+        .map((t) => {
+          const assignees = Array.isArray(t.assignees) ? t.assignees : [];
+          const assignee = assignees.length > 0 && typeof assignees[0] === 'object' && assignees[0]?.username
+            ? assignees[0].username
+            : 'Unassigned';
+          const daysOverdue = Math.ceil((Date.now() - new Date(t.due_date!).getTime()) / (1000 * 60 * 60 * 24));
+          return {
+            id: t.clickup_id,
+            name: t.name,
+            assignee,
+            dueDate: t.due_date!.slice(0, 10),
+            priority: priorityMap[t.priority ?? 3] ?? 'normal',
+            list: listMap.get(t.list_id) ?? 'Unknown',
+            daysOverdue,
+          };
+        })
+        .slice(0, 20);
+      setData(overdue);
+      setLoading(false);
+    })();
+  }, [workspaceId]);
+
+  return { data, loading };
 }
 
-// ----- Hook -----
+// ---------------------------------------------------------------------------
+// Hook — dashboard management
+// ---------------------------------------------------------------------------
 
 export interface DashboardState {
   dashboards: Dashboard[];
@@ -356,10 +448,70 @@ export interface DashboardState {
 }
 
 export function useDashboard(): DashboardState {
-  const [dashboards, setDashboards] = useState<Dashboard[]>(mockDashboards);
-  const [activeDashboardId, setActiveDashboardId] = useState<string>('dash-1');
-  const [widgets, setWidgets] = useState<DashboardWidget[]>(mockWidgets);
-  const [isLoading] = useState(false);
+  const { workspace_id } = useWorkspace();
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
+  const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null);
+  const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch dashboards and widgets from Supabase
+  useEffect(() => {
+    if (!workspace_id) { setIsLoading(false); return; }
+
+    (async () => {
+      const { data: dbDashboards } = await supabase
+        .from('dashboards')
+        .select('*')
+        .eq('workspace_id', workspace_id)
+        .order('created_at', { ascending: true });
+
+      let dashList = dbDashboards ?? [];
+
+      // Create a default dashboard if none exist
+      if (dashList.length === 0) {
+        const { data: newDash } = await supabase
+          .from('dashboards')
+          .insert({
+            workspace_id,
+            name: 'Project Overview',
+            description: 'Key project metrics and team performance',
+            layout: [],
+            is_default: true,
+          })
+          .select()
+          .single();
+        if (newDash) dashList = [newDash];
+      }
+
+      setDashboards(dashList);
+      const activeId = dashList.find((d) => d.is_default)?.id ?? dashList[0]?.id ?? null;
+      setActiveDashboardId(activeId);
+
+      if (activeId) {
+        const { data: dbWidgets } = await supabase
+          .from('dashboard_widgets')
+          .select('*')
+          .eq('workspace_id', workspace_id)
+          .eq('dashboard_id', activeId);
+        setWidgets(dbWidgets ?? []);
+      }
+
+      setIsLoading(false);
+    })();
+  }, [workspace_id]);
+
+  // Reload widgets when active dashboard changes
+  useEffect(() => {
+    if (!workspace_id || !activeDashboardId) return;
+    (async () => {
+      const { data: dbWidgets } = await supabase
+        .from('dashboard_widgets')
+        .select('*')
+        .eq('workspace_id', workspace_id)
+        .eq('dashboard_id', activeDashboardId);
+      setWidgets(dbWidgets ?? []);
+    })();
+  }, [workspace_id, activeDashboardId]);
 
   const activeDashboard = dashboards.find((d) => d.id === activeDashboardId) ?? null;
 
@@ -367,61 +519,74 @@ export function useDashboard(): DashboardState {
     setActiveDashboardId(id);
   }, []);
 
-  const createDashboard = useCallback((name: string) => {
-    const newDash: Dashboard = {
-      id: `dash-${Date.now()}`,
-      workspace_id: 'mock-workspace',
-      name,
-      description: null,
-      layout: [],
-      is_default: false,
-      created_by: 'user-1',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    setDashboards((prev) => [...prev, newDash]);
-    setActiveDashboardId(newDash.id);
-  }, []);
+  const createDashboard = useCallback(async (name: string) => {
+    if (!workspace_id) return;
+    const { data: newDash } = await supabase
+      .from('dashboards')
+      .insert({
+        workspace_id,
+        name,
+        description: null,
+        layout: [],
+        is_default: false,
+      })
+      .select()
+      .single();
+    if (newDash) {
+      setDashboards((prev) => [...prev, newDash]);
+      setActiveDashboardId(newDash.id);
+    }
+  }, [workspace_id]);
 
-  const deleteDashboard = useCallback((id: string) => {
+  const deleteDashboard = useCallback(async (id: string) => {
+    await supabase.from('dashboards').delete().eq('id', id);
     setDashboards((prev) => prev.filter((d) => d.id !== id));
     setWidgets((prev) => prev.filter((w) => w.dashboard_id !== id));
   }, []);
 
   const addWidget = useCallback(
-    (config: Partial<DashboardWidget>) => {
-      const newWidget: DashboardWidget = {
-        id: `widget-${Date.now()}`,
-        workspace_id: 'mock-workspace',
-        dashboard_id: activeDashboardId,
-        type: config.type ?? 'summary',
-        title: config.title ?? 'New Widget',
-        config: config.config ?? {},
-        position: config.position ?? { x: 0, y: 0, w: 1, h: 1 },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setWidgets((prev) => [...prev, newWidget]);
+    async (config: Partial<DashboardWidget>) => {
+      if (!workspace_id || !activeDashboardId) return;
+      const { data: newWidget } = await supabase
+        .from('dashboard_widgets')
+        .insert({
+          workspace_id,
+          dashboard_id: activeDashboardId,
+          type: config.type ?? 'summary',
+          title: config.title ?? 'New Widget',
+          config: config.config ?? {},
+          position: config.position ?? { x: 0, y: 0, w: 1, h: 1 },
+        })
+        .select()
+        .single();
+      if (newWidget) {
+        setWidgets((prev) => [...prev, newWidget]);
+      }
     },
-    [activeDashboardId]
+    [workspace_id, activeDashboardId]
   );
 
-  const removeWidget = useCallback((id: string) => {
+  const removeWidget = useCallback(async (id: string) => {
+    await supabase.from('dashboard_widgets').delete().eq('id', id);
     setWidgets((prev) => prev.filter((w) => w.id !== id));
   }, []);
 
-  const updateWidget = useCallback((id: string, config: Partial<DashboardWidget>) => {
-    setWidgets((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, ...config, updated_at: new Date().toISOString() } : w))
-    );
+  const updateWidget = useCallback(async (id: string, config: Partial<DashboardWidget>) => {
+    const { data: updated } = await supabase
+      .from('dashboard_widgets')
+      .update({ ...config, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (updated) {
+      setWidgets((prev) => prev.map((w) => (w.id === id ? updated : w)));
+    }
   }, []);
-
-  const activeWidgets = widgets.filter((w) => w.dashboard_id === activeDashboardId);
 
   return {
     dashboards,
     activeDashboard,
-    widgets: activeWidgets,
+    widgets,
     isLoading,
     setActiveDashboard,
     createDashboard,
