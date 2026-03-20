@@ -78,7 +78,8 @@ export default function BillingHistory() {
                         tx.type === 'purchase' && 'bg-success/10 text-success',
                         tx.type === 'bonus' && 'bg-warning/10 text-warning',
                         tx.type === 'refund' && 'bg-accent/10 text-accent',
-                        tx.type === 'monthly_reset' && 'bg-accent/10 text-accent'
+                        tx.type === 'monthly_reset' && 'bg-accent/10 text-accent',
+                        tx.type === 'subscription_grant' && 'bg-success/10 text-success'
                       )}
                     >
                       {tx.type.replace('_', ' ')}

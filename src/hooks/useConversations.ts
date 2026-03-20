@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { createBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,60 +18,59 @@ export interface Conversation {
 }
 
 // ---------------------------------------------------------------------------
-// Mock data
-// ---------------------------------------------------------------------------
-
-const MOCK_CONVERSATIONS: Conversation[] = [
-  {
-    id: 'conv-5',
-    title: 'Building October Overdue Dashboard',
-    lastMessage: 'I\'ve created your "October Overdue Tasks" dashboard',
-    messageCount: 4,
-    updatedAt: new Date('2026-03-11T11:00:15'),
-    createdAt: new Date('2026-03-11T11:00:00'),
-  },
-  {
-    id: 'conv-1',
-    title: 'Overdue tasks in Engineering',
-    lastMessage: 'Done! I\'ve updated "API rate limiter update"',
-    messageCount: 6,
-    updatedAt: new Date('2026-03-11T09:01:10'),
-    createdAt: new Date('2026-03-11T09:00:00'),
-  },
-  {
-    id: 'conv-2',
-    title: 'Sprint velocity analysis',
-    lastMessage: "I'll create that task for you.",
-    messageCount: 5,
-    updatedAt: new Date('2026-03-10T14:02:02'),
-    createdAt: new Date('2026-03-10T14:00:00'),
-  },
-  {
-    id: 'conv-3',
-    title: 'Design team weekly summary',
-    lastMessage: 'The Design team had a productive week!',
-    messageCount: 3,
-    updatedAt: new Date('2026-03-09T16:30:08'),
-    createdAt: new Date('2026-03-09T16:30:00'),
-  },
-  {
-    id: 'conv-4',
-    title: 'Q2 planning project setup',
-    lastMessage: "It looks like we hit a rate limit...",
-    messageCount: 3,
-    updatedAt: new Date('2026-03-08T10:00:05'),
-    createdAt: new Date('2026-03-08T10:00:00'),
-  },
-];
-
-// ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
 export function useConversations() {
-  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [isLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const { workspace, user } = useAuth();
+  const supabase = createBrowserClient();
+
+  // Fetch conversations from the database
+  const fetchConversations = useCallback(async () => {
+    if (!workspace || !user) {
+      setConversations([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('id, title, summary, updated_at, created_at')
+        .eq('workspace_id', workspace.id)
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Failed to fetch conversations:', error.message);
+        setConversations([]);
+      } else {
+        setConversations(
+          (data ?? []).map((c) => ({
+            id: c.id,
+            title: c.title || 'New conversation',
+            lastMessage: c.summary || '',
+            messageCount: 0,
+            updatedAt: new Date(c.updated_at),
+            createdAt: new Date(c.created_at),
+          })),
+        );
+      }
+    } catch {
+      setConversations([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workspace, user, supabase]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
 
   const createConversation = useCallback(() => {
     const newConv: Conversation = {

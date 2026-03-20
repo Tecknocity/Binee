@@ -9,9 +9,10 @@ DECLARE
   v_full_name text;
   v_slug text;
 BEGIN
-  -- Derive full_name with fallback to email username
+  -- Derive full_name with fallback to display_name then email username
   v_full_name := COALESCE(
     NEW.raw_user_meta_data->>'full_name',
+    NEW.raw_user_meta_data->>'display_name',
     split_part(NEW.email, '@', 1)
   );
 
@@ -38,9 +39,9 @@ BEGIN
   )
   RETURNING id INTO v_workspace_id;
 
-  -- Add user as admin member of their workspace
-  INSERT INTO workspace_members (workspace_id, user_id, role, email, invited_email, status, joined_at)
-  VALUES (v_workspace_id, NEW.id, 'admin', NEW.email, NEW.email, 'active', now());
+  -- Add user as owner member of their workspace
+  INSERT INTO workspace_members (workspace_id, user_id, role, email, display_name, invited_email, status, joined_at)
+  VALUES (v_workspace_id, NEW.id, 'owner', NEW.email, v_full_name, NEW.email, 'active', now());
 
   -- Record signup bonus credit transaction
   INSERT INTO credit_transactions (workspace_id, user_id, amount, balance_after, type, description)
@@ -51,6 +52,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Attach trigger to auth.users
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();

@@ -31,6 +31,7 @@ $$ language sql security definer stable;
 -- ============================================================
 alter table plan_configurations enable row level security;
 
+drop policy if exists "Authenticated users can view plan configurations" on plan_configurations;
 create policy "Authenticated users can view plan configurations"
   on plan_configurations
   for select
@@ -42,6 +43,7 @@ create policy "Authenticated users can view plan configurations"
 -- ============================================================
 drop policy if exists "Workspace members can view credit transactions" on credit_transactions;
 
+drop policy if exists "Admins can view all credit transactions" on credit_transactions;
 create policy "Admins can view all credit transactions" on credit_transactions
   for select using (
     workspace_id in (
@@ -52,6 +54,7 @@ create policy "Admins can view all credit transactions" on credit_transactions
     )
   );
 
+drop policy if exists "Members can view own credit transactions" on credit_transactions;
 create policy "Members can view own credit transactions" on credit_transactions
   for select using (
     user_id = auth.uid()
