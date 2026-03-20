@@ -193,6 +193,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ actions: ['has_memberships_no_owned_workspace'] });
     }
 
+    // Race condition guard: the DB trigger (handle_new_user) may be creating
+    // a workspace concurrently. Wait briefly and re-check before creating.
+    await new Promise((r) => setTimeout(r, 1000));
+    const { data: recheck } = await admin
+      .from('workspaces')
+      .select('id')
+      .eq('owner_id', user.id);
+    if (recheck && recheck.length > 0) {
+      console.log('ensure-owner: workspace appeared after re-check (trigger won race), skipping creation');
+      // Still ensure member rows exist for the workspace(s) found
+      const recheckMemberQuery = await admin
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', user.id);
+      const existingMemberWsIds = new Set((recheckMemberQuery.data ?? []).map((m: { workspace_id: string }) => m.workspace_id));
+      const recheckActions: string[] = [];
+      for (const ws of recheck) {
+        if (!existingMemberWsIds.has(ws.id)) {
+          const { error: backfillErr } = await admin.from('workspace_members').insert({
+            workspace_id: ws.id,
+            user_id: user.id,
+            role: 'owner',
+            email: userEmail,
+            display_name: displayName,
+            status: 'active',
+            invited_email: userEmail,
+            joined_at: new Date().toISOString(),
+          });
+          if (!backfillErr) recheckActions.push(`backfilled_member_for_${ws.id}`);
+        }
+      }
+      return NextResponse.json({ actions: ['trigger_created_workspace', ...recheckActions] });
+    }
+
     const slug =
       displayName
         .toLowerCase()

@@ -264,29 +264,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * as a last resort.
    */
   const ensureAndLoad = useCallback(async (userId: string): Promise<Workspace[]> => {
-    // Run ensure-owner and loadWorkspaces in parallel.
-    // ensure-owner is a safety net (creates workspace if missing) — loadWorkspaces
-    // doesn't need to wait for it since the workspace likely already exists.
-    const [ensureOk, loaded] = await Promise.all([
-      callEnsureOwnerOnce(),
-      loadWorkspaces(userId),
-    ]);
+    // Run ensure-owner FIRST (sequential, not parallel) to avoid race conditions
+    // where both the DB trigger and ensure-owner create workspaces simultaneously.
+    const ensureOk = await callEnsureOwnerOnce();
+
+    // Now load workspaces — the trigger and/or ensure-owner should have created one.
+    const loaded = await loadWorkspaces(userId);
     console.log('ensureAndLoad: ensure-owner =', ensureOk, ', workspaces found =', loaded.length);
 
-    // If still empty after both ran in parallel, ensure-owner may have just
-    // created the workspace — retry loading once.
-    if (loaded.length === 0) {
-      console.warn('ensureAndLoad: no workspaces found, retrying load after ensure-owner');
-      if (ensureOk) {
-        const retried = await loadWorkspaces(userId);
-        console.log('ensureAndLoad: after retry, found', retried.length, 'workspaces');
-        return retried;
-      }
-      // ensure-owner failed too — try fresh
-      ensureOwnerDone.current = false;
-      await callEnsureOwnerOnce();
+    // If still empty, the trigger may need a moment to commit — retry once.
+    if (loaded.length === 0 && ensureOk) {
+      console.warn('ensureAndLoad: no workspaces found, retrying load');
+      // Small delay to allow trigger transaction to commit
+      await new Promise((r) => setTimeout(r, 500));
       const retried = await loadWorkspaces(userId);
-      console.log('ensureAndLoad: after fresh ensure + retry, found', retried.length, 'workspaces');
+      console.log('ensureAndLoad: after retry, found', retried.length, 'workspaces');
       return retried;
     }
 
