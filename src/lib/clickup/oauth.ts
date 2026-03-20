@@ -67,21 +67,24 @@ export function parseOAuthState(state: string): { workspaceId: string } {
 /**
  * Exchanges an authorization code for access and refresh tokens.
  *
- * ClickUp's token endpoint expects: client_id, client_secret, code.
- * No PKCE code_verifier — ClickUp does not support it.
+ * IMPORTANT: ClickUp's token endpoint expects parameters as **query params**
+ * on the URL, NOT as a JSON body. This is unlike most of their other endpoints.
+ *
+ * ClickUp tokens currently do not expire.
  */
 export async function exchangeCodeForToken(
   code: string
 ): Promise<ClickUpOAuthTokens> {
-  const res = await fetch("https://api.clickup.com/api/v2/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: CLICKUP_CLIENT_ID,
-      client_secret: CLICKUP_CLIENT_SECRET,
-      code,
-    }),
+  const params = new URLSearchParams({
+    client_id: CLICKUP_CLIENT_ID,
+    client_secret: CLICKUP_CLIENT_SECRET,
+    code,
   });
+
+  const res = await fetch(
+    `https://api.clickup.com/api/v2/oauth/token?${params.toString()}`,
+    { method: "POST" }
+  );
 
   if (!res.ok) {
     const errorText = await res.text();
@@ -130,27 +133,36 @@ function getSupabaseAdmin() {
 
 /**
  * Stores encrypted OAuth tokens in the workspace record.
+ *
+ * ClickUp tokens currently do not expire, so refreshToken and expiresAt
+ * are optional.
  */
 export async function storeTokens(
   workspaceId: string,
   accessToken: string,
-  refreshToken: string,
-  expiresAt: Date
+  refreshToken?: string,
+  expiresAt?: Date
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
 
   const encryptedAccess = encryptToken(accessToken);
-  const encryptedRefresh = encryptToken(refreshToken);
+
+  const updateData: Record<string, unknown> = {
+    clickup_access_token: encryptedAccess,
+    clickup_connected: true,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (refreshToken) {
+    updateData.clickup_refresh_token = encryptToken(refreshToken);
+  }
+  if (expiresAt) {
+    updateData.clickup_token_expires_at = expiresAt.toISOString();
+  }
 
   const { error } = await supabase
     .from("workspaces")
-    .update({
-      clickup_access_token: encryptedAccess,
-      clickup_refresh_token: encryptedRefresh,
-      clickup_token_expires_at: expiresAt.toISOString(),
-      clickup_connected: true,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq("id", workspaceId);
 
   if (error) {
@@ -159,8 +171,11 @@ export async function storeTokens(
 }
 
 /**
- * Retrieves a valid access token for the workspace, refreshing if expired.
- * Returns null if no tokens are stored.
+ * Retrieves a valid access token for the workspace.
+ *
+ * ClickUp tokens currently do not expire. If an expiry is set and the token
+ * is close to expiring, we attempt a refresh. Otherwise we return the stored
+ * token directly.
  */
 export async function getAccessToken(
   workspaceId: string
@@ -183,43 +198,45 @@ export async function getAccessToken(
     return null;
   }
 
-  const expiresAt = new Date(workspace.clickup_token_expires_at);
-  const now = new Date();
+  // If an expiry is set and the token expires within 5 minutes, try to refresh
+  if (workspace.clickup_token_expires_at && workspace.clickup_refresh_token) {
+    const expiresAt = new Date(workspace.clickup_token_expires_at);
+    const now = new Date();
+    const bufferMs = 5 * 60 * 1000;
 
-  // If the token expires within 5 minutes, refresh it
-  const bufferMs = 5 * 60 * 1000;
-  if (expiresAt.getTime() - now.getTime() < bufferMs) {
-    try {
-      const decryptedRefresh = decryptToken(
-        workspace.clickup_refresh_token
-      );
-      const newTokens = await refreshAccessToken(decryptedRefresh);
+    if (expiresAt.getTime() - now.getTime() < bufferMs) {
+      try {
+        const decryptedRefresh = decryptToken(
+          workspace.clickup_refresh_token
+        );
+        const newTokens = await refreshAccessToken(decryptedRefresh);
 
-      const newExpiresAt = new Date(
-        Date.now() + (newTokens.expires_in ?? 3600) * 1000
-      );
+        const newExpiresAt = newTokens.expires_in
+          ? new Date(Date.now() + newTokens.expires_in * 1000)
+          : undefined;
 
-      await storeTokens(
-        workspaceId,
-        newTokens.access_token,
-        newTokens.refresh_token,
-        newExpiresAt
-      );
+        await storeTokens(
+          workspaceId,
+          newTokens.access_token,
+          newTokens.refresh_token,
+          newExpiresAt
+        );
 
-      return newTokens.access_token;
-    } catch (refreshError) {
-      console.error("Failed to refresh ClickUp token:", refreshError);
+        return newTokens.access_token;
+      } catch (refreshError) {
+        console.error("Failed to refresh ClickUp token:", refreshError);
 
-      // Mark workspace as disconnected
-      await supabase
-        .from("workspaces")
-        .update({
-          clickup_connected: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", workspaceId);
+        // Mark workspace as disconnected
+        await supabase
+          .from("workspaces")
+          .update({
+            clickup_connected: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", workspaceId);
 
-      return null;
+        return null;
+      }
     }
   }
 
