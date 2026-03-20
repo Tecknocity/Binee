@@ -18,6 +18,7 @@ create table if not exists profiles (
 create index if not exists idx_profiles_user on profiles(user_id);
 create index if not exists idx_profiles_email on profiles(email);
 
+drop trigger if exists set_updated_at on profiles;
 create trigger set_updated_at before update on profiles
   for each row execute function update_updated_at();
 
@@ -44,6 +45,7 @@ create table if not exists clickup_connections (
 
 create index if not exists idx_clickup_connections_workspace on clickup_connections(workspace_id);
 
+drop trigger if exists set_updated_at on clickup_connections;
 create trigger set_updated_at before update on clickup_connections
   for each row execute function update_updated_at();
 

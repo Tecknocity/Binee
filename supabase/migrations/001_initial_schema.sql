@@ -7,7 +7,7 @@ create extension if not exists "pgcrypto";
 -- ============================================================
 -- WORKSPACES
 -- ============================================================
-create table workspaces (
+create table if not exists workspaces (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   slug text not null unique,
@@ -21,21 +21,23 @@ create table workspaces (
   updated_at timestamptz not null default now()
 );
 
-create index idx_workspaces_owner on workspaces(owner_id);
-create index idx_workspaces_slug on workspaces(slug);
+create index if not exists idx_workspaces_owner on workspaces(owner_id);
+create index if not exists idx_workspaces_slug on workspaces(slug);
 
 alter table workspaces enable row level security;
 
+drop policy if exists "Owners can update workspaces" on workspaces;
 create policy "Owners can update workspaces" on workspaces
   for update using (owner_id = auth.uid());
 
+drop policy if exists "Authenticated users can create workspaces" on workspaces;
 create policy "Authenticated users can create workspaces" on workspaces
   for insert with check (owner_id = auth.uid());
 
 -- ============================================================
 -- WORKSPACE MEMBERS
 -- ============================================================
-create table workspace_members (
+create table if not exists workspace_members (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   user_id uuid not null,
@@ -48,16 +50,18 @@ create table workspace_members (
   unique(workspace_id, user_id)
 );
 
-create index idx_workspace_members_workspace on workspace_members(workspace_id);
-create index idx_workspace_members_user on workspace_members(user_id);
+create index if not exists idx_workspace_members_workspace on workspace_members(workspace_id);
+create index if not exists idx_workspace_members_user on workspace_members(user_id);
 
 alter table workspace_members enable row level security;
 
+drop policy if exists "Members can view their workspace members" on workspace_members;
 create policy "Members can view their workspace members" on workspace_members
   for select using (
     workspace_id in (select workspace_id from workspace_members wm where wm.user_id = auth.uid())
   );
 
+drop policy if exists "Admins can manage members" on workspace_members;
 create policy "Admins can manage members" on workspace_members
   for all using (
     workspace_id in (
@@ -67,6 +71,7 @@ create policy "Admins can manage members" on workspace_members
   );
 
 -- Deferred from workspaces section (requires workspace_members to exist)
+drop policy if exists "Users can view own workspaces" on workspaces;
 create policy "Users can view own workspaces" on workspaces
   for select using (
     owner_id = auth.uid() or
@@ -76,7 +81,7 @@ create policy "Users can view own workspaces" on workspaces
 -- ============================================================
 -- WORKSPACE INVITATIONS
 -- ============================================================
-create table workspace_invitations (
+create table if not exists workspace_invitations (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   email text not null,
@@ -89,17 +94,19 @@ create table workspace_invitations (
   updated_at timestamptz not null default now()
 );
 
-create index idx_workspace_invitations_workspace on workspace_invitations(workspace_id);
-create index idx_workspace_invitations_email on workspace_invitations(email);
-create index idx_workspace_invitations_token on workspace_invitations(token);
+create index if not exists idx_workspace_invitations_workspace on workspace_invitations(workspace_id);
+create index if not exists idx_workspace_invitations_email on workspace_invitations(email);
+create index if not exists idx_workspace_invitations_token on workspace_invitations(token);
 
 alter table workspace_invitations enable row level security;
 
+drop policy if exists "Workspace members can view invitations" on workspace_invitations;
 create policy "Workspace members can view invitations" on workspace_invitations
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "Admins can manage invitations" on workspace_invitations;
 create policy "Admins can manage invitations" on workspace_invitations
   for all using (
     workspace_id in (
@@ -111,7 +118,7 @@ create policy "Admins can manage invitations" on workspace_invitations
 -- ============================================================
 -- CACHED SPACES
 -- ============================================================
-create table cached_spaces (
+create table if not exists cached_spaces (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   clickup_id text not null,
@@ -126,15 +133,17 @@ create table cached_spaces (
   unique(workspace_id, clickup_id)
 );
 
-create index idx_cached_spaces_workspace on cached_spaces(workspace_id);
+create index if not exists idx_cached_spaces_workspace on cached_spaces(workspace_id);
 
 alter table cached_spaces enable row level security;
 
+drop policy if exists "Workspace members can view cached spaces" on cached_spaces;
 create policy "Workspace members can view cached spaces" on cached_spaces
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can manage cached spaces" on cached_spaces;
 create policy "System can manage cached spaces" on cached_spaces
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -143,7 +152,7 @@ create policy "System can manage cached spaces" on cached_spaces
 -- ============================================================
 -- CACHED FOLDERS
 -- ============================================================
-create table cached_folders (
+create table if not exists cached_folders (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   clickup_id text not null,
@@ -158,16 +167,18 @@ create table cached_folders (
   unique(workspace_id, clickup_id)
 );
 
-create index idx_cached_folders_workspace on cached_folders(workspace_id);
-create index idx_cached_folders_space on cached_folders(workspace_id, space_id);
+create index if not exists idx_cached_folders_workspace on cached_folders(workspace_id);
+create index if not exists idx_cached_folders_space on cached_folders(workspace_id, space_id);
 
 alter table cached_folders enable row level security;
 
+drop policy if exists "Workspace members can view cached folders" on cached_folders;
 create policy "Workspace members can view cached folders" on cached_folders
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can manage cached folders" on cached_folders;
 create policy "System can manage cached folders" on cached_folders
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -176,7 +187,7 @@ create policy "System can manage cached folders" on cached_folders
 -- ============================================================
 -- CACHED LISTS
 -- ============================================================
-create table cached_lists (
+create table if not exists cached_lists (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   clickup_id text not null,
@@ -192,17 +203,19 @@ create table cached_lists (
   unique(workspace_id, clickup_id)
 );
 
-create index idx_cached_lists_workspace on cached_lists(workspace_id);
-create index idx_cached_lists_space on cached_lists(workspace_id, space_id);
-create index idx_cached_lists_folder on cached_lists(workspace_id, folder_id);
+create index if not exists idx_cached_lists_workspace on cached_lists(workspace_id);
+create index if not exists idx_cached_lists_space on cached_lists(workspace_id, space_id);
+create index if not exists idx_cached_lists_folder on cached_lists(workspace_id, folder_id);
 
 alter table cached_lists enable row level security;
 
+drop policy if exists "Workspace members can view cached lists" on cached_lists;
 create policy "Workspace members can view cached lists" on cached_lists
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can manage cached lists" on cached_lists;
 create policy "System can manage cached lists" on cached_lists
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -211,7 +224,7 @@ create policy "System can manage cached lists" on cached_lists
 -- ============================================================
 -- CACHED TASKS
 -- ============================================================
-create table cached_tasks (
+create table if not exists cached_tasks (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   clickup_id text not null,
@@ -234,18 +247,20 @@ create table cached_tasks (
   unique(workspace_id, clickup_id)
 );
 
-create index idx_cached_tasks_workspace on cached_tasks(workspace_id);
-create index idx_cached_tasks_list on cached_tasks(workspace_id, list_id);
-create index idx_cached_tasks_status on cached_tasks(workspace_id, status);
-create index idx_cached_tasks_due on cached_tasks(workspace_id, due_date);
+create index if not exists idx_cached_tasks_workspace on cached_tasks(workspace_id);
+create index if not exists idx_cached_tasks_list on cached_tasks(workspace_id, list_id);
+create index if not exists idx_cached_tasks_status on cached_tasks(workspace_id, status);
+create index if not exists idx_cached_tasks_due on cached_tasks(workspace_id, due_date);
 
 alter table cached_tasks enable row level security;
 
+drop policy if exists "Workspace members can view cached tasks" on cached_tasks;
 create policy "Workspace members can view cached tasks" on cached_tasks
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can manage cached tasks" on cached_tasks;
 create policy "System can manage cached tasks" on cached_tasks
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -254,7 +269,7 @@ create policy "System can manage cached tasks" on cached_tasks
 -- ============================================================
 -- CACHED TIME ENTRIES
 -- ============================================================
-create table cached_time_entries (
+create table if not exists cached_time_entries (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   clickup_id text not null,
@@ -273,17 +288,19 @@ create table cached_time_entries (
   unique(workspace_id, clickup_id)
 );
 
-create index idx_cached_time_entries_workspace on cached_time_entries(workspace_id);
-create index idx_cached_time_entries_task on cached_time_entries(workspace_id, task_id);
-create index idx_cached_time_entries_user on cached_time_entries(workspace_id, user_id);
+create index if not exists idx_cached_time_entries_workspace on cached_time_entries(workspace_id);
+create index if not exists idx_cached_time_entries_task on cached_time_entries(workspace_id, task_id);
+create index if not exists idx_cached_time_entries_user on cached_time_entries(workspace_id, user_id);
 
 alter table cached_time_entries enable row level security;
 
+drop policy if exists "Workspace members can view cached time entries" on cached_time_entries;
 create policy "Workspace members can view cached time entries" on cached_time_entries
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can manage cached time entries" on cached_time_entries;
 create policy "System can manage cached time entries" on cached_time_entries
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -292,7 +309,7 @@ create policy "System can manage cached time entries" on cached_time_entries
 -- ============================================================
 -- CACHED TEAM MEMBERS
 -- ============================================================
-create table cached_team_members (
+create table if not exists cached_team_members (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   clickup_id text not null,
@@ -308,15 +325,17 @@ create table cached_team_members (
   unique(workspace_id, clickup_id)
 );
 
-create index idx_cached_team_members_workspace on cached_team_members(workspace_id);
+create index if not exists idx_cached_team_members_workspace on cached_team_members(workspace_id);
 
 alter table cached_team_members enable row level security;
 
+drop policy if exists "Workspace members can view cached team members" on cached_team_members;
 create policy "Workspace members can view cached team members" on cached_team_members
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can manage cached team members" on cached_team_members;
 create policy "System can manage cached team members" on cached_team_members
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -325,7 +344,7 @@ create policy "System can manage cached team members" on cached_team_members
 -- ============================================================
 -- WEBHOOK REGISTRATIONS
 -- ============================================================
-create table webhook_registrations (
+create table if not exists webhook_registrations (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   clickup_webhook_id text not null,
@@ -337,15 +356,17 @@ create table webhook_registrations (
   unique(workspace_id, clickup_webhook_id)
 );
 
-create index idx_webhook_registrations_workspace on webhook_registrations(workspace_id);
+create index if not exists idx_webhook_registrations_workspace on webhook_registrations(workspace_id);
 
 alter table webhook_registrations enable row level security;
 
+drop policy if exists "Workspace members can view webhook registrations" on webhook_registrations;
 create policy "Workspace members can view webhook registrations" on webhook_registrations
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "Admins can manage webhook registrations" on webhook_registrations;
 create policy "Admins can manage webhook registrations" on webhook_registrations
   for all using (
     workspace_id in (
@@ -357,7 +378,7 @@ create policy "Admins can manage webhook registrations" on webhook_registrations
 -- ============================================================
 -- WEBHOOK EVENTS
 -- ============================================================
-create table webhook_events (
+create table if not exists webhook_events (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   webhook_id uuid references webhook_registrations(id) on delete set null,
@@ -369,17 +390,19 @@ create table webhook_events (
   created_at timestamptz not null default now()
 );
 
-create index idx_webhook_events_workspace on webhook_events(workspace_id);
-create index idx_webhook_events_processed on webhook_events(workspace_id, processed);
-create index idx_webhook_events_type on webhook_events(event_type);
+create index if not exists idx_webhook_events_workspace on webhook_events(workspace_id);
+create index if not exists idx_webhook_events_processed on webhook_events(workspace_id, processed);
+create index if not exists idx_webhook_events_type on webhook_events(event_type);
 
 alter table webhook_events enable row level security;
 
+drop policy if exists "Workspace members can view webhook events" on webhook_events;
 create policy "Workspace members can view webhook events" on webhook_events
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can manage webhook events" on webhook_events;
 create policy "System can manage webhook events" on webhook_events
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -388,7 +411,7 @@ create policy "System can manage webhook events" on webhook_events
 -- ============================================================
 -- CONVERSATIONS
 -- ============================================================
-create table conversations (
+create table if not exists conversations (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   user_id uuid not null,
@@ -400,30 +423,33 @@ create table conversations (
   updated_at timestamptz not null default now()
 );
 
-create index idx_conversations_workspace on conversations(workspace_id);
-create index idx_conversations_user on conversations(workspace_id, user_id);
+create index if not exists idx_conversations_workspace on conversations(workspace_id);
+create index if not exists idx_conversations_user on conversations(workspace_id, user_id);
 
 alter table conversations enable row level security;
 
+drop policy if exists "Users can view own conversations" on conversations;
 create policy "Users can view own conversations" on conversations
   for select using (
     user_id = auth.uid() and
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "Users can create conversations" on conversations;
 create policy "Users can create conversations" on conversations
   for insert with check (
     user_id = auth.uid() and
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "Users can update own conversations" on conversations;
 create policy "Users can update own conversations" on conversations
   for update using (user_id = auth.uid());
 
 -- ============================================================
 -- MESSAGES
 -- ============================================================
-create table messages (
+create table if not exists messages (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   conversation_id uuid not null references conversations(id) on delete cascade,
@@ -434,16 +460,18 @@ create table messages (
   created_at timestamptz not null default now()
 );
 
-create index idx_messages_conversation on messages(conversation_id);
-create index idx_messages_workspace on messages(workspace_id);
+create index if not exists idx_messages_conversation on messages(conversation_id);
+create index if not exists idx_messages_workspace on messages(workspace_id);
 
 alter table messages enable row level security;
 
+drop policy if exists "Users can view messages in own conversations" on messages;
 create policy "Users can view messages in own conversations" on messages
   for select using (
     conversation_id in (select id from conversations where user_id = auth.uid())
   );
 
+drop policy if exists "Users can create messages" on messages;
 create policy "Users can create messages" on messages
   for insert with check (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -452,7 +480,7 @@ create policy "Users can create messages" on messages
 -- ============================================================
 -- CREDIT TRANSACTIONS
 -- ============================================================
-create table credit_transactions (
+create table if not exists credit_transactions (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   user_id uuid,
@@ -464,18 +492,20 @@ create table credit_transactions (
   created_at timestamptz not null default now()
 );
 
-create index idx_credit_transactions_workspace on credit_transactions(workspace_id);
-create index idx_credit_transactions_user on credit_transactions(workspace_id, user_id);
-create index idx_credit_transactions_type on credit_transactions(type);
-create index idx_credit_transactions_created on credit_transactions(workspace_id, created_at desc);
+create index if not exists idx_credit_transactions_workspace on credit_transactions(workspace_id);
+create index if not exists idx_credit_transactions_user on credit_transactions(workspace_id, user_id);
+create index if not exists idx_credit_transactions_type on credit_transactions(type);
+create index if not exists idx_credit_transactions_created on credit_transactions(workspace_id, created_at desc);
 
 alter table credit_transactions enable row level security;
 
+drop policy if exists "Workspace members can view credit transactions" on credit_transactions;
 create policy "Workspace members can view credit transactions" on credit_transactions
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can insert credit transactions" on credit_transactions;
 create policy "System can insert credit transactions" on credit_transactions
   for insert with check (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -484,7 +514,7 @@ create policy "System can insert credit transactions" on credit_transactions
 -- ============================================================
 -- DASHBOARDS
 -- ============================================================
-create table dashboards (
+create table if not exists dashboards (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   name text not null,
@@ -496,15 +526,17 @@ create table dashboards (
   updated_at timestamptz not null default now()
 );
 
-create index idx_dashboards_workspace on dashboards(workspace_id);
+create index if not exists idx_dashboards_workspace on dashboards(workspace_id);
 
 alter table dashboards enable row level security;
 
+drop policy if exists "Workspace members can view dashboards" on dashboards;
 create policy "Workspace members can view dashboards" on dashboards
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "Workspace members can manage dashboards" on dashboards;
 create policy "Workspace members can manage dashboards" on dashboards
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -513,7 +545,7 @@ create policy "Workspace members can manage dashboards" on dashboards
 -- ============================================================
 -- DASHBOARD WIDGETS
 -- ============================================================
-create table dashboard_widgets (
+create table if not exists dashboard_widgets (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   dashboard_id uuid not null references dashboards(id) on delete cascade,
@@ -525,16 +557,18 @@ create table dashboard_widgets (
   updated_at timestamptz not null default now()
 );
 
-create index idx_dashboard_widgets_dashboard on dashboard_widgets(dashboard_id);
-create index idx_dashboard_widgets_workspace on dashboard_widgets(workspace_id);
+create index if not exists idx_dashboard_widgets_dashboard on dashboard_widgets(dashboard_id);
+create index if not exists idx_dashboard_widgets_workspace on dashboard_widgets(workspace_id);
 
 alter table dashboard_widgets enable row level security;
 
+drop policy if exists "Workspace members can view dashboard widgets" on dashboard_widgets;
 create policy "Workspace members can view dashboard widgets" on dashboard_widgets
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "Workspace members can manage dashboard widgets" on dashboard_widgets;
 create policy "Workspace members can manage dashboard widgets" on dashboard_widgets
   for all using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -543,7 +577,7 @@ create policy "Workspace members can manage dashboard widgets" on dashboard_widg
 -- ============================================================
 -- HEALTH CHECK RESULTS
 -- ============================================================
-create table health_check_results (
+create table if not exists health_check_results (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   overall_score integer not null check (overall_score >= 0 and overall_score <= 100),
@@ -555,16 +589,18 @@ create table health_check_results (
   created_at timestamptz not null default now()
 );
 
-create index idx_health_check_results_workspace on health_check_results(workspace_id);
-create index idx_health_check_results_checked on health_check_results(workspace_id, checked_at desc);
+create index if not exists idx_health_check_results_workspace on health_check_results(workspace_id);
+create index if not exists idx_health_check_results_checked on health_check_results(workspace_id, checked_at desc);
 
 alter table health_check_results enable row level security;
 
+drop policy if exists "Workspace members can view health check results" on health_check_results;
 create policy "Workspace members can view health check results" on health_check_results
   for select using (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "System can insert health check results" on health_check_results;
 create policy "System can insert health check results" on health_check_results
   for insert with check (
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
@@ -573,7 +609,7 @@ create policy "System can insert health check results" on health_check_results
 -- ============================================================
 -- SETUP SESSIONS
 -- ============================================================
-create table setup_sessions (
+create table if not exists setup_sessions (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   user_id uuid not null,
@@ -587,23 +623,26 @@ create table setup_sessions (
   updated_at timestamptz not null default now()
 );
 
-create index idx_setup_sessions_workspace on setup_sessions(workspace_id);
-create index idx_setup_sessions_user on setup_sessions(workspace_id, user_id);
+create index if not exists idx_setup_sessions_workspace on setup_sessions(workspace_id);
+create index if not exists idx_setup_sessions_user on setup_sessions(workspace_id, user_id);
 
 alter table setup_sessions enable row level security;
 
+drop policy if exists "Users can view own setup sessions" on setup_sessions;
 create policy "Users can view own setup sessions" on setup_sessions
   for select using (
     user_id = auth.uid() and
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "Users can create setup sessions" on setup_sessions;
 create policy "Users can create setup sessions" on setup_sessions
   for insert with check (
     user_id = auth.uid() and
     workspace_id in (select workspace_id from workspace_members where user_id = auth.uid())
   );
 
+drop policy if exists "Users can update own setup sessions" on setup_sessions;
 create policy "Users can update own setup sessions" on setup_sessions
   for update using (user_id = auth.uid());
 
@@ -680,17 +719,31 @@ end;
 $$;
 
 -- Apply updated_at triggers to all relevant tables
+drop trigger if exists set_updated_at on workspaces;
 create trigger set_updated_at before update on workspaces for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on workspace_members;
 create trigger set_updated_at before update on workspace_members for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on workspace_invitations;
 create trigger set_updated_at before update on workspace_invitations for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on cached_spaces;
 create trigger set_updated_at before update on cached_spaces for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on cached_folders;
 create trigger set_updated_at before update on cached_folders for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on cached_lists;
 create trigger set_updated_at before update on cached_lists for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on cached_tasks;
 create trigger set_updated_at before update on cached_tasks for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on cached_time_entries;
 create trigger set_updated_at before update on cached_time_entries for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on cached_team_members;
 create trigger set_updated_at before update on cached_team_members for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on webhook_registrations;
 create trigger set_updated_at before update on webhook_registrations for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on conversations;
 create trigger set_updated_at before update on conversations for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on dashboards;
 create trigger set_updated_at before update on dashboards for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on dashboard_widgets;
 create trigger set_updated_at before update on dashboard_widgets for each row execute function update_updated_at();
+drop trigger if exists set_updated_at on setup_sessions;
 create trigger set_updated_at before update on setup_sessions for each row execute function update_updated_at();

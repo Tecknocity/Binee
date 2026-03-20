@@ -8,19 +8,23 @@
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own profile
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
 CREATE POLICY "Users can view own profile" ON profiles
   FOR SELECT USING (user_id = auth.uid());
 
 -- Users can update their own profile
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 CREATE POLICY "Users can update own profile" ON profiles
   FOR UPDATE USING (user_id = auth.uid());
 
 -- Users can insert their own profile (needed for signup flow)
+DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
 CREATE POLICY "Users can insert own profile" ON profiles
   FOR INSERT WITH CHECK (user_id = auth.uid());
 
 -- Workspace members can view profiles of other members in shared workspaces
 -- (needed so team settings can display member names/avatars)
+DROP POLICY IF EXISTS "Members can view teammate profiles" ON profiles;
 CREATE POLICY "Members can view teammate profiles" ON profiles
   FOR SELECT USING (
     user_id IN (
