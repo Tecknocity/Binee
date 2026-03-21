@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import type {
   ClickUpTeam,
   ClickUpSpace,
@@ -17,9 +16,6 @@ import { refreshTokenIfNeeded, forceRefreshToken } from "@/lib/clickup/token-ref
 import { getRateLimit, shouldThrottle } from "@/lib/clickup/rate-limits";
 
 const BASE_URL = "https://api.clickup.com/api/v2";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -440,6 +436,54 @@ export class ClickUpClient {
     teamId: string
   ): Promise<{ webhooks: Array<Record<string, unknown>> }> {
     return this.request(`/team/${teamId}/webhook`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public HTTP methods
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Perform a GET request to the ClickUp API.
+   * All auth headers, token refresh, rate limiting, and retries are handled
+   * automatically.
+   */
+  async get<T>(
+    path: string,
+    params?: Record<string, string | number | boolean>
+  ): Promise<T> {
+    return this.request<T>(path, { method: "GET", params });
+  }
+
+  /**
+   * Perform a POST request to the ClickUp API.
+   */
+  async post<T>(
+    path: string,
+    body?: Record<string, unknown>,
+    params?: Record<string, string | number | boolean>
+  ): Promise<T> {
+    return this.request<T>(path, { method: "POST", body, params });
+  }
+
+  /**
+   * Perform a PUT request to the ClickUp API.
+   */
+  async put<T>(
+    path: string,
+    body?: Record<string, unknown>,
+    params?: Record<string, string | number | boolean>
+  ): Promise<T> {
+    return this.request<T>(path, { method: "PUT", body, params });
+  }
+
+  /**
+   * Perform a DELETE request to the ClickUp API.
+   */
+  async delete<T = void>(
+    path: string,
+    params?: Record<string, string | number | boolean>
+  ): Promise<T> {
+    return this.request<T>(path, { method: "DELETE", params });
   }
 
   // ---------------------------------------------------------------------------
