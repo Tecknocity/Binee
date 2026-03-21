@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/credit-reset",
       "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/cron/data-pruning",
+      "schedule": "0 3 * * 0"
     }
   ]
 }
