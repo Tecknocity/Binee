@@ -35,3 +35,12 @@ export {
   handleTimeTracked,
   verifyWebhookHealth,
 } from "@/lib/clickup/webhooks";
+
+export {
+  RATE_LIMITS,
+  getRateLimit,
+  shouldThrottle,
+  normalizePlanTier,
+} from "@/lib/clickup/rate-limits";
+
+export type { ClickUpPlanTier } from "@/lib/clickup/rate-limits";
