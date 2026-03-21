@@ -27,6 +27,11 @@ import {
   logValidationViolations,
 } from '@/lib/ai/response-validator';
 import type { ValidationResult } from '@/lib/ai/response-validator';
+import {
+  calculateCreditCost,
+  checkSufficientCredits,
+  deductCreditsForAIResponse,
+} from '@/lib/ai/billing';
 import { createClient } from '@supabase/supabase-js';
 
 // ---------------------------------------------------------------------------
@@ -130,8 +135,9 @@ export async function handleChat(
   const modelConfig = routeToModel(classification.taskType);
 
   // -------------------------------------------------------------------------
-  // Step 3b: Check credit balance before proceeding
+  // Step 3b: Calculate credit cost and check balance before proceeding (B-049)
   // -------------------------------------------------------------------------
+  const creditCost = calculateCreditCost(classification.taskType, routing.modelId);
   const supabase = getSupabaseAdmin();
   const { data: workspace, error: wsError } = await supabase
     .from('workspaces')
@@ -143,10 +149,10 @@ export async function handleChat(
     throw new Error(`Workspace not found: ${wsError?.message ?? 'unknown error'}`);
   }
 
-  if (workspace.credit_balance < routing.creditCost) {
+  const insufficientCredits = checkSufficientCredits(workspace.credit_balance, creditCost);
+  if (insufficientCredits) {
     return {
-      content:
-        'You have insufficient credits to process this request. Please upgrade your plan or purchase additional credits.',
+      content: insufficientCredits.message,
       model_used: routing.modelId,
       credits_consumed: 0,
       tool_calls: null,
@@ -354,18 +360,15 @@ export async function handleChat(
   }
 
   // -------------------------------------------------------------------------
-  // Step 9: Deduct credits (B-018)
+  // Step 9: Deduct credits after successful AI response (B-049)
   // -------------------------------------------------------------------------
-  await supabase.rpc('deduct_credits', {
-    p_workspace_id: workspace_id,
-    p_user_id: user_id,
-    p_amount: routing.creditCost,
-    p_description: `Chat: ${classification.taskType}`,
-    p_metadata: {
-      task_type: classification.taskType,
-      model: routing.modelId,
-      token_budget: assembled.tokenUsage,
-    },
+  await deductCreditsForAIResponse(supabase, {
+    workspaceId: workspace_id,
+    userId: user_id,
+    creditCost,
+    taskType: classification.taskType,
+    modelId: routing.modelId,
+    tokenUsage: assembled.tokenUsage,
   });
 
   // -------------------------------------------------------------------------
@@ -379,7 +382,7 @@ export async function handleChat(
     message,
     finalContent,
     routing.modelId,
-    routing.creditCost,
+    creditCost,
     totalInputTokens,
     totalOutputTokens,
     allToolCalls.length > 0 ? allToolCalls : null,
@@ -389,7 +392,7 @@ export async function handleChat(
   return {
     content: finalContent,
     model_used: routing.modelId,
-    credits_consumed: routing.creditCost,
+    credits_consumed: creditCost,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : null,
     tokens_input: totalInputTokens,
     tokens_output: totalOutputTokens,
@@ -403,7 +406,7 @@ export async function handleChat(
       routing: {
         model: routing.model,
         modelId: routing.modelId,
-        creditCost: routing.creditCost,
+        creditCost,
       },
       tokenUsage: {
         system: assembled.tokenUsage.system,
