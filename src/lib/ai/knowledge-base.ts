@@ -18,13 +18,6 @@ function getSupabaseAdmin() {
 // ---------------------------------------------------------------------------
 
 const TASK_TYPE_TO_KB_TYPES: Record<string, string[]> = {
-  simple_query: ['chat', 'general', 'knowledge'],
-  simple_action: ['action', 'execution'],
-  complex_reasoning: ['chat', 'general', 'knowledge'],
-  setup_planning: ['setup', 'onboarding', 'workspace', 'knowledge'],
-  dashboard_design: ['dashboard', 'reporting'],
-  health_analysis: ['health', 'monitoring', 'audit', 'analysis'],
-  // PRD routing aliases
   simple_lookup: ['chat', 'general', 'knowledge'],
   complex_query: ['chat', 'general', 'knowledge'],
   action_request: ['action', 'execution'],
@@ -37,7 +30,7 @@ const TASK_TYPE_TO_KB_TYPES: Record<string, string[]> = {
 };
 
 // Task types that should receive full shared knowledge base content
-const FULL_KB_TASK_TYPES = new Set(['strategy', 'setup_planning', 'setup_request']);
+const FULL_KB_TASK_TYPES = new Set(['strategy', 'setup_request']);
 
 // ---------------------------------------------------------------------------
 // Public API

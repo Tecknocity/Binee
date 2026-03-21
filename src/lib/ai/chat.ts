@@ -4,7 +4,8 @@ import type {
   AssistantResponse,
   ToolCallResult,
 } from '@/types/ai';
-import { classifyMessage, getModelForTask } from '@/lib/ai/router';
+import { classifyMessage } from '@/lib/ai/classifier';
+import { getModelForTask } from '@/lib/ai/router';
 import { buildSystemPrompt, buildSetupPrompt, buildHealthPrompt, buildDashboardPrompt } from '@/lib/ai/prompts';
 import { buildContext } from '@/lib/ai/context';
 import { BINEE_TOOLS } from '@/lib/ai/tools';
@@ -86,13 +87,13 @@ export async function handleChatMessage(
   // 6. Build system prompt based on task type
   let systemPrompt: string;
   switch (classification.taskType) {
-    case 'setup_planning':
+    case 'setup_request':
       systemPrompt = buildSetupPrompt(context);
       break;
-    case 'health_analysis':
+    case 'health_check':
       systemPrompt = buildHealthPrompt(context);
       break;
-    case 'dashboard_design':
+    case 'dashboard_request':
       systemPrompt = buildDashboardPrompt(context);
       break;
     default:
