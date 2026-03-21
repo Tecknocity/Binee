@@ -1,11 +1,37 @@
 -- ============================================================
--- B-027: Optimize Supabase Cache Tables for ClickUp Data
--- Adds data_json column, composite indexes, synced_at indexes,
--- GIN indexes for JSONB queries, and cached_members view.
+-- Migration 016: B-026 + B-027 Combined
+-- B-026: Sync progress tracking on clickup_connections
+-- B-027: Cache table optimization (indexes, data_json, view)
 -- ============================================================
 
 -- ============================================================
--- 1. Add data_json JSONB column for flexible storage
+-- B-026: Add sync progress tracking to clickup_connections
+-- ============================================================
+
+-- Add progress tracking columns
+alter table clickup_connections
+  add column if not exists sync_phase text,
+  add column if not exists sync_current integer default 0,
+  add column if not exists sync_total integer default 0,
+  add column if not exists sync_message text,
+  add column if not exists sync_error text,
+  add column if not exists sync_started_at timestamptz,
+  add column if not exists sync_completed_at timestamptz,
+  add column if not exists synced_spaces integer default 0,
+  add column if not exists synced_folders integer default 0,
+  add column if not exists synced_lists integer default 0,
+  add column if not exists synced_tasks integer default 0,
+  add column if not exists synced_members integer default 0,
+  add column if not exists synced_time_entries integer default 0;
+
+-- Update check constraint to include 'synced' as valid status
+alter table clickup_connections drop constraint if exists clickup_connections_sync_status_check;
+alter table clickup_connections
+  add constraint clickup_connections_sync_status_check
+  check (sync_status in ('idle', 'syncing', 'error', 'complete', 'synced'));
+
+-- ============================================================
+-- B-027: Add data_json JSONB column for flexible storage
 -- ============================================================
 alter table cached_spaces add column if not exists data_json jsonb;
 alter table cached_folders add column if not exists data_json jsonb;
@@ -15,16 +41,7 @@ alter table cached_time_entries add column if not exists data_json jsonb;
 alter table cached_team_members add column if not exists data_json jsonb;
 
 -- ============================================================
--- 2. Composite indexes on (workspace_id, clickup_id)
---    Note: The UNIQUE constraint already creates an implicit index,
---    but we add explicit B-tree indexes for read-heavy sync queries
---    that filter by workspace_id and look up by clickup_id.
--- ============================================================
--- These are already covered by the unique constraint, so no additional
--- composite indexes needed for (workspace_id, clickup_id).
-
--- ============================================================
--- 3. Indexes on synced_at for freshness tracking queries
+-- B-027: Indexes on synced_at for freshness tracking queries
 -- ============================================================
 create index if not exists idx_cached_spaces_synced_at
   on cached_spaces(workspace_id, synced_at);
@@ -45,7 +62,7 @@ create index if not exists idx_cached_team_members_synced_at
   on cached_team_members(workspace_id, synced_at);
 
 -- ============================================================
--- 4. Additional composite indexes for common query patterns
+-- B-027: Additional composite indexes for common query patterns
 -- ============================================================
 
 -- Task priority filtering
@@ -73,7 +90,7 @@ create index if not exists idx_cached_time_entries_start_time
   on cached_time_entries(workspace_id, start_time);
 
 -- ============================================================
--- 5. cached_members view (PRD alias for cached_team_members)
+-- B-027: cached_members view (PRD alias for cached_team_members)
 -- ============================================================
 create or replace view cached_members as
   select
