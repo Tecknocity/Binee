@@ -53,3 +53,17 @@ export {
 } from "@/lib/clickup/rate-limits";
 
 export type { ClickUpPlanTier } from "@/lib/clickup/rate-limits";
+
+export {
+  createTask,
+  updateTask,
+  moveTask,
+  updateTaskStatus,
+  assignTask,
+  unassignTask,
+  addComment,
+  createList,
+  createFolder,
+} from "@/lib/clickup/operations";
+
+export type { OperationResult, AddCommentResult } from "@/lib/clickup/operations";
