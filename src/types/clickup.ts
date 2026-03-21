@@ -4,6 +4,7 @@ export interface ClickUpTeam {
   id: string;
   name: string;
   members: ClickUpTeamMemberWrapper[];
+  plan?: { name: string; tier?: string };
 }
 
 export interface ClickUpTeamMemberWrapper {

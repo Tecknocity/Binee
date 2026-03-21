@@ -7,6 +7,7 @@ import {
 import { performInitialSync } from "@/lib/clickup/sync";
 import { registerWebhooks } from "@/lib/clickup/webhooks";
 import { ClickUpClient } from "@/lib/clickup/client";
+import { normalizePlanTier } from "@/lib/clickup/rate-limits";
 import { createClient } from "@supabase/supabase-js";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -78,11 +79,17 @@ export async function GET(request: NextRequest) {
       const teams = await client.getTeams();
       if (teams.length > 0) {
         teamId = teams[0].id;
+
+        // Detect plan tier from team response
+        const rawPlan = teams[0].plan?.name ?? teams[0].plan?.tier ?? "free";
+        const planTier = normalizePlanTier(rawPlan);
+
         await supabase
           .from("workspaces")
           .update({
             clickup_team_id: teamId,
             clickup_team_name: teams[0].name,
+            clickup_plan_tier: planTier,
             clickup_sync_status: "syncing",
           })
           .eq("id", workspaceId);
