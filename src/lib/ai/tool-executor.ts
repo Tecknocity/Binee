@@ -36,6 +36,16 @@ export async function executeTool(
         return await handleUpdateTask(toolInput, workspaceId);
       case 'create_task':
         return await handleCreateTask(toolInput, workspaceId);
+      case 'get_overdue_tasks':
+        return await handleGetOverdueTasks(toolInput, workspaceId);
+      case 'assign_task':
+        return await handleAssignTask(toolInput, workspaceId);
+      case 'move_task':
+        return await handleMoveTask(toolInput, workspaceId);
+      case 'get_workspace_summary':
+        return await handleGetWorkspaceSummary(workspaceId);
+      case 'get_team_activity':
+        return await handleGetTeamActivity(toolInput, workspaceId);
       case 'get_workspace_health':
         return await handleGetWorkspaceHealth(workspaceId);
       case 'get_time_tracking_summary':
@@ -332,6 +342,443 @@ async function handleCreateTask(
       status: createdTask.status.status,
     },
     message: `Task "${createdTask.name}" created in list "${list.name}".`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// get_overdue_tasks — dedicated overdue tasks retrieval
+// ---------------------------------------------------------------------------
+
+async function handleGetOverdueTasks(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  let query = supabase
+    .from('cached_tasks')
+    .select('clickup_id, name, status, assignees, due_date, priority, list_id')
+    .eq('workspace_id', workspaceId)
+    .lt('due_date', now)
+    .not('status', 'ilike', '%closed%')
+    .not('status', 'ilike', '%complete%')
+    .not('due_date', 'is', null);
+
+  // Filter by assignee
+  if (input.assignee && typeof input.assignee === 'string') {
+    query = query.contains('assignees', [{ username: input.assignee }]);
+  }
+
+  // Filter by list name
+  if (input.list_name && typeof input.list_name === 'string') {
+    const { data: matchingLists } = await supabase
+      .from('cached_lists')
+      .select('clickup_id')
+      .eq('workspace_id', workspaceId)
+      .ilike('name', `%${input.list_name}%`);
+
+    if (matchingLists && matchingLists.length > 0) {
+      query = query.in('list_id', matchingLists.map((l) => l.clickup_id));
+    } else {
+      return { success: true, tasks: [], count: 0, message: `No lists found matching "${input.list_name}"` };
+    }
+  }
+
+  const limit = Math.min(
+    typeof input.limit === 'number' ? input.limit : 25,
+    50,
+  );
+  query = query.limit(limit).order('due_date', { ascending: true });
+
+  const { data: tasks, error } = await query;
+
+  if (error) {
+    return { error: `Failed to query overdue tasks: ${error.message}`, success: false };
+  }
+
+  const overdueTasks = tasks ?? [];
+
+  // Enrich with list names and days overdue
+  if (overdueTasks.length > 0) {
+    const listIds = [...new Set(overdueTasks.map((t) => t.list_id))];
+    const { data: lists } = await supabase
+      .from('cached_lists')
+      .select('clickup_id, name')
+      .eq('workspace_id', workspaceId)
+      .in('clickup_id', listIds);
+
+    const listMap = new Map((lists ?? []).map((l) => [l.clickup_id, l.name]));
+    const nowMs = Date.now();
+
+    return {
+      success: true,
+      tasks: overdueTasks.map((t) => {
+        const dueMs = new Date(t.due_date).getTime();
+        const daysOverdue = Math.floor((nowMs - dueMs) / (1000 * 60 * 60 * 24));
+        return {
+          id: t.clickup_id,
+          name: t.name,
+          status: t.status,
+          assignees: Array.isArray(t.assignees) ? t.assignees.map((a: { username?: string }) => a.username).filter(Boolean) : [],
+          due_date: t.due_date,
+          days_overdue: daysOverdue,
+          priority: t.priority,
+          list: listMap.get(t.list_id) ?? t.list_id,
+        };
+      }),
+      count: overdueTasks.length,
+    };
+  }
+
+  return { success: true, tasks: [], count: 0, message: 'No overdue tasks found.' };
+}
+
+// ---------------------------------------------------------------------------
+// assign_task — assign or reassign a task to a team member
+// ---------------------------------------------------------------------------
+
+async function handleAssignTask(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const assigneeName = input.assignee_name as string;
+  const replaceExisting = input.replace_existing === true;
+
+  if (!taskId) {
+    return { error: 'task_id is required', success: false };
+  }
+  if (!assigneeName) {
+    return { error: 'assignee_name is required', success: false };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const client = new ClickUpClient(workspaceId);
+
+  // Resolve assignee name to ClickUp user ID
+  const { data: member } = await supabase
+    .from('cached_team_members')
+    .select('clickup_id, username')
+    .eq('workspace_id', workspaceId)
+    .ilike('username', `%${assigneeName}%`)
+    .limit(1)
+    .single();
+
+  if (!member) {
+    return {
+      error: `Could not find team member matching "${assigneeName}"`,
+      success: false,
+    };
+  }
+
+  const assigneeId = parseInt(member.clickup_id);
+  const updateParams: Record<string, unknown> = {};
+
+  if (replaceExisting) {
+    // Fetch current assignees to remove them
+    const { data: cachedTask } = await supabase
+      .from('cached_tasks')
+      .select('assignees')
+      .eq('workspace_id', workspaceId)
+      .eq('clickup_id', taskId)
+      .single();
+
+    const currentAssignees = Array.isArray(cachedTask?.assignees)
+      ? cachedTask.assignees.map((a: { id?: number }) => a.id).filter(Boolean)
+      : [];
+
+    updateParams.assignees = { add: [assigneeId], rem: currentAssignees };
+  } else {
+    updateParams.assignees = { add: [assigneeId] };
+  }
+
+  const updatedTask = await client.updateTask(taskId, updateParams);
+
+  // Update cache
+  await supabase
+    .from('cached_tasks')
+    .update({
+      assignees: updatedTask.assignees,
+      updated_at: new Date().toISOString(),
+      synced_at: new Date().toISOString(),
+    })
+    .eq('workspace_id', workspaceId)
+    .eq('clickup_id', taskId);
+
+  return {
+    success: true,
+    task: {
+      id: updatedTask.id,
+      name: updatedTask.name,
+      assignees: updatedTask.assignees.map((a) => a.username),
+    },
+    message: `Task "${updatedTask.name}" assigned to ${member.username}.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// move_task — move a task to a different list
+// ---------------------------------------------------------------------------
+
+async function handleMoveTask(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const targetListName = input.target_list_name as string;
+
+  if (!taskId) {
+    return { error: 'task_id is required', success: false };
+  }
+  if (!targetListName) {
+    return { error: 'target_list_name is required', success: false };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const client = new ClickUpClient(workspaceId);
+
+  // Resolve target list name to ID
+  const { data: targetList } = await supabase
+    .from('cached_lists')
+    .select('clickup_id, name')
+    .eq('workspace_id', workspaceId)
+    .ilike('name', `%${targetListName}%`)
+    .limit(1)
+    .single();
+
+  if (!targetList) {
+    return {
+      error: `Could not find a list matching "${targetListName}"`,
+      success: false,
+    };
+  }
+
+  // Get current task info for the response
+  const { data: currentTask } = await supabase
+    .from('cached_tasks')
+    .select('name, list_id')
+    .eq('workspace_id', workspaceId)
+    .eq('clickup_id', taskId)
+    .single();
+
+  // Get source list name
+  let sourceListName = 'Unknown';
+  if (currentTask?.list_id) {
+    const { data: sourceList } = await supabase
+      .from('cached_lists')
+      .select('name')
+      .eq('clickup_id', currentTask.list_id)
+      .single();
+    sourceListName = sourceList?.name ?? 'Unknown';
+  }
+
+  // Move the task via ClickUp API
+  await client.post(`/list/${targetList.clickup_id}/task/${taskId}`);
+
+  // Update cache
+  await supabase
+    .from('cached_tasks')
+    .update({
+      list_id: targetList.clickup_id,
+      updated_at: new Date().toISOString(),
+      synced_at: new Date().toISOString(),
+    })
+    .eq('workspace_id', workspaceId)
+    .eq('clickup_id', taskId);
+
+  return {
+    success: true,
+    task: {
+      id: taskId,
+      name: currentTask?.name ?? taskId,
+      from_list: sourceListName,
+      to_list: targetList.name,
+    },
+    message: `Task "${currentTask?.name ?? taskId}" moved from "${sourceListName}" to "${targetList.name}".`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// get_workspace_summary — high-level workspace overview
+// ---------------------------------------------------------------------------
+
+async function handleGetWorkspaceSummary(
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  // Fetch tasks, lists, and members in parallel
+  const [
+    { data: tasks },
+    { data: lists },
+    { data: members },
+    { data: spaces },
+  ] = await Promise.all([
+    supabase
+      .from('cached_tasks')
+      .select('clickup_id, status, assignees, due_date, priority, list_id')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('cached_lists')
+      .select('clickup_id, name')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('cached_team_members')
+      .select('clickup_id, username, email, role')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('cached_spaces')
+      .select('clickup_id, name')
+      .eq('workspace_id', workspaceId),
+  ]);
+
+  const allTasks = tasks ?? [];
+  const allLists = lists ?? [];
+  const allMembers = members ?? [];
+  const allSpaces = spaces ?? [];
+
+  // Tasks by status
+  const byStatus: Record<string, number> = {};
+  for (const t of allTasks) {
+    const status = (t.status as string)?.toLowerCase() ?? 'unknown';
+    byStatus[status] = (byStatus[status] || 0) + 1;
+  }
+
+  // Tasks by assignee
+  const byAssignee: Record<string, number> = {};
+  let unassignedCount = 0;
+  for (const t of allTasks) {
+    const assignees = Array.isArray(t.assignees) ? t.assignees : [];
+    if (assignees.length === 0) {
+      unassignedCount++;
+    }
+    for (const a of assignees) {
+      const name = (a as { username?: string }).username ?? 'Unknown';
+      byAssignee[name] = (byAssignee[name] || 0) + 1;
+    }
+  }
+
+  // Tasks by priority
+  const byPriority: Record<string, number> = {};
+  const priorityLabels: Record<number, string> = { 1: 'urgent', 2: 'high', 3: 'normal', 4: 'low' };
+  for (const t of allTasks) {
+    const label = priorityLabels[t.priority as number] ?? 'none';
+    byPriority[label] = (byPriority[label] || 0) + 1;
+  }
+
+  // Overdue count
+  const now = new Date();
+  const overdueCount = allTasks.filter((t) => {
+    if (!t.due_date) return false;
+    const status = (t.status as string)?.toLowerCase() ?? '';
+    if (status.includes('closed') || status.includes('complete')) return false;
+    return new Date(t.due_date) < now;
+  }).length;
+
+  // Tasks by list
+  const listMap = new Map(allLists.map((l) => [l.clickup_id, l.name]));
+  const byList: Record<string, number> = {};
+  for (const t of allTasks) {
+    const listName = listMap.get(t.list_id as string) ?? 'Unknown';
+    byList[listName] = (byList[listName] || 0) + 1;
+  }
+
+  return {
+    success: true,
+    summary: {
+      total_tasks: allTasks.length,
+      overdue_tasks: overdueCount,
+      unassigned_tasks: unassignedCount,
+      total_lists: allLists.length,
+      total_spaces: allSpaces.length,
+      total_members: allMembers.length,
+      tasks_by_status: byStatus,
+      tasks_by_assignee: byAssignee,
+      tasks_by_priority: byPriority,
+      tasks_by_list: byList,
+      members: allMembers.map((m) => ({
+        name: m.username,
+        email: m.email,
+        role: m.role,
+      })),
+      lists: allLists.map((l) => l.name),
+      spaces: allSpaces.map((s) => s.name),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// get_team_activity — recent webhook-based activity feed
+// ---------------------------------------------------------------------------
+
+async function handleGetTeamActivity(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  const hours = Math.min(
+    typeof input.hours === 'number' ? input.hours : 24,
+    168,
+  );
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+  let query = supabase
+    .from('webhook_events')
+    .select('id, event_type, task_id, task_name, triggered_by, payload, created_at')
+    .eq('workspace_id', workspaceId)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false });
+
+  if (input.event_type && typeof input.event_type === 'string') {
+    query = query.eq('event_type', input.event_type);
+  }
+
+  const limit = Math.min(
+    typeof input.limit === 'number' ? input.limit : 30,
+    100,
+  );
+  query = query.limit(limit);
+
+  const { data: events, error } = await query;
+
+  if (error) {
+    return { error: `Failed to fetch activity: ${error.message}`, success: false };
+  }
+
+  const allEvents = events ?? [];
+
+  // Filter by member name if requested
+  let filteredEvents = allEvents;
+  if (input.member_name && typeof input.member_name === 'string') {
+    const memberFilter = (input.member_name as string).toLowerCase();
+    filteredEvents = allEvents.filter((e) => {
+      const triggeredBy = (e.triggered_by as string)?.toLowerCase() ?? '';
+      return triggeredBy.includes(memberFilter);
+    });
+  }
+
+  // Summarize event counts by type
+  const eventCounts: Record<string, number> = {};
+  for (const e of filteredEvents) {
+    const type = e.event_type as string;
+    eventCounts[type] = (eventCounts[type] || 0) + 1;
+  }
+
+  return {
+    success: true,
+    period_hours: hours,
+    since,
+    total_events: filteredEvents.length,
+    event_counts: eventCounts,
+    events: filteredEvents.map((e) => ({
+      event_type: e.event_type,
+      task_id: e.task_id,
+      task_name: e.task_name,
+      triggered_by: e.triggered_by,
+      timestamp: e.created_at,
+    })),
   };
 }
 
