@@ -7,11 +7,12 @@ import { useChat } from '@/hooks/useChat';
 import type { DashboardChoiceData } from '@/hooks/useChat';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
+import ConversationList from './ConversationList';
 import MessageThread from './MessageThread';
 import ChatInput from './ChatInput';
 import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
 import UpgradePrompt from '@/components/credits/UpgradePrompt';
-import { Hexagon, Loader2 } from 'lucide-react';
+import { Hexagon, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/client';
 
 function getGreeting(): string {
@@ -260,12 +261,16 @@ export default function ChatPage() {
   const router = useRouter();
   const isNew = searchParams.get('new') === '1';
   const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const isOutOfCredits = credit_balance <= 0;
 
   // All hooks must be called before any early return (React rules of hooks)
   const {
+    conversations,
     activeConversationId,
     createConversation,
+    deleteConversation,
     setActiveConversation,
   } = useConversations();
 
@@ -293,6 +298,28 @@ export default function ChatPage() {
   useEffect(() => {
     loadConversation(effectiveConversationId);
   }, [effectiveConversationId, loadConversation]);
+
+  const handleSelectConversation = useCallback(
+    (id: string) => {
+      setActiveConversation(id);
+      setMobileSidebarOpen(false);
+      router.push(`/chat/${id}`, { scroll: false });
+    },
+    [setActiveConversation, router],
+  );
+
+  const handleNewChat = useCallback(() => {
+    setActiveConversation(null);
+    setMobileSidebarOpen(false);
+    router.push('/chat?new=1', { scroll: false });
+  }, [setActiveConversation, router]);
+
+  const handleDeleteConversation = useCallback(
+    (id: string) => {
+      deleteConversation(id);
+    },
+    [deleteConversation],
+  );
 
   const handleSend = useCallback(
     (content: string) => {
@@ -354,29 +381,88 @@ export default function ChatPage() {
   const firstName = user?.display_name?.split(' ')[0] || 'there';
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-navy-base">
-      {hasMessages ? (
-        <>
-          <MessageThread
-            messages={messages}
-            isLoading={isLoading}
-            onConfirmAction={handleConfirmAction}
-            onCancelAction={handleCancelAction}
-            onAlwaysAllowAction={handleAlwaysAllowAction}
-            onDashboardChoice={handleDashboardChoice}
-          />
-          {isOutOfCredits ? (
-            <UpgradePrompt />
-          ) : (
-            <ChatInput
-              onSend={handleSend}
-              disabled={isLoading}
-            />
+    <div className="flex h-full overflow-hidden bg-navy-base">
+      {/* Mobile sidebar overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Left panel — Conversation list sidebar */}
+      <aside
+        className={`
+          ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          fixed inset-y-0 left-0 z-50 w-72 bg-navy-dark border-r border-border
+          transition-transform duration-200 ease-in-out
+          lg:relative lg:inset-auto lg:z-auto lg:transition-none
+          ${sidebarOpen ? 'lg:translate-x-0 lg:w-72' : 'lg:w-0 lg:overflow-hidden lg:border-r-0'}
+        `}
+      >
+        <ConversationList
+          conversations={conversations}
+          activeId={effectiveConversationId}
+          onSelect={handleSelectConversation}
+          onCreate={handleNewChat}
+          onDelete={handleDeleteConversation}
+        />
+      </aside>
+
+      {/* Right panel — Active conversation or welcome state */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Panel toggle bar */}
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 shrink-0">
+          {/* Desktop sidebar toggle */}
+          <button
+            onClick={() => setSidebarOpen((prev) => !prev)}
+            className="hidden lg:flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-colors"
+            title={sidebarOpen ? 'Hide conversations' : 'Show conversations'}
+          >
+            {sidebarOpen ? (
+              <PanelLeftClose className="w-4 h-4" />
+            ) : (
+              <PanelLeftOpen className="w-4 h-4" />
+            )}
+          </button>
+
+          {/* Mobile sidebar toggle */}
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-colors"
+            title="Show conversations"
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+          </button>
+
+          {effectiveConversationId && (
+            <span className="text-sm text-text-secondary truncate">
+              {conversations.find((c) => c.id === effectiveConversationId)?.title || 'Conversation'}
+            </span>
           )}
-        </>
-      ) : (
-        <>
-          {/* Claude-style welcome */}
+        </div>
+
+        {/* Chat content area */}
+        {hasMessages ? (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <MessageThread
+              messages={messages}
+              isLoading={isLoading}
+              onConfirmAction={handleConfirmAction}
+              onCancelAction={handleCancelAction}
+              onAlwaysAllowAction={handleAlwaysAllowAction}
+              onDashboardChoice={handleDashboardChoice}
+            />
+            {isOutOfCredits ? (
+              <UpgradePrompt />
+            ) : (
+              <ChatInput
+                onSend={handleSend}
+                disabled={isLoading}
+              />
+            )}
+          </div>
+        ) : (
           <div className="flex-1 flex flex-col items-center justify-center px-6">
             <div className="flex items-center gap-3 mb-8">
               <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center">
@@ -387,7 +473,7 @@ export default function ChatPage() {
               </h1>
             </div>
 
-            {/* Chat input - centered */}
+            {/* Chat input — centered */}
             <div className="w-full max-w-2xl mb-8">
               {isOutOfCredits ? (
                 <UpgradePrompt />
@@ -400,7 +486,7 @@ export default function ChatPage() {
               )}
             </div>
 
-            {/* Suggested prompts - hide when out of credits */}
+            {/* Suggested prompts */}
             {!isOutOfCredits && (
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
                 {SUGGESTED_PROMPTS.map((prompt) => (
@@ -416,8 +502,8 @@ export default function ChatPage() {
               </div>
             )}
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       <OutOfCreditsModal
         open={showCreditsModal}
