@@ -240,6 +240,150 @@ async function updateSyncStatus(
 }
 
 // ---------------------------------------------------------------------------
+// Persistent progress tracking (clickup_connections table for onboarding UI)
+// ---------------------------------------------------------------------------
+
+async function updateConnectionProgress(
+  workspaceId: string,
+  progress: SyncProgress,
+  counts?: Partial<SyncResult>
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const updates: Record<string, unknown> = {
+    sync_phase: progress.phase,
+    sync_current: progress.current,
+    sync_total: progress.total,
+    sync_message: progress.message,
+  };
+
+  if (counts) {
+    if (counts.spaces !== undefined) updates.synced_spaces = counts.spaces;
+    if (counts.folders !== undefined) updates.synced_folders = counts.folders;
+    if (counts.lists !== undefined) updates.synced_lists = counts.lists;
+    if (counts.tasks !== undefined) updates.synced_tasks = counts.tasks;
+    if (counts.members !== undefined) updates.synced_members = counts.members;
+    if (counts.timeEntries !== undefined)
+      updates.synced_time_entries = counts.timeEntries;
+  }
+
+  await supabase
+    .from("clickup_connections")
+    .update(updates)
+    .eq("workspace_id", workspaceId);
+}
+
+async function updateConnectionSyncStatus(
+  workspaceId: string,
+  status: "syncing" | "complete" | "error",
+  errorMessage?: string
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const updates: Record<string, unknown> = {
+    sync_status: status,
+  };
+
+  if (status === "syncing") {
+    updates.sync_started_at = new Date().toISOString();
+    updates.sync_error = null;
+  }
+
+  if (status === "complete") {
+    updates.last_sync_at = new Date().toISOString();
+    updates.sync_completed_at = new Date().toISOString();
+    updates.sync_phase = "complete";
+  }
+
+  if (status === "error") {
+    updates.sync_error = errorMessage ?? "Unknown error";
+    updates.sync_completed_at = new Date().toISOString();
+  }
+
+  await supabase
+    .from("clickup_connections")
+    .update(updates)
+    .eq("workspace_id", workspaceId);
+}
+
+// ---------------------------------------------------------------------------
+// Get sync progress (for onboarding UI polling)
+// ---------------------------------------------------------------------------
+
+export interface FullSyncProgress {
+  status: "idle" | "syncing" | "complete" | "error";
+  phase: string | null;
+  current: number;
+  total: number;
+  message: string | null;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  counts: {
+    spaces: number;
+    folders: number;
+    lists: number;
+    tasks: number;
+    members: number;
+    timeEntries: number;
+  };
+}
+
+export async function getSyncProgress(
+  workspaceId: string
+): Promise<FullSyncProgress> {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("clickup_connections")
+    .select(
+      "sync_status, sync_phase, sync_current, sync_total, sync_message, sync_error, sync_started_at, sync_completed_at, synced_spaces, synced_folders, synced_lists, synced_tasks, synced_members, synced_time_entries"
+    )
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (error || !data) {
+    return {
+      status: "idle",
+      phase: null,
+      current: 0,
+      total: 0,
+      message: null,
+      error: null,
+      startedAt: null,
+      completedAt: null,
+      counts: {
+        spaces: 0,
+        folders: 0,
+        lists: 0,
+        tasks: 0,
+        members: 0,
+        timeEntries: 0,
+      },
+    };
+  }
+
+  return {
+    status: data.sync_status ?? "idle",
+    phase: data.sync_phase ?? null,
+    current: data.sync_current ?? 0,
+    total: data.sync_total ?? 0,
+    message: data.sync_message ?? null,
+    error: data.sync_error ?? null,
+    startedAt: data.sync_started_at ?? null,
+    completedAt: data.sync_completed_at ?? null,
+    counts: {
+      spaces: data.synced_spaces ?? 0,
+      folders: data.synced_folders ?? 0,
+      lists: data.synced_lists ?? 0,
+      tasks: data.synced_tasks ?? 0,
+      members: data.synced_members ?? 0,
+      timeEntries: data.synced_time_entries ?? 0,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Initial full sync
 // ---------------------------------------------------------------------------
 
@@ -467,6 +611,56 @@ export async function performInitialSync(
     result.errors.push(errorMessage);
     return result;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Full sync with persistent progress (B-026)
+// ---------------------------------------------------------------------------
+
+/**
+ * runFullSync — entry point for initial ClickUp sync with persistent progress.
+ *
+ * Updates both the `workspaces` table (for backward compat) and the
+ * `clickup_connections` table (for onboarding UI progress tracking via
+ * getSyncProgress). Can be called from an API route or Edge Function.
+ *
+ * Sync order: spaces → folders → lists → tasks → members → time entries
+ */
+export async function runFullSync(workspaceId: string): Promise<SyncResult> {
+  // Mark syncing on both tables
+  await updateConnectionSyncStatus(workspaceId, "syncing");
+
+  const result = await performInitialSync(workspaceId, async (progress) => {
+    // Persist each progress update to clickup_connections for UI polling
+    await updateConnectionProgress(workspaceId, progress);
+  });
+
+  // Update final status on clickup_connections
+  if (result.errors.length > 0 && result.tasks === 0 && result.spaces === 0) {
+    // Total failure
+    await updateConnectionSyncStatus(
+      workspaceId,
+      "error",
+      result.errors.join("; ")
+    );
+  } else {
+    // Success (possibly with non-fatal errors)
+    await updateConnectionSyncStatus(workspaceId, "complete");
+    await updateConnectionProgress(
+      workspaceId,
+      { phase: "complete", current: 1, total: 1, message: "Sync complete" },
+      {
+        spaces: result.spaces,
+        folders: result.folders,
+        lists: result.lists,
+        tasks: result.tasks,
+        members: result.members,
+        timeEntries: result.timeEntries,
+      }
+    );
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
