@@ -67,3 +67,24 @@ export {
 } from "@/lib/clickup/operations";
 
 export type { OperationResult, AddCommentResult } from "@/lib/clickup/operations";
+
+export {
+  getWorkspace,
+  getWorkspaces,
+  getSpaces,
+  getFolders,
+  getLists,
+  getFolderlessLists,
+  getTasks,
+  getAllTasks,
+  getTask,
+  getMembers,
+  getWorkspaceHierarchy,
+} from "@/lib/clickup/queries";
+
+export type {
+  QueryResult,
+  PaginatedTasks,
+  TaskQueryOptions,
+  WorkspaceHierarchy,
+} from "@/lib/clickup/queries";
