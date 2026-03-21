@@ -1,5 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import { ClickUpClient } from '@/lib/clickup/client';
+import {
+  createTask as clickupCreateTask,
+  updateTask as clickupUpdateTask,
+  assignTask as clickupAssignTask,
+  unassignTask as clickupUnassignTask,
+  moveTask as clickupMoveTask,
+} from '@/lib/clickup/operations';
+import type { CreateTaskParams, UpdateTaskParams } from '@/types/clickup';
 import { runHealthCheck } from '@/lib/health/checker';
 
 // ---------------------------------------------------------------------------
@@ -188,10 +195,8 @@ async function handleUpdateTask(
     return { error: 'task_id is required', success: false };
   }
 
-  const client = new ClickUpClient(workspaceId);
   const supabase = getSupabaseAdmin();
-
-  const updateParams: Record<string, unknown> = {};
+  const updateParams: UpdateTaskParams = {};
 
   if (input.status && typeof input.status === 'string') {
     updateParams.status = input.status;
@@ -225,20 +230,14 @@ async function handleUpdateTask(
     }
   }
 
-  const updatedTask = await client.updateTask(taskId, updateParams);
+  // Use B-035 operations wrapper — handles validation, API call, and cache sync
+  const result = await clickupUpdateTask(workspaceId, taskId, updateParams);
 
-  // Update the cached task
-  const cacheUpdate: Record<string, unknown> = { updated_at: new Date().toISOString(), synced_at: new Date().toISOString() };
-  if (input.status) cacheUpdate.status = input.status;
-  if (input.due_date) cacheUpdate.due_date = input.due_date;
-  if (input.priority) cacheUpdate.priority = input.priority;
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to update task', success: false };
+  }
 
-  await supabase
-    .from('cached_tasks')
-    .update(cacheUpdate)
-    .eq('workspace_id', workspaceId)
-    .eq('clickup_id', taskId);
-
+  const updatedTask = result.data;
   return {
     success: true,
     task: {
@@ -267,7 +266,6 @@ async function handleCreateTask(
   }
 
   const supabase = getSupabaseAdmin();
-  const client = new ClickUpClient(workspaceId);
 
   // Resolve list name to ClickUp list ID
   const { data: list } = await supabase
@@ -285,7 +283,7 @@ async function handleCreateTask(
     };
   }
 
-  const createParams: Record<string, unknown> = { name: taskName };
+  const createParams: CreateTaskParams = { name: taskName };
 
   if (input.description && typeof input.description === 'string') {
     createParams.description = input.description;
@@ -315,24 +313,14 @@ async function handleCreateTask(
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const createdTask = await client.createTask(list.clickup_id, createParams as any);
+  // Use B-035 operations wrapper — handles validation, API call, and cache sync
+  const result = await clickupCreateTask(workspaceId, list.clickup_id, createParams);
 
-  // Insert into cache
-  await supabase.from('cached_tasks').insert({
-    workspace_id: workspaceId,
-    clickup_id: createdTask.id,
-    name: createdTask.name,
-    status: createdTask.status.status,
-    assignees: createdTask.assignees,
-    due_date: createdTask.due_date
-      ? new Date(parseInt(createdTask.due_date)).toISOString()
-      : null,
-    priority: createdTask.priority ? parseInt(createdTask.priority.orderindex) : null,
-    list_id: list.clickup_id,
-    description: createdTask.description,
-  });
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to create task', success: false };
+  }
 
+  const createdTask = result.data;
   return {
     success: true,
     task: {
@@ -454,7 +442,6 @@ async function handleAssignTask(
   }
 
   const supabase = getSupabaseAdmin();
-  const client = new ClickUpClient(workspaceId);
 
   // Resolve assignee name to ClickUp user ID
   const { data: member } = await supabase
@@ -473,10 +460,9 @@ async function handleAssignTask(
   }
 
   const assigneeId = parseInt(member.clickup_id);
-  const updateParams: Record<string, unknown> = {};
 
+  // If replacing existing assignees, unassign them first via B-035 operations
   if (replaceExisting) {
-    // Fetch current assignees to remove them
     const { data: cachedTask } = await supabase
       .from('cached_tasks')
       .select('assignees')
@@ -485,27 +471,22 @@ async function handleAssignTask(
       .single();
 
     const currentAssignees = Array.isArray(cachedTask?.assignees)
-      ? cachedTask.assignees.map((a: { id?: number }) => a.id).filter(Boolean)
+      ? cachedTask.assignees.map((a: { id?: number }) => a.id).filter(Boolean) as number[]
       : [];
 
-    updateParams.assignees = { add: [assigneeId], rem: currentAssignees };
-  } else {
-    updateParams.assignees = { add: [assigneeId] };
+    if (currentAssignees.length > 0) {
+      await clickupUnassignTask(workspaceId, taskId, currentAssignees);
+    }
   }
 
-  const updatedTask = await client.updateTask(taskId, updateParams);
+  // Use B-035 operations wrapper — handles validation, API call, and cache sync
+  const result = await clickupAssignTask(workspaceId, taskId, [assigneeId]);
 
-  // Update cache
-  await supabase
-    .from('cached_tasks')
-    .update({
-      assignees: updatedTask.assignees,
-      updated_at: new Date().toISOString(),
-      synced_at: new Date().toISOString(),
-    })
-    .eq('workspace_id', workspaceId)
-    .eq('clickup_id', taskId);
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to assign task', success: false };
+  }
 
+  const updatedTask = result.data;
   return {
     success: true,
     task: {
@@ -536,7 +517,6 @@ async function handleMoveTask(
   }
 
   const supabase = getSupabaseAdmin();
-  const client = new ClickUpClient(workspaceId);
 
   // Resolve target list name to ID
   const { data: targetList } = await supabase
@@ -573,19 +553,12 @@ async function handleMoveTask(
     sourceListName = sourceList?.name ?? 'Unknown';
   }
 
-  // Move the task via ClickUp API
-  await client.post(`/list/${targetList.clickup_id}/task/${taskId}`);
+  // Use B-035 operations wrapper — handles validation, API call, and cache sync
+  const result = await clickupMoveTask(workspaceId, taskId, targetList.clickup_id);
 
-  // Update cache
-  await supabase
-    .from('cached_tasks')
-    .update({
-      list_id: targetList.clickup_id,
-      updated_at: new Date().toISOString(),
-      synced_at: new Date().toISOString(),
-    })
-    .eq('workspace_id', workspaceId)
-    .eq('clickup_id', taskId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to move task', success: false };
+  }
 
   return {
     success: true,
