@@ -17,6 +17,11 @@ export interface ModelRouting {
   creditCost: number;
 }
 
+export interface ModelConfig {
+  model: string;
+  maxTokens: number;
+}
+
 export interface BineeContext {
   user: {
     id: string;
