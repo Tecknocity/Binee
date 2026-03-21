@@ -122,6 +122,111 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'get_overdue_tasks',
+    description:
+      'Get all tasks that are past their due date and not yet completed or closed. Returns task details sorted by how overdue they are (most overdue first).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        assignee: {
+          type: 'string',
+          description: 'Filter overdue tasks by assignee name (partial match supported)',
+        },
+        list_name: {
+          type: 'string',
+          description: 'Filter overdue tasks by list name (partial match supported)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of overdue tasks to return (default: 25, max: 50)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'assign_task',
+    description:
+      'Assign or reassign a task to a team member. Can optionally remove existing assignees first for a clean reassignment.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID to assign',
+        },
+        assignee_name: {
+          type: 'string',
+          description:
+            'Name of the team member to assign. Will be resolved to their ClickUp user ID.',
+        },
+        replace_existing: {
+          type: 'boolean',
+          description:
+            'If true, removes all current assignees before assigning the new one. Default: false (adds to existing assignees).',
+        },
+      },
+      required: ['task_id', 'assignee_name'],
+    },
+  },
+  {
+    name: 'move_task',
+    description:
+      'Move a task from its current list to a different list. Requires the task ID and the target list name.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID to move',
+        },
+        target_list_name: {
+          type: 'string',
+          description: 'Name of the destination list (partial match supported)',
+        },
+      },
+      required: ['task_id', 'target_list_name'],
+    },
+  },
+  {
+    name: 'get_workspace_summary',
+    description:
+      'Get a high-level summary of the workspace including total tasks, tasks by status, tasks by assignee, lists, and team members. Use this to answer general questions about the workspace state.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_team_activity',
+    description:
+      'Get recent team activity from webhook events. Shows task creations, updates, completions, comments, and other actions within a time window.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        hours: {
+          type: 'number',
+          description: 'How many hours back to look for activity (default: 24, max: 168)',
+        },
+        member_name: {
+          type: 'string',
+          description: 'Filter activity to a specific team member by name',
+        },
+        event_type: {
+          type: 'string',
+          enum: ['taskCreated', 'taskUpdated', 'taskStatusUpdated', 'taskAssigneeUpdated', 'taskCommentPosted', 'taskDeleted', 'taskMoved'],
+          description: 'Filter to a specific type of activity event',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of activity events to return (default: 30, max: 100)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'get_workspace_health',
     description:
       'Run a health check on the workspace. Returns metrics on overdue tasks, unassigned tasks, stale tasks, workload distribution, and missing metadata.',
