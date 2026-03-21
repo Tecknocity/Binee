@@ -56,6 +56,8 @@ export interface AssistantResponse {
   /** B-045: Present when a write operation is awaiting user confirmation */
   pending_action?: {
     id: string;
+    tool_name: string;
+    trust_tier: 'low' | 'medium' | 'high';
     description: string;
     details: string;
   } | null;

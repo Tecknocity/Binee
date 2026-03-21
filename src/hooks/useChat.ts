@@ -2,6 +2,10 @@
 
 import { useState, useCallback, useRef } from 'react';
 import type { ToolCallResult } from '@/types/ai';
+import {
+  shouldAutoApprove,
+  setActionPreference,
+} from '@/lib/ai/action-preferences';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,6 +26,8 @@ export interface ToolCallDisplay {
 
 export interface ActionConfirmationData {
   id: string;
+  tool_name: string;
+  trust_tier: 'low' | 'medium' | 'high';
   description: string;
   details: string;
   confirmed: boolean | null; // null = pending
@@ -101,6 +107,8 @@ function getMockMessages(conversationId: string): ChatMessage[] {
         creditsConsumed: 1,
         actionConfirmation: {
           id: 'ac-1',
+          tool_name: 'update_task',
+          trust_tier: 'medium',
           description:
             'Update task "API rate limiter update"',
           details:
@@ -172,6 +180,8 @@ function getMockMessages(conversationId: string): ChatMessage[] {
         creditsConsumed: 1,
         actionConfirmation: {
           id: 'ac-2',
+          tool_name: 'create_task',
+          trust_tier: 'low',
           description: 'Create new task in Backlog list',
           details:
             'Title: Review sprint planning process\nPriority: Normal\nList: Backlog\nAssignee: You',
@@ -342,6 +352,8 @@ export function useChat(conversationId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const totalCredits = useRef(0);
+  // Ref to allow auto-approve to call confirmAction before it's defined in the hook
+  const confirmActionRef = useRef<(actionId: string, confirmed: boolean) => void>(() => {});
 
   // Reset messages when conversation changes
   const loadConversation = useCallback((id: string | null) => {
@@ -404,6 +416,8 @@ export function useChat(conversationId: string | null) {
           data.pending_action
             ? {
                 id: data.pending_action.id,
+                tool_name: data.pending_action.tool_name,
+                trust_tier: data.pending_action.trust_tier,
                 description: data.pending_action.description,
                 details: data.pending_action.details,
                 confirmed: null, // pending user decision
@@ -422,6 +436,15 @@ export function useChat(conversationId: string | null) {
 
         totalCredits.current += data.credits_consumed ?? 0;
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // B-045: Auto-approve if user has "Always Allow" for this operation type
+        if (
+          actionConfirmation &&
+          shouldAutoApprove(actionConfirmation.tool_name, actionConfirmation.trust_tier)
+        ) {
+          // Trigger confirmation automatically — no UI prompt shown
+          confirmActionRef.current(actionConfirmation.id, true);
+        }
       } catch (err) {
         // On API error, add a mock response so the UI is still functional
         const fallbackMessage: ChatMessage = {
@@ -523,6 +546,18 @@ export function useChat(conversationId: string | null) {
     [conversationId],
   );
 
+  // Keep ref in sync so auto-approve can call confirmAction
+  confirmActionRef.current = confirmAction;
+
+  // B-045: "Always Allow" — stores preference and confirms the action
+  const alwaysAllowAction = useCallback(
+    (actionId: string, toolName: string) => {
+      setActionPreference(toolName, 'always_allow');
+      confirmAction(actionId, true);
+    },
+    [confirmAction],
+  );
+
   const selectDashboardChoice = useCallback((messageId: string, choiceId: string) => {
     setMessages((prev) =>
       prev.map((msg) => {
@@ -540,6 +575,7 @@ export function useChat(conversationId: string | null) {
     error,
     sendMessage,
     confirmAction,
+    alwaysAllowAction,
     selectDashboardChoice,
     loadConversation,
     totalCreditsConsumed: totalCredits.current,

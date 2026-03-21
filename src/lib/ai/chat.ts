@@ -17,6 +17,7 @@ import {
   createPendingAction,
   buildPendingConfirmationResult,
   buildBlockedOperationResult,
+  getOperationTrustTier,
 } from '@/lib/ai/confirmation';
 import { createClient } from '@supabase/supabase-js';
 
@@ -121,6 +122,8 @@ export async function handleChatMessage(
   let finalContent = '';
   let pendingActionData: {
     id: string;
+    tool_name: string;
+    trust_tier: 'low' | 'medium' | 'high';
     description: string;
     details: string;
   } | null = null;
@@ -186,6 +189,8 @@ export async function handleChatMessage(
         hasWriteInterception = true;
         pendingActionData = {
           id: pendingAction.id,
+          tool_name: toolUse.name,
+          trust_tier: getOperationTrustTier(toolUse.name),
           description: pendingAction.description,
           details: pendingAction.details,
         };

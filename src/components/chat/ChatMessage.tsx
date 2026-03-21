@@ -11,6 +11,7 @@ interface ChatMessageProps {
   message: ChatMessageType;
   onConfirmAction?: (id: string) => void;
   onCancelAction?: (id: string) => void;
+  onAlwaysAllowAction?: (id: string, toolName: string) => void;
   onDashboardChoice?: (messageId: string, choice: DashboardChoiceData) => void;
 }
 
@@ -229,6 +230,7 @@ export default function ChatMessage({
   message,
   onConfirmAction,
   onCancelAction,
+  onAlwaysAllowAction,
   onDashboardChoice,
 }: ChatMessageProps) {
   const isUser = message.role === 'user';
@@ -282,6 +284,7 @@ export default function ChatMessage({
             data={message.actionConfirmation}
             onConfirm={onConfirmAction}
             onCancel={onCancelAction}
+            onAlwaysAllow={onAlwaysAllowAction}
           />
         )}
 

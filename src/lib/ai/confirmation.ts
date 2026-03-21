@@ -15,20 +15,61 @@ import type {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Tool classification
+// Trust tiers — categorize operations by risk level
 // ---------------------------------------------------------------------------
 
-/** Tools that mutate ClickUp data — require user confirmation before executing */
-const WRITE_TOOLS = new Set([
-  'update_task',
+export type TrustTier = 'low' | 'medium' | 'high';
+
+/** Low risk — safe, additive operations. Eligible for "Always Allow". */
+const LOW_RISK_OPERATIONS = new Set([
   'create_task',
+  'create_dashboard_widget',
+]);
+
+/** Medium risk — modify existing data. Eligible for "Always Allow". */
+const MEDIUM_RISK_OPERATIONS = new Set([
+  'update_task',
   'assign_task',
   'move_task',
-  'create_dashboard_widget',
   'update_dashboard_widget',
 ]);
 
-/** Tools that delete data — blocked entirely, never execute */
+/** High risk — destructive operations. Always require confirmation, never auto-approve. */
+const HIGH_RISK_OPERATIONS = new Set([
+  'delete_dashboard_widget',
+]);
+
+/**
+ * Returns the trust tier for an operation.
+ */
+export function getOperationTrustTier(toolName: string): TrustTier {
+  if (LOW_RISK_OPERATIONS.has(toolName)) return 'low';
+  if (MEDIUM_RISK_OPERATIONS.has(toolName)) return 'medium';
+  if (HIGH_RISK_OPERATIONS.has(toolName)) return 'high';
+  // Unknown write operations default to high risk
+  return 'high';
+}
+
+/**
+ * Returns true if the operation is eligible for "Always Allow".
+ * Only low and medium risk operations can be auto-approved.
+ */
+export function isEligibleForAlwaysAllow(toolName: string): boolean {
+  const tier = getOperationTrustTier(toolName);
+  return tier === 'low' || tier === 'medium';
+}
+
+// ---------------------------------------------------------------------------
+// Tool classification
+// ---------------------------------------------------------------------------
+
+/** All write tools (union of low + medium risk) */
+const WRITE_TOOLS = new Set([
+  ...LOW_RISK_OPERATIONS,
+  ...MEDIUM_RISK_OPERATIONS,
+]);
+
+/** Blocked tools (high risk deletions — never execute) */
 const BLOCKED_TOOLS = new Set([
   'delete_dashboard_widget',
 ]);
