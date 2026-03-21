@@ -1,10 +1,13 @@
 export type TaskType =
-  | 'simple_query'
-  | 'simple_action'
-  | 'complex_reasoning'
-  | 'setup_planning'
-  | 'dashboard_design'
-  | 'health_analysis';
+  | 'simple_lookup'
+  | 'complex_query'
+  | 'action_request'
+  | 'setup_request'
+  | 'health_check'
+  | 'dashboard_request'
+  | 'analysis_audit'
+  | 'strategy'
+  | 'troubleshooting';
 
 export type ModelTier = 'haiku' | 'sonnet';
 
