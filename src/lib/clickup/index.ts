@@ -20,6 +20,8 @@ export {
 export {
   performInitialSync,
   performReconciliationSync,
+  runFullSync,
+  getSyncProgress,
   upsertCachedSpaces,
   upsertCachedFolders,
   upsertCachedLists,
@@ -27,6 +29,8 @@ export {
   upsertCachedMembers,
   upsertCachedTimeEntries,
 } from "@/lib/clickup/sync";
+
+export type { FullSyncProgress } from "@/lib/clickup/sync";
 
 export {
   registerWebhooks,
