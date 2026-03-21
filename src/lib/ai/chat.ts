@@ -5,7 +5,7 @@ import type {
   ToolCallResult,
 } from '@/types/ai';
 import { classifyMessage } from '@/lib/ai/classifier';
-import { getModelForTask } from '@/lib/ai/router';
+import { getModelForTask, routeToModel } from '@/lib/ai/router';
 import { buildSystemPrompt, buildSetupPrompt, buildHealthPrompt, buildDashboardPrompt } from '@/lib/ai/prompts';
 import { buildContext } from '@/lib/ai/context';
 import { BINEE_TOOLS } from '@/lib/ai/tools';
@@ -53,6 +53,7 @@ export async function handleChatMessage(
 
   // 2. Get model routing
   const routing = getModelForTask(classification.taskType);
+  const modelConfig = routeToModel(classification.taskType);
 
   // 3. Check credit balance
   const supabase = getSupabaseAdmin();
@@ -124,8 +125,8 @@ export async function handleChatMessage(
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await anthropic.messages.create({
-      model: routing.modelId,
-      max_tokens: 4096,
+      model: modelConfig.model,
+      max_tokens: modelConfig.maxTokens,
       system: systemPrompt,
       ...(toolsForApi.length > 0 ? { tools: toolsForApi } : {}),
       messages,
