@@ -18,6 +18,11 @@ export {
 } from "@/lib/clickup/encryption";
 
 export {
+  refreshTokenIfNeeded,
+  forceRefreshToken,
+} from "@/lib/clickup/token-refresh";
+
+export {
   performInitialSync,
   performReconciliationSync,
   runFullSync,

@@ -13,6 +13,7 @@ import type {
   RateLimitStatus,
 } from "@/types/clickup";
 import { getAccessToken } from "@/lib/clickup/oauth";
+import { refreshTokenIfNeeded, forceRefreshToken } from "@/lib/clickup/token-refresh";
 import { getRateLimit, shouldThrottle } from "@/lib/clickup/rate-limits";
 
 const BASE_URL = "https://api.clickup.com/api/v2";
@@ -76,12 +77,20 @@ export class ClickUpClient {
   ): Promise<T> {
     const { method = "GET", body, params } = options;
 
-    const accessToken = await getAccessToken(this.workspaceId);
-    if (!accessToken) {
-      throw new ClickUpApiError(
-        "No valid access token for workspace",
-        401
-      );
+    // Use token-refresh module (falls back to legacy getAccessToken)
+    let accessToken: string;
+    try {
+      accessToken = await refreshTokenIfNeeded(this.workspaceId);
+    } catch {
+      // Fall back to legacy token retrieval if clickup_connections doesn't exist
+      const legacyToken = await getAccessToken(this.workspaceId);
+      if (!legacyToken) {
+        throw new ClickUpApiError(
+          "No valid access token for workspace",
+          401
+        );
+      }
+      accessToken = legacyToken;
     }
 
     // Reset per-minute counter if the window has elapsed
@@ -111,6 +120,7 @@ export class ClickUpClient {
     }
 
     let lastError: Error | null = null;
+    let hasRetriedWithFreshToken = false;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -150,6 +160,21 @@ export class ClickUpClient {
           }
 
           throw new ClickUpRateLimitError(waitMs, await res.text());
+        }
+
+        // On 401, try a forced token refresh once before giving up
+        if (res.status === 401 && !hasRetriedWithFreshToken) {
+          hasRetriedWithFreshToken = true;
+          try {
+            accessToken = await forceRefreshToken(this.workspaceId);
+            continue; // Retry the request with the new token
+          } catch {
+            throw new ClickUpApiError(
+              "ClickUp token expired and refresh failed. Please reconnect.",
+              401,
+              await res.text()
+            );
+          }
         }
 
         if (!res.ok) {
