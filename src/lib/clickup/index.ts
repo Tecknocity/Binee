@@ -25,6 +25,8 @@ export {
 export {
   performInitialSync,
   performReconciliationSync,
+  runFullSync,
+  getSyncProgress,
   upsertCachedSpaces,
   upsertCachedFolders,
   upsertCachedLists,
@@ -33,6 +35,8 @@ export {
   upsertCachedTimeEntries,
 } from "@/lib/clickup/sync";
 
+export type { FullSyncProgress } from "@/lib/clickup/sync";
+
 export {
   registerWebhooks,
   unregisterWebhooks,
@@ -40,3 +44,12 @@ export {
   handleTimeTracked,
   verifyWebhookHealth,
 } from "@/lib/clickup/webhooks";
+
+export {
+  RATE_LIMITS,
+  getRateLimit,
+  shouldThrottle,
+  normalizePlanTier,
+} from "@/lib/clickup/rate-limits";
+
+export type { ClickUpPlanTier } from "@/lib/clickup/rate-limits";

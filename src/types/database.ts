@@ -94,6 +94,7 @@ export interface CachedSpace {
   status: Record<string, unknown> | null;
   features: Record<string, unknown> | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -108,6 +109,7 @@ export interface CachedFolder {
   hidden: boolean;
   task_count: number;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -123,6 +125,7 @@ export interface CachedList {
   task_count: number;
   status: Record<string, unknown> | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -145,6 +148,7 @@ export interface CachedTask {
   time_spent: number | null;
   custom_fields: Record<string, unknown>[] | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -163,6 +167,7 @@ export interface CachedTimeEntry {
   billable: boolean;
   tags: string[] | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -178,10 +183,14 @@ export interface CachedTeamMember {
   profile_picture: string | null;
   role: number | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
 }
+
+// PRD alias: cached_members view maps to cached_team_members
+export type CachedMember = CachedTeamMember;
 
 export interface WebhookRegistration {
   id: string;
@@ -362,6 +371,7 @@ export interface Tables {
   cached_tasks: CachedTask;
   cached_time_entries: CachedTimeEntry;
   cached_team_members: CachedTeamMember;
+  cached_members: CachedMember;
   webhook_registrations: WebhookRegistration;
   clickup_connections: ClickupConnection;
   webhook_events: WebhookEvent;

@@ -14,6 +14,7 @@ import type {
 } from "@/types/clickup";
 import { getAccessToken } from "@/lib/clickup/oauth";
 import { refreshTokenIfNeeded, forceRefreshToken } from "@/lib/clickup/token-refresh";
+import { getRateLimit, shouldThrottle } from "@/lib/clickup/rate-limits";
 
 const BASE_URL = "https://api.clickup.com/api/v2";
 
@@ -53,9 +54,17 @@ export class ClickUpClient {
   private rateLimitTotal = 100;
   private rateLimitResetAt = new Date();
   private maxRetries = 3;
+  private planTier = "free";
+  private requestCount = 0;
+  private windowStart = Date.now();
 
-  constructor(workspaceId: string) {
+  constructor(workspaceId: string, planTier?: string) {
     this.workspaceId = workspaceId;
+    if (planTier) {
+      this.planTier = planTier;
+      this.rateLimitTotal = getRateLimit(planTier);
+      this.rateLimitRemaining = this.rateLimitTotal;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -83,6 +92,25 @@ export class ClickUpClient {
       }
       accessToken = legacyToken;
     }
+
+    // Reset per-minute counter if the window has elapsed
+    const now = Date.now();
+    if (now - this.windowStart >= 60_000) {
+      this.requestCount = 0;
+      this.windowStart = now;
+    }
+
+    // Wait until the rate-limit window resets if we're close to the cap
+    if (shouldThrottle(this.requestCount, this.planTier)) {
+      const waitMs = Math.max(0, this.rateLimitResetAt.getTime() - now);
+      if (waitMs > 0) {
+        await this.sleep(waitMs);
+      }
+      this.requestCount = 0;
+      this.windowStart = Date.now();
+    }
+
+    this.requestCount++;
 
     const url = new URL(`${BASE_URL}${path}`);
     if (params) {
