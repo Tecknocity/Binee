@@ -10,6 +10,7 @@ interface MessageThreadProps {
   isLoading: boolean;
   onConfirmAction: (id: string) => void;
   onCancelAction: (id: string) => void;
+  onAlwaysAllowAction?: (id: string, toolName: string) => void;
   onDashboardChoice?: (messageId: string, choice: DashboardChoiceData) => void;
 }
 
@@ -18,6 +19,7 @@ export default function MessageThread({
   isLoading,
   onConfirmAction,
   onCancelAction,
+  onAlwaysAllowAction,
   onDashboardChoice,
 }: MessageThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -37,6 +39,7 @@ export default function MessageThread({
             message={msg}
             onConfirmAction={onConfirmAction}
             onCancelAction={onCancelAction}
+            onAlwaysAllowAction={onAlwaysAllowAction}
             onDashboardChoice={onDashboardChoice}
           />
         ))}

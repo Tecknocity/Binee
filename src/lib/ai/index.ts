@@ -14,6 +14,25 @@ export { buildContext, buildBusinessStateDocument, buildWorkspaceSummary, buildR
 export { BINEE_TOOLS } from '@/lib/ai/tools';
 export { executeTool } from '@/lib/ai/tool-executor';
 export {
+  isWriteOperation,
+  isBlockedOperation,
+  isReadOnlyOperation,
+  createPendingAction,
+  resolvePendingAction,
+  describeAction,
+  getOperationTrustTier,
+  isEligibleForAlwaysAllow,
+} from '@/lib/ai/confirmation';
+export type { TrustTier } from '@/lib/ai/confirmation';
+export {
+  getActionPreferences,
+  getActionPreference,
+  setActionPreference,
+  resetActionPreferences,
+  shouldAutoApprove,
+} from '@/lib/ai/action-preferences';
+export type { ActionPreference } from '@/lib/ai/action-preferences';
+export {
   getModulesForTaskType,
   getModule,
   getModulesByPrefix,

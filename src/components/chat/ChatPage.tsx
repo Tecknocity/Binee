@@ -277,6 +277,7 @@ export default function ChatPage() {
     isLoading,
     sendMessage,
     confirmAction,
+    alwaysAllowAction,
     selectDashboardChoice,
     loadConversation,
   } = useChat(effectiveConversationId);
@@ -327,6 +328,11 @@ export default function ChatPage() {
     [confirmAction],
   );
 
+  const handleAlwaysAllowAction = useCallback(
+    (id: string, toolName: string) => alwaysAllowAction(id, toolName),
+    [alwaysAllowAction],
+  );
+
   const handleDashboardChoice = useCallback(
     (messageId: string, choice: DashboardChoiceData) => {
       selectDashboardChoice(messageId, choice.id);
@@ -356,6 +362,7 @@ export default function ChatPage() {
             isLoading={isLoading}
             onConfirmAction={handleConfirmAction}
             onCancelAction={handleCancelAction}
+            onAlwaysAllowAction={handleAlwaysAllowAction}
             onDashboardChoice={handleDashboardChoice}
           />
           {isOutOfCredits ? (

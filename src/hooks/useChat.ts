@@ -2,6 +2,10 @@
 
 import { useState, useCallback, useRef } from 'react';
 import type { ToolCallResult } from '@/types/ai';
+import {
+  shouldAutoApprove,
+  setActionPreference,
+} from '@/lib/ai/action-preferences';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,6 +26,8 @@ export interface ToolCallDisplay {
 
 export interface ActionConfirmationData {
   id: string;
+  tool_name: string;
+  trust_tier: 'low' | 'medium' | 'high';
   description: string;
   details: string;
   confirmed: boolean | null; // null = pending
@@ -101,6 +107,8 @@ function getMockMessages(conversationId: string): ChatMessage[] {
         creditsConsumed: 1,
         actionConfirmation: {
           id: 'ac-1',
+          tool_name: 'update_task',
+          trust_tier: 'medium',
           description:
             'Update task "API rate limiter update"',
           details:
@@ -172,6 +180,8 @@ function getMockMessages(conversationId: string): ChatMessage[] {
         creditsConsumed: 1,
         actionConfirmation: {
           id: 'ac-2',
+          tool_name: 'create_task',
+          trust_tier: 'low',
           description: 'Create new task in Backlog list',
           details:
             'Title: Review sprint planning process\nPriority: Normal\nList: Backlog\nAssignee: You',
@@ -342,6 +352,8 @@ export function useChat(conversationId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const totalCredits = useRef(0);
+  // Ref to allow auto-approve to call confirmAction before it's defined in the hook
+  const confirmActionRef = useRef<(actionId: string, confirmed: boolean) => void>(() => {});
 
   // Reset messages when conversation changes
   const loadConversation = useCallback((id: string | null) => {
@@ -399,6 +411,19 @@ export function useChat(conversationId: string | null) {
             error: tc.error,
           }));
 
+        // B-045: If the response includes a pending action, attach it as actionConfirmation
+        const actionConfirmation: ActionConfirmationData | undefined =
+          data.pending_action
+            ? {
+                id: data.pending_action.id,
+                tool_name: data.pending_action.tool_name,
+                trust_tier: data.pending_action.trust_tier,
+                description: data.pending_action.description,
+                details: data.pending_action.details,
+                confirmed: null, // pending user decision
+              }
+            : undefined;
+
         const assistantMessage: ChatMessage = {
           id: `msg-${Date.now()}-resp`,
           role: 'assistant',
@@ -406,10 +431,20 @@ export function useChat(conversationId: string | null) {
           timestamp: new Date(),
           creditsConsumed: data.credits_consumed,
           toolCalls: toolCallDisplays,
+          actionConfirmation,
         };
 
         totalCredits.current += data.credits_consumed ?? 0;
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // B-045: Auto-approve if user has "Always Allow" for this operation type
+        if (
+          actionConfirmation &&
+          shouldAutoApprove(actionConfirmation.tool_name, actionConfirmation.trust_tier)
+        ) {
+          // Trigger confirmation automatically — no UI prompt shown
+          confirmActionRef.current(actionConfirmation.id, true);
+        }
       } catch (err) {
         // On API error, add a mock response so the UI is still functional
         const fallbackMessage: ChatMessage = {
@@ -432,22 +467,96 @@ export function useChat(conversationId: string | null) {
     [conversationId],
   );
 
-  const confirmAction = useCallback((actionId: string, confirmed: boolean) => {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.actionConfirmation?.id === actionId) {
-          return {
-            ...msg,
-            actionConfirmation: {
-              ...msg.actionConfirmation,
-              confirmed,
-            },
-          };
+  // B-045: Confirm or cancel a pending write action via API
+  const confirmAction = useCallback(
+    async (actionId: string, confirmed: boolean) => {
+      // Optimistically update the UI
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.actionConfirmation?.id === actionId) {
+            return {
+              ...msg,
+              actionConfirmation: {
+                ...msg.actionConfirmation,
+                confirmed,
+              },
+            };
+          }
+          return msg;
+        }),
+      );
+
+      try {
+        const res = await fetch('/api/chat/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspace_id: 'ws-mock-001',
+            conversation_id: conversationId,
+            action_id: actionId,
+            confirmed,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to process confirmation');
         }
-        return msg;
-      }),
-    );
-  }, []);
+
+        const data = await res.json();
+
+        // If confirmed and executed, add a follow-up message with the result
+        if (confirmed && data.status === 'executed' && data.result) {
+          const resultMessage: ChatMessage = {
+            id: `msg-${Date.now()}-confirm`,
+            role: 'assistant',
+            content: data.result.message ?? 'Action completed successfully.',
+            timestamp: new Date(),
+            toolCalls: [
+              {
+                id: `tc-${Date.now()}`,
+                tool_name: data.result.task ? 'write_operation' : 'action',
+                description: 'Executed confirmed action',
+                status: 'success',
+                result: JSON.stringify(data.result),
+              },
+            ],
+          };
+          setMessages((prev) => [...prev, resultMessage]);
+        } else if (data.status === 'failed') {
+          const errorMessage: ChatMessage = {
+            id: `msg-${Date.now()}-err`,
+            role: 'assistant',
+            content: `The action failed: ${data.error ?? 'Unknown error'}. Please try again.`,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+        }
+      } catch {
+        // On API error, show error message but keep the UI state
+        const errorMessage: ChatMessage = {
+          id: `msg-${Date.now()}-err`,
+          role: 'assistant',
+          content:
+            'Sorry, there was an error processing the confirmation. Please try again.',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    },
+    [conversationId],
+  );
+
+  // Keep ref in sync so auto-approve can call confirmAction
+  confirmActionRef.current = confirmAction;
+
+  // B-045: "Always Allow" — stores preference and confirms the action
+  const alwaysAllowAction = useCallback(
+    (actionId: string, toolName: string) => {
+      setActionPreference(toolName, 'always_allow');
+      confirmAction(actionId, true);
+    },
+    [confirmAction],
+  );
 
   const selectDashboardChoice = useCallback((messageId: string, choiceId: string) => {
     setMessages((prev) =>
@@ -466,6 +575,7 @@ export function useChat(conversationId: string | null) {
     error,
     sendMessage,
     confirmAction,
+    alwaysAllowAction,
     selectDashboardChoice,
     loadConversation,
     totalCreditsConsumed: totalCredits.current,

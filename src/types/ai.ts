@@ -53,6 +53,14 @@ export interface AssistantResponse {
   tool_calls: ToolCallResult[] | null;
   tokens_input: number;
   tokens_output: number;
+  /** B-045: Present when a write operation is awaiting user confirmation */
+  pending_action?: {
+    id: string;
+    tool_name: string;
+    trust_tier: 'low' | 'medium' | 'high';
+    description: string;
+    details: string;
+  } | null;
 }
 
 export interface ToolCallResult {
@@ -124,4 +132,37 @@ export interface ClassificationResult {
   taskType: TaskType;
   confidence: number;
   reasoning: string;
+}
+
+// ---------------------------------------------------------------------------
+// Confirmation flow (B-045) — pending actions for write operations
+// ---------------------------------------------------------------------------
+
+export interface PendingAction {
+  id: string;
+  workspace_id: string;
+  conversation_id: string;
+  tool_name: string;
+  tool_input: Record<string, unknown>;
+  description: string;
+  details: string;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'executed' | 'failed';
+  created_at: string;
+  resolved_at?: string;
+  execution_result?: Record<string, unknown>;
+  execution_error?: string;
+}
+
+export interface ConfirmActionRequest {
+  workspace_id: string;
+  conversation_id: string;
+  action_id: string;
+  confirmed: boolean;
+}
+
+export interface ConfirmActionResponse {
+  action_id: string;
+  status: PendingAction['status'];
+  result?: Record<string, unknown>;
+  error?: string;
 }

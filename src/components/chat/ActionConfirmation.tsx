@@ -1,29 +1,46 @@
 'use client';
 
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, ShieldAlert } from 'lucide-react';
 import type { ActionConfirmationData } from '@/hooks/useChat';
 
 interface ActionConfirmationProps {
   data: ActionConfirmationData;
   onConfirm: (id: string) => void;
   onCancel: (id: string) => void;
+  onAlwaysAllow?: (id: string, toolName: string) => void;
 }
 
 export default function ActionConfirmation({
   data,
   onConfirm,
   onCancel,
+  onAlwaysAllow,
 }: ActionConfirmationProps) {
   const isPending = data.confirmed === null;
+
+  // Only low and medium risk operations are eligible for "Always Allow"
+  const showAlwaysAllow =
+    isPending &&
+    onAlwaysAllow &&
+    (data.trust_tier === 'low' || data.trust_tier === 'medium');
 
   return (
     <div className="my-3 rounded-xl border border-border bg-navy-base/60 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface/30">
-        <ShieldCheck className="w-4 h-4 text-accent" />
+        {data.trust_tier === 'high' ? (
+          <ShieldAlert className="w-4 h-4 text-warning" />
+        ) : (
+          <ShieldCheck className="w-4 h-4 text-accent" />
+        )}
         <span className="text-sm font-medium text-text-primary">
           Action Confirmation
         </span>
+        {data.trust_tier === 'high' && (
+          <span className="text-[10px] font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded">
+            High Risk
+          </span>
+        )}
       </div>
 
       {/* Body */}
@@ -44,6 +61,14 @@ export default function ActionConfirmation({
             >
               Confirm
             </button>
+            {showAlwaysAllow && (
+              <button
+                onClick={() => onAlwaysAllow(data.id, data.tool_name)}
+                className="px-4 py-1.5 rounded-lg border border-accent/40 text-accent text-sm font-medium hover:bg-accent/10 transition-colors"
+              >
+                Always Allow
+              </button>
+            )}
             <button
               onClick={() => onCancel(data.id)}
               className="px-4 py-1.5 rounded-lg text-text-secondary text-sm font-medium hover:bg-surface-hover transition-colors"
