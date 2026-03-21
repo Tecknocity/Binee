@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/utils';
 import TeamMembersList from '@/components/settings/TeamMembersList';
 import InviteMemberModal from '@/components/settings/InviteMemberModal';
-import ConnectionStatus from '@/components/settings/ConnectionStatus';
+import { ClickUpConnectionCard } from '@/components/settings/ClickUpConnectionCard';
 
 const planBadges: Record<string, { label: string; color: string }> = {
   free: { label: 'Free', color: 'bg-surface-hover text-text-secondary' },
@@ -210,9 +210,7 @@ export default function WorkspaceSettingsPage() {
       <TeamMembersList onInviteClick={() => setShowInviteModal(true)} />
 
       {/* ClickUp Connection */}
-      <div className="bg-surface border border-border rounded-xl p-6">
-        <ConnectionStatus />
-      </div>
+      <ClickUpConnectionCard />
 
       {/* Danger Zone — owner only */}
       {isOwner && (
