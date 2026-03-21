@@ -1,5 +1,27 @@
 import { createClient } from '@supabase/supabase-js';
-import type { BineeContext } from '@/types/ai';
+import type { BineeContext, BusinessState } from '@/types/ai';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Approximate token budget for the BusinessState document */
+const TOKEN_BUDGET = 3000;
+
+/** Rough chars-per-token ratio for structured JSON */
+const CHARS_PER_TOKEN = 4;
+
+/** Max assignees shown in the by_assignee breakdown */
+const MAX_ASSIGNEES = 15;
+
+/** Max spaces shown in the structure summary */
+const MAX_SPACES = 10;
+
+/** Max folders per space in the structure summary */
+const MAX_FOLDERS_PER_SPACE = 8;
+
+/** Max folderless lists per space */
+const MAX_FOLDERLESS_LISTS = 8;
 
 // ---------------------------------------------------------------------------
 // Supabase admin client (server-side only)
@@ -32,6 +54,7 @@ export async function buildContext(
   const [
     workspaceResult,
     memberResult,
+    businessState,
     workspaceSummary,
     recentActivity,
     conversationHistory,
@@ -47,6 +70,7 @@ export async function buildContext(
       .eq('workspace_id', workspaceId)
       .eq('user_id', userId)
       .single(),
+    buildBusinessStateDocument(workspaceId),
     buildWorkspaceSummary(workspaceId),
     buildRecentActivity(workspaceId),
     fetchConversationHistory(conversationId),
@@ -78,6 +102,7 @@ export async function buildContext(
       credit_balance: workspace.credit_balance ?? 0,
       last_sync_at: workspace.last_sync_at,
     },
+    businessState,
     workspaceSummary,
     recentActivity,
     conversationHistory,
@@ -85,7 +110,290 @@ export async function buildContext(
 }
 
 // ---------------------------------------------------------------------------
-// Workspace summary from cached data
+// Business State Document (B-041)
+//
+// Queries cached_* tables and compresses workspace data into structured JSON.
+// Target: 1,500–3,000 tokens. Replaces sending raw data to the LLM.
+// ---------------------------------------------------------------------------
+
+export async function buildBusinessStateDocument(
+  workspaceId: string,
+): Promise<BusinessState> {
+  const supabase = getSupabaseAdmin();
+
+  const [tasksResult, membersResult, spacesResult, foldersResult, listsResult, activityResult] =
+    await Promise.all([
+      supabase
+        .from('cached_tasks')
+        .select('id, status, priority, assignees, due_date')
+        .eq('workspace_id', workspaceId),
+      supabase
+        .from('cached_team_members')
+        .select('clickup_id, username, email')
+        .eq('workspace_id', workspaceId),
+      supabase
+        .from('cached_spaces')
+        .select('clickup_id, name')
+        .eq('workspace_id', workspaceId),
+      supabase
+        .from('cached_folders')
+        .select('clickup_id, space_id, name')
+        .eq('workspace_id', workspaceId),
+      supabase
+        .from('cached_lists')
+        .select('clickup_id, space_id, folder_id, name')
+        .eq('workspace_id', workspaceId),
+      fetchRecentActivityCounts(workspaceId),
+    ]);
+
+  const tasks = tasksResult.data ?? [];
+  const members = membersResult.data ?? [];
+  const spaces = spacesResult.data ?? [];
+  const folders = foldersResult.data ?? [];
+  const lists = listsResult.data ?? [];
+
+  // -- Task metrics --------------------------------------------------------
+
+  const now = new Date().toISOString();
+
+  const overdueTasks = tasks.filter(
+    (t) =>
+      t.due_date &&
+      t.due_date < now &&
+      t.status !== 'closed' &&
+      t.status !== 'complete',
+  );
+
+  const unassignedTasks = tasks.filter(
+    (t) => !t.assignees || (Array.isArray(t.assignees) && t.assignees.length === 0),
+  );
+
+  // Status distribution
+  const statusCounts: Record<string, number> = {};
+  for (const task of tasks) {
+    const status = task.status ?? 'unknown';
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+  }
+
+  // Priority distribution (1=urgent, 2=high, 3=normal, 4=low, null=none)
+  const priorityLabels: Record<number, string> = {
+    1: 'urgent',
+    2: 'high',
+    3: 'normal',
+    4: 'low',
+  };
+  const priorityCounts: Record<string, number> = {};
+  for (const task of tasks) {
+    const label = task.priority ? (priorityLabels[task.priority as number] ?? 'unknown') : 'none';
+    priorityCounts[label] = (priorityCounts[label] || 0) + 1;
+  }
+
+  // Assignee distribution — build a clickup_id → username map from members
+  const memberMap = new Map<string, string>();
+  for (const m of members) {
+    memberMap.set(m.clickup_id, m.username);
+  }
+
+  const assigneeCounts: Record<string, number> = {};
+  for (const task of tasks) {
+    if (Array.isArray(task.assignees) && task.assignees.length > 0) {
+      for (const assignee of task.assignees) {
+        const id = typeof assignee === 'string' ? assignee : (assignee as { id?: string })?.id;
+        if (id) {
+          const name = memberMap.get(id) ?? `user-${id.slice(-4)}`;
+          assigneeCounts[name] = (assigneeCounts[name] || 0) + 1;
+        }
+      }
+    }
+  }
+
+  const byAssignee = Object.entries(assigneeCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, MAX_ASSIGNEES)
+    .map(([name, count]) => ({ name, count }));
+
+  // -- Team snapshot -------------------------------------------------------
+
+  const teamMembers = members.map((m) => ({
+    name: m.username,
+    email: m.email ?? null,
+  }));
+
+  // -- Workspace structure (spaces → folders → lists) ----------------------
+
+  const foldersBySpace = new Map<string, typeof folders>();
+  for (const f of folders) {
+    const arr = foldersBySpace.get(f.space_id) ?? [];
+    arr.push(f);
+    foldersBySpace.set(f.space_id, arr);
+  }
+
+  const listsByFolder = new Map<string, typeof lists>();
+  const folderlessListsBySpace = new Map<string, typeof lists>();
+  for (const l of lists) {
+    if (l.folder_id) {
+      const arr = listsByFolder.get(l.folder_id) ?? [];
+      arr.push(l);
+      listsByFolder.set(l.folder_id, arr);
+    } else {
+      const arr = folderlessListsBySpace.get(l.space_id) ?? [];
+      arr.push(l);
+      folderlessListsBySpace.set(l.space_id, arr);
+    }
+  }
+
+  let truncated = false;
+
+  const structureSpaces = spaces.slice(0, MAX_SPACES).map((space) => {
+    const spaceFolders = (foldersBySpace.get(space.clickup_id) ?? [])
+      .slice(0, MAX_FOLDERS_PER_SPACE)
+      .map((f) => ({
+        name: f.name,
+        list_count: (listsByFolder.get(f.clickup_id) ?? []).length,
+      }));
+
+    const folderlessLists = (folderlessListsBySpace.get(space.clickup_id) ?? [])
+      .slice(0, MAX_FOLDERLESS_LISTS)
+      .map((l) => l.name);
+
+    return {
+      name: space.name,
+      folders: spaceFolders,
+      folderless_lists: folderlessLists,
+    };
+  });
+
+  if (spaces.length > MAX_SPACES) truncated = true;
+
+  // -- Build the document --------------------------------------------------
+
+  const doc: BusinessState = {
+    generated_at: new Date().toISOString(),
+    workspace_id: workspaceId,
+    tasks: {
+      total: tasks.length,
+      overdue: overdueTasks.length,
+      unassigned: unassignedTasks.length,
+      by_status: statusCounts,
+      by_priority: priorityCounts,
+      by_assignee: byAssignee,
+    },
+    team: {
+      total_members: members.length,
+      members: teamMembers,
+    },
+    structure: {
+      total_spaces: spaces.length,
+      total_folders: folders.length,
+      total_lists: lists.length,
+      spaces: structureSpaces,
+    },
+    recent_activity: activityResult,
+    _meta: {
+      approx_tokens: 0,
+      truncated,
+    },
+  };
+
+  // Estimate token count and trim if over budget
+  const serialized = JSON.stringify(doc);
+  doc._meta.approx_tokens = Math.ceil(serialized.length / CHARS_PER_TOKEN);
+
+  if (doc._meta.approx_tokens > TOKEN_BUDGET) {
+    return trimToTokenBudget(doc);
+  }
+
+  return doc;
+}
+
+// ---------------------------------------------------------------------------
+// Trim strategy — progressively reduce detail to fit token budget
+// ---------------------------------------------------------------------------
+
+function trimToTokenBudget(doc: BusinessState): BusinessState {
+  const trimmed = { ...doc };
+
+  // Step 1: Trim team member emails
+  trimmed.team = {
+    ...trimmed.team,
+    members: trimmed.team.members.map((m) => ({ name: m.name, email: null })),
+  };
+
+  // Step 2: Reduce assignee list to top 10
+  trimmed.tasks = {
+    ...trimmed.tasks,
+    by_assignee: trimmed.tasks.by_assignee.slice(0, 10),
+  };
+
+  // Step 3: Trim structure — fewer folders, fewer lists
+  trimmed.structure = {
+    ...trimmed.structure,
+    spaces: trimmed.structure.spaces.slice(0, 6).map((s) => ({
+      ...s,
+      folders: s.folders.slice(0, 5),
+      folderless_lists: s.folderless_lists.slice(0, 5),
+    })),
+  };
+
+  // Step 4: If still over, drop member names
+  let serialized = JSON.stringify(trimmed);
+  let approxTokens = Math.ceil(serialized.length / CHARS_PER_TOKEN);
+
+  if (approxTokens > TOKEN_BUDGET) {
+    trimmed.team.members = [];
+  }
+
+  // Step 5: If still over, drop structure spaces detail
+  serialized = JSON.stringify(trimmed);
+  approxTokens = Math.ceil(serialized.length / CHARS_PER_TOKEN);
+
+  if (approxTokens > TOKEN_BUDGET) {
+    trimmed.structure.spaces = [];
+  }
+
+  serialized = JSON.stringify(trimmed);
+  trimmed._meta = {
+    approx_tokens: Math.ceil(serialized.length / CHARS_PER_TOKEN),
+    truncated: true,
+  };
+
+  return trimmed;
+}
+
+// ---------------------------------------------------------------------------
+// Recent activity counts from webhook events (last 24h)
+// ---------------------------------------------------------------------------
+
+async function fetchRecentActivityCounts(
+  workspaceId: string,
+): Promise<{ total_events: number; by_type: Record<string, number> }> {
+  const supabase = getSupabaseAdmin();
+  const twentyFourHoursAgo = new Date(
+    Date.now() - 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const { data: events, error } = await supabase
+    .from('webhook_events')
+    .select('event_type')
+    .eq('workspace_id', workspaceId)
+    .gte('created_at', twentyFourHoursAgo)
+    .limit(100);
+
+  if (error || !events || events.length === 0) {
+    return { total_events: 0, by_type: {} };
+  }
+
+  const byType: Record<string, number> = {};
+  for (const event of events) {
+    const type = event.event_type ?? 'unknown';
+    byType[type] = (byType[type] || 0) + 1;
+  }
+
+  return { total_events: events.length, by_type: byType };
+}
+
+// ---------------------------------------------------------------------------
+// Workspace summary from cached data (legacy text format)
 // ---------------------------------------------------------------------------
 
 export async function buildWorkspaceSummary(
@@ -149,7 +457,7 @@ ${statusLines || '  (no data)'}`;
 }
 
 // ---------------------------------------------------------------------------
-// Recent activity from webhook events (last 24h)
+// Recent activity from webhook events (last 24h) — legacy text format
 // ---------------------------------------------------------------------------
 
 export async function buildRecentActivity(

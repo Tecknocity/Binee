@@ -10,7 +10,7 @@ export { loadBriefingPrompt } from '@/lib/ai/prompts/briefing-prompt';
 export { loadRuleCreationPrompt } from '@/lib/ai/prompts/rule-creation-prompt';
 export { loadDashboardPrompt } from '@/lib/ai/prompts/dashboard-prompt';
 export { loadActionPrompt } from '@/lib/ai/prompts/action-prompt';
-export { buildContext, buildWorkspaceSummary, buildRecentActivity } from '@/lib/ai/context';
+export { buildContext, buildBusinessStateDocument, buildWorkspaceSummary, buildRecentActivity } from '@/lib/ai/context';
 export { BINEE_TOOLS } from '@/lib/ai/tools';
 export { executeTool } from '@/lib/ai/tool-executor';
 export {
