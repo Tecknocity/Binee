@@ -7,6 +7,7 @@ import type {
 import { classifyMessage } from '@/lib/ai/classifier';
 import { getModelForTask, routeToModel } from '@/lib/ai/router';
 import { buildSystemPrompt, buildSetupPrompt, buildHealthPrompt, buildDashboardPrompt } from '@/lib/ai/prompts';
+import { loadSystemPrompt } from '@/lib/ai/prompts/system-prompt';
 import { buildContext } from '@/lib/ai/context';
 import { BINEE_TOOLS } from '@/lib/ai/tools';
 import { executeTool } from '@/lib/ai/tool-executor';
@@ -85,21 +86,10 @@ export async function handleChatMessage(
   // 5. Determine if ClickUp is connected — controls tool availability
   const clickUpConnected = context.workspace.clickup_connected;
 
-  // 6. Build system prompt based on task type
-  let systemPrompt: string;
-  switch (classification.taskType) {
-    case 'setup_request':
-      systemPrompt = buildSetupPrompt(context);
-      break;
-    case 'health_check':
-      systemPrompt = buildHealthPrompt(context);
-      break;
-    case 'dashboard_request':
-      systemPrompt = buildDashboardPrompt(context);
-      break;
-    default:
-      systemPrompt = buildSystemPrompt(context);
-  }
+  // 6. Build system prompt — load from knowledge base with dynamic context
+  const systemPrompt = await loadSystemPrompt(context, {
+    taskType: classification.taskType,
+  });
 
   // 7. Build message history for the API
   const messages: Anthropic.MessageParam[] = [
