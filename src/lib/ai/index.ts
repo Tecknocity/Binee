@@ -22,3 +22,5 @@ export {
   buildKnowledgeContext,
 } from '@/lib/ai/knowledge-base';
 export { knowledgeCache } from '@/lib/ai/knowledge-cache';
+export { assemblePrompt } from '@/lib/ai/prompt-assembler';
+export type { AssembledPrompt, AssemblePromptOptions } from '@/lib/ai/prompt-assembler';
