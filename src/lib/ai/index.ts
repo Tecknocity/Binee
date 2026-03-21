@@ -14,6 +14,14 @@ export { buildContext, buildBusinessStateDocument, buildWorkspaceSummary, buildR
 export { BINEE_TOOLS } from '@/lib/ai/tools';
 export { executeTool } from '@/lib/ai/tool-executor';
 export {
+  isWriteOperation,
+  isBlockedOperation,
+  isReadOnlyOperation,
+  createPendingAction,
+  resolvePendingAction,
+  describeAction,
+} from '@/lib/ai/confirmation';
+export {
   getModulesForTaskType,
   getModule,
   getModulesByPrefix,
