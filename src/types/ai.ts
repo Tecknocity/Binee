@@ -37,6 +37,7 @@ export interface BineeContext {
     credit_balance: number;
     last_sync_at: string | null;
   };
+  businessState: BusinessState;
   workspaceSummary: string;
   recentActivity: string;
   conversationHistory: Array<{
@@ -60,6 +61,56 @@ export interface ToolCallResult {
   result: Record<string, unknown>;
   success: boolean;
   error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Business State Document — compressed workspace context for LLM (B-041)
+// Target: 1,500–3,000 tokens
+// ---------------------------------------------------------------------------
+
+export interface BusinessState {
+  generated_at: string;
+  workspace_id: string;
+
+  /** High-level task metrics */
+  tasks: {
+    total: number;
+    overdue: number;
+    unassigned: number;
+    by_status: Record<string, number>;
+    by_priority: Record<string, number>;
+    by_assignee: Array<{ name: string; count: number }>;
+  };
+
+  /** Team snapshot */
+  team: {
+    total_members: number;
+    members: Array<{ name: string; email: string | null }>;
+  };
+
+  /** Workspace hierarchy: spaces → folders → lists */
+  structure: {
+    total_spaces: number;
+    total_folders: number;
+    total_lists: number;
+    spaces: Array<{
+      name: string;
+      folders: Array<{ name: string; list_count: number }>;
+      folderless_lists: string[];
+    }>;
+  };
+
+  /** Recent activity summary (last 24h) */
+  recent_activity: {
+    total_events: number;
+    by_type: Record<string, number>;
+  };
+
+  /** Token budget metadata */
+  _meta: {
+    approx_tokens: number;
+    truncated: boolean;
+  };
 }
 
 export interface ChatRequest {
