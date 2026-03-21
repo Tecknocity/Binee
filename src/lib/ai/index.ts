@@ -1,5 +1,7 @@
 // AI Engine — public API
 export { handleChatMessage } from '@/lib/ai/chat';
+export { handleChat } from '@/lib/ai/chat-handler';
+export type { ChatHandlerResponse, OrchestrationMetadata } from '@/lib/ai/chat-handler';
 export { classifyMessage } from '@/lib/ai/classifier';
 export { getModelForTask, routeToModel } from '@/lib/ai/router';
 export { buildSystemPrompt, buildSetupPrompt, buildHealthPrompt } from '@/lib/ai/prompts';
