@@ -45,3 +45,18 @@ export {
 export { knowledgeCache } from '@/lib/ai/knowledge-cache';
 export { assemblePrompt } from '@/lib/ai/prompt-assembler';
 export type { AssembledPrompt, AssemblePromptOptions } from '@/lib/ai/prompt-assembler';
+export {
+  validateResponse,
+  buildFallbackResponse,
+  applyHallucinationDisclaimer,
+  checkForHallucinatedNumbers,
+  extractNumbers,
+  extractSourceNumbers,
+  logValidationViolations,
+} from '@/lib/ai/response-validator';
+export type {
+  ValidationResult,
+  ValidationIssue,
+  ValidationIssueType,
+  HallucinationCheckResult,
+} from '@/lib/ai/response-validator';

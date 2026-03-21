@@ -20,6 +20,13 @@ import {
   buildBlockedOperationResult,
   getOperationTrustTier,
 } from '@/lib/ai/confirmation';
+import {
+  validateResponse,
+  buildFallbackResponse,
+  applyHallucinationDisclaimer,
+  logValidationViolations,
+} from '@/lib/ai/response-validator';
+import type { ValidationResult } from '@/lib/ai/response-validator';
 import { createClient } from '@supabase/supabase-js';
 
 // ---------------------------------------------------------------------------
@@ -45,87 +52,6 @@ function getSupabaseAdmin() {
   }
 
   return createClient(url, serviceKey);
-}
-
-// ---------------------------------------------------------------------------
-// Response validation (B-048)
-// ---------------------------------------------------------------------------
-
-interface ValidationResult {
-  valid: boolean;
-  issues: string[];
-}
-
-/**
- * Validate the AI response before returning it to the user.
- *
- * Checks:
- *   - Non-empty content
- *   - No hallucination markers (fabricated data patterns)
- *   - Reasonable length (not excessively short for complex queries)
- *   - No raw JSON/error leakage from tool results
- */
-function validateResponse(
-  content: string,
-  taskType: TaskType,
-  toolCalls: ToolCallResult[],
-): ValidationResult {
-  const issues: string[] = [];
-
-  // Check for empty or whitespace-only responses
-  if (!content || content.trim().length === 0) {
-    issues.push('empty_response');
-  }
-
-  // Check for suspiciously short responses on complex task types
-  const complexTypes: TaskType[] = [
-    'complex_query',
-    'analysis_audit',
-    'strategy',
-    'setup_request',
-    'dashboard_request',
-  ];
-  if (
-    complexTypes.includes(taskType) &&
-    content.trim().length < 20 &&
-    toolCalls.length === 0
-  ) {
-    issues.push('too_short_for_task_type');
-  }
-
-  // Check for raw JSON leakage (tool results accidentally surfaced)
-  const jsonLeakPattern = /^\s*\{[\s\S]*"success"\s*:\s*(true|false)[\s\S]*\}\s*$/;
-  if (jsonLeakPattern.test(content.trim())) {
-    issues.push('raw_json_leakage');
-  }
-
-  // Check for error stack traces leaking through
-  if (
-    content.includes('Error: ') &&
-    content.includes(' at ') &&
-    content.includes('.ts:')
-  ) {
-    issues.push('stack_trace_leakage');
-  }
-
-  return {
-    valid: issues.length === 0,
-    issues,
-  };
-}
-
-/**
- * Produce a safe fallback response when validation fails.
- */
-function buildFallbackResponse(issues: string[]): string {
-  if (issues.includes('empty_response')) {
-    return "I wasn't able to generate a response. Could you try rephrasing your question?";
-  }
-  if (issues.includes('raw_json_leakage') || issues.includes('stack_trace_leakage')) {
-    return 'I encountered an issue processing your request. Please try again.';
-  }
-  // too_short_for_task_type — let it through; it may still be valid
-  return '';
 }
 
 // ---------------------------------------------------------------------------
@@ -404,21 +330,26 @@ export async function handleChat(
   }
 
   // -------------------------------------------------------------------------
-  // Step 8: Validate response (B-048)
+  // Step 8: Validate response — hallucination guard (B-048)
   // -------------------------------------------------------------------------
   const validation = validateResponse(
     finalContent,
     classification.taskType,
     allToolCalls,
+    context.businessState,
   );
 
   if (!validation.valid) {
+    // Log violations for quality monitoring
+    logValidationViolations(classification.taskType, validation.issues, finalContent);
+
+    // Critical issues → replace with fallback
     const fallback = buildFallbackResponse(validation.issues);
     if (fallback) {
-      console.warn(
-        `[chat-handler] Response validation failed: ${validation.issues.join(', ')}`,
-      );
       finalContent = fallback;
+    } else {
+      // Non-critical (e.g. hallucinated numbers) → append disclaimer
+      finalContent = applyHallucinationDisclaimer(finalContent, validation.issues);
     }
   }
 
