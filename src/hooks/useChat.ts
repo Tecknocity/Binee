@@ -21,7 +21,10 @@ export interface ToolCallDisplay {
   description: string;
   status: ToolCallStatus;
   result?: string;
+  resultSummary?: string;
   error?: string;
+  tool_input?: Record<string, unknown>;
+  durationMs?: number;
 }
 
 export interface ActionConfirmationData {
@@ -51,6 +54,79 @@ export interface ChatMessage {
   actionConfirmation?: ActionConfirmationData;
   dashboardChoices?: DashboardChoiceData[];
   selectedDashboardChoice?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// B-054: Human-friendly tool call descriptions & result summaries
+// ---------------------------------------------------------------------------
+
+const TOOL_LABELS: Record<string, { pending: string; success: string; icon: string }> = {
+  clickup_get_tasks: { pending: 'Looking up tasks', success: 'Found tasks', icon: 'search' },
+  clickup_get_spaces: { pending: 'Loading workspace structure', success: 'Loaded workspace', icon: 'folder' },
+  clickup_get_task: { pending: 'Fetching task details', success: 'Retrieved task', icon: 'file' },
+  clickup_get_members: { pending: 'Loading team members', success: 'Loaded members', icon: 'users' },
+  clickup_get_lists: { pending: 'Fetching lists', success: 'Retrieved lists', icon: 'list' },
+  clickup_get_folders: { pending: 'Loading folders', success: 'Loaded folders', icon: 'folder' },
+  clickup_update_task: { pending: 'Updating task', success: 'Task updated', icon: 'edit' },
+  clickup_create_task: { pending: 'Creating task', success: 'Task created', icon: 'plus' },
+  create_task: { pending: 'Creating task', success: 'Task created', icon: 'plus' },
+  update_task: { pending: 'Updating task', success: 'Task updated', icon: 'edit' },
+  assign_task: { pending: 'Assigning task', success: 'Task assigned', icon: 'user' },
+  move_task: { pending: 'Moving task', success: 'Task moved', icon: 'move' },
+  list_dashboards: { pending: 'Checking dashboards', success: 'Found dashboards', icon: 'layout' },
+  create_dashboard_widget: { pending: 'Creating widget', success: 'Widget created', icon: 'plus' },
+  update_dashboard_widget: { pending: 'Updating widget', success: 'Widget updated', icon: 'edit' },
+  write_operation: { pending: 'Executing action', success: 'Action completed', icon: 'check' },
+};
+
+function formatToolCallDescription(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  status: 'pending' | 'success' | 'error',
+): string {
+  const label = TOOL_LABELS[toolName];
+  const base = label
+    ? status === 'pending' ? label.pending : label.success
+    : status === 'pending' ? `Running ${toolName.replace(/_/g, ' ')}` : `Completed ${toolName.replace(/_/g, ' ')}`;
+
+  // Add context from tool_input
+  const context = toolInput.name ?? toolInput.list_name ?? toolInput.title ?? toolInput.assignee_name;
+  if (context && typeof context === 'string') {
+    return `${base}: "${context}"`;
+  }
+  return base;
+}
+
+function formatResultSummary(toolName: string, result: Record<string, unknown>): string {
+  // Extract meaningful counts and details from results
+  if (result.tasks && Array.isArray(result.tasks)) {
+    return `Found ${result.tasks.length} task${result.tasks.length !== 1 ? 's' : ''}`;
+  }
+  if (result.count !== undefined) {
+    return `Found ${result.count} result${result.count !== 1 ? 's' : ''}`;
+  }
+  if (result.task && typeof result.task === 'object') {
+    const task = result.task as Record<string, unknown>;
+    return task.name ? `Task: "${task.name}"` : 'Task retrieved';
+  }
+  if (result.message && typeof result.message === 'string') {
+    return result.message;
+  }
+  if (result.success === true) {
+    return TOOL_LABELS[toolName]?.success ?? 'Completed successfully';
+  }
+  // For string results from mock data
+  if (typeof result === 'string') return result;
+  return TOOL_LABELS[toolName]?.success ?? 'Completed';
+}
+
+function formatErrorMessage(error: string): string {
+  // Simplify common error messages
+  if (error.toLowerCase().includes('rate limit')) return 'Rate limit reached — try again shortly';
+  if (error.toLowerCase().includes('not found')) return 'Resource not found';
+  if (error.toLowerCase().includes('permission')) return 'Permission denied';
+  if (error.toLowerCase().includes('timeout')) return 'Request timed out';
+  return error;
 }
 
 // ---------------------------------------------------------------------------
@@ -404,11 +480,13 @@ export function useChat(conversationId: string | null) {
             id: `tc-${Date.now()}-${i}`,
             tool_name: tc.tool_name,
             description: tc.success
-              ? `Completed ${tc.tool_name}`
-              : `Failed ${tc.tool_name}`,
+              ? formatToolCallDescription(tc.tool_name, tc.tool_input, 'success')
+              : formatToolCallDescription(tc.tool_name, tc.tool_input, 'error'),
             status: tc.success ? ('success' as const) : ('error' as const),
             result: tc.success ? JSON.stringify(tc.result) : undefined,
-            error: tc.error,
+            resultSummary: tc.success ? formatResultSummary(tc.tool_name, tc.result) : undefined,
+            error: tc.error ? formatErrorMessage(tc.error) : undefined,
+            tool_input: tc.tool_input,
           }));
 
         // B-045: If the response includes a pending action, attach it as actionConfirmation
