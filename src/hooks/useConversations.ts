@@ -226,6 +226,35 @@ export function useConversations() {
     [activeConversationId, conversations, supabase, fetchConversations],
   );
 
+  // Rename (update title of) a conversation
+  const renameConversation = useCallback(
+    async (id: string, title: string) => {
+      const trimmed = title.trim();
+      if (!trimmed) return;
+
+      // Optimistic update
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title: trimmed } : c)),
+      );
+
+      if (!id.startsWith('conv-')) {
+        try {
+          const { error } = await supabase
+            .from('conversations')
+            .update({ title: trimmed, updated_at: new Date().toISOString() })
+            .eq('id', id);
+          if (error) {
+            console.error('Failed to rename conversation:', error.message);
+            fetchConversations();
+          }
+        } catch {
+          fetchConversations();
+        }
+      }
+    },
+    [supabase, fetchConversations],
+  );
+
   const setActiveConversation = useCallback((id: string | null) => {
     setActiveConversationId(id);
   }, []);
@@ -236,6 +265,7 @@ export function useConversations() {
     isLoading,
     createConversation,
     deleteConversation,
+    renameConversation,
     setActiveConversation,
     refetch: fetchConversations,
   };
