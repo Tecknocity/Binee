@@ -12,6 +12,7 @@ import MessageThread from './MessageThread';
 import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
 import type { EmptyStateVariant } from './EmptyState';
+import WelcomeMessage from './WelcomeMessage';
 import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
 import UpgradePrompt from '@/components/credits/UpgradePrompt';
 import { Hexagon, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -377,6 +378,13 @@ export default function ChatPage() {
       ? 'no-clickup'
       : 'no-conversations';
 
+  // Show welcome message when ClickUp just synced and this is the first conversation
+  const showWelcome =
+    !hasMessages &&
+    emptyStateVariant === 'no-conversations' &&
+    workspace?.clickup_connected &&
+    conversations.length === 0;
+
   return (
     <div className="flex h-full overflow-hidden bg-navy-base">
       {/* Mobile sidebar overlay */}
@@ -462,14 +470,24 @@ export default function ChatPage() {
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col">
-            <EmptyState
-              variant={emptyStateVariant}
-              firstName={firstName}
-              onSuggestedPrompt={handleSuggestedPrompt}
-            />
+            {showWelcome && workspace ? (
+              <div className="flex-1 flex flex-col items-center justify-center px-6">
+                <WelcomeMessage
+                  firstName={firstName}
+                  workspaceId={workspace.id}
+                  onSuggestedPrompt={handleSuggestedPrompt}
+                />
+              </div>
+            ) : (
+              <EmptyState
+                variant={emptyStateVariant}
+                firstName={firstName}
+                onSuggestedPrompt={handleSuggestedPrompt}
+              />
+            )}
 
-            {/* Show chat input below the welcome empty state */}
-            {emptyStateVariant === 'no-conversations' && (
+            {/* Show chat input below the welcome / empty state */}
+            {(emptyStateVariant === 'no-conversations') && (
               <div className="shrink-0 w-full max-w-2xl mx-auto px-6 pb-6">
                 <ChatInput
                   onSend={handleSend}
