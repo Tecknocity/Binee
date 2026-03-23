@@ -1,19 +1,18 @@
 'use client';
 
 import {
-  MessageSquare,
   Plug,
   CreditCard,
-  Sparkles,
   ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 
-type Variant = 'no-conversations' | 'no-clickup' | 'no-credits';
+export type EmptyStateVariant = 'no-conversations' | 'no-clickup' | 'no-credits';
 
 interface EmptyStateProps {
-  variant: Variant;
+  variant: EmptyStateVariant;
+  firstName?: string;
   onSuggestedPrompt?: (prompt: string) => void;
 }
 
@@ -26,6 +25,7 @@ const SUGGESTED_PROMPTS = [
 
 export default function EmptyState({
   variant,
+  firstName,
   onSuggestedPrompt,
 }: EmptyStateProps) {
   if (variant === 'no-clickup') {
@@ -37,17 +37,20 @@ export default function EmptyState({
         <h2 className="text-xl font-semibold text-text-primary mb-2">
           Connect ClickUp to get started
         </h2>
-        <p className="text-text-secondary max-w-sm mb-6">
+        <p className="text-text-secondary max-w-sm mb-6 text-sm leading-relaxed">
           Binee needs access to your ClickUp workspace to answer questions about
           your tasks, projects, and team activity.
         </p>
         <Link
-          href="/settings/integrations"
+          href="/settings?tab=integrations"
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white font-medium hover:bg-accent-hover transition-colors"
         >
           Connect ClickUp
           <ArrowRight className="w-4 h-4" />
         </Link>
+        <p className="text-xs text-text-muted mt-4 max-w-xs">
+          We use OAuth so your credentials stay secure. You can disconnect at any time.
+        </p>
       </div>
     );
   }
@@ -61,17 +64,20 @@ export default function EmptyState({
         <h2 className="text-xl font-semibold text-text-primary mb-2">
           You&apos;re out of credits
         </h2>
-        <p className="text-text-secondary max-w-sm mb-6">
+        <p className="text-text-secondary max-w-sm mb-6 text-sm leading-relaxed">
           Upgrade your plan or purchase more credits to continue chatting with
           Binee.
         </p>
         <Link
-          href="/billing"
+          href="/settings?tab=billing"
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white font-medium hover:bg-accent-hover transition-colors"
         >
           Upgrade Plan
           <ArrowRight className="w-4 h-4" />
         </Link>
+        <p className="text-xs text-text-muted mt-4 max-w-xs">
+          Free plans include 10 credits per month. Upgrade for unlimited access.
+        </p>
       </div>
     );
   }
@@ -83,7 +89,7 @@ export default function EmptyState({
         <Image src="/Binee__icon__white.svg" alt="Binee" width={36} height={36} unoptimized />
       </div>
       <h2 className="text-xl font-semibold text-text-primary mb-2">
-        Welcome to Binee
+        {firstName ? `Hey ${firstName}, welcome to Binee` : 'Welcome to Binee'}
       </h2>
       <p className="text-text-secondary max-w-md mb-8 text-sm leading-relaxed">
         Your AI workspace assistant. Ask about tasks, track progress, get insights,
