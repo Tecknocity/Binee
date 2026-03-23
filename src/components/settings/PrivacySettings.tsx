@@ -2,8 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { Save, Loader2, Download, Trash2 } from 'lucide-react';
+import { Save, Loader2, Download, Trash2, ShieldCheck, RotateCcw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  getActionPreferences,
+  resetActionPreferences,
+  type ActionPreference,
+} from '@/lib/ai/action-preferences';
 
 export default function PrivacySettings() {
   const { profile, loading: profileLoading, error: profileError, saveProfile } = useUserProfile();
@@ -13,6 +18,14 @@ export default function PrivacySettings() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // Action preferences (B-055)
+  const [actionPrefs, setActionPrefs] = useState<Record<string, ActionPreference>>({});
+
+  // Load action preferences from localStorage
+  useEffect(() => {
+    setActionPrefs(getActionPreferences());
+  }, []);
 
   // Hydrate form from user_profiles
   useEffect(() => {
@@ -105,6 +118,22 @@ export default function PrivacySettings() {
       {/* Divider */}
       <div className="border-t border-border/50" />
 
+      {/* Action Preferences (B-055) */}
+      <ActionPreferencesSection
+        preferences={actionPrefs}
+        onReset={(operationType) => {
+          resetActionPreferences(operationType);
+          setActionPrefs(getActionPreferences());
+        }}
+        onResetAll={() => {
+          resetActionPreferences();
+          setActionPrefs({});
+        }}
+      />
+
+      {/* Divider */}
+      <div className="border-t border-border/50" />
+
       {/* Data management */}
       <div>
         <h2 className="text-lg font-medium text-text-primary mb-4">Data Management</h2>
@@ -150,5 +179,98 @@ export default function PrivacySettings() {
         </button>
       </div>
     </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Action Preferences Section (B-055)
+// ---------------------------------------------------------------------------
+
+const OPERATION_LABELS: Record<string, string> = {
+  create_task: 'Create Task',
+  update_task: 'Update Task',
+  assign_task: 'Assign Task',
+  move_task: 'Move Task',
+  delete_task: 'Delete Task',
+  create_dashboard_widget: 'Create Widget',
+  update_dashboard_widget: 'Update Widget',
+  write_operation: 'Write Operation',
+};
+
+function formatOperationType(toolName: string): string {
+  return OPERATION_LABELS[toolName] ?? toolName.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function ActionPreferencesSection({
+  preferences,
+  onReset,
+  onResetAll,
+}: {
+  preferences: Record<string, ActionPreference>;
+  onReset: (operationType: string) => void;
+  onResetAll: () => void;
+}) {
+  const alwaysAllowEntries = Object.entries(preferences).filter(
+    ([, pref]) => pref === 'always_allow',
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-medium text-text-primary">Action Confirmations</h2>
+          <p className="text-xs text-text-muted mt-1">
+            Operations you&apos;ve set to &quot;Always Allow&quot; will execute without asking for confirmation.
+          </p>
+        </div>
+        {alwaysAllowEntries.length > 0 && (
+          <button
+            type="button"
+            onClick={onResetAll}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary bg-surface border border-border rounded-lg hover:bg-surface-hover transition-colors"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Reset all
+          </button>
+        )}
+      </div>
+
+      {alwaysAllowEntries.length === 0 ? (
+        <div className="flex items-center gap-3 p-4 bg-surface border border-border rounded-xl">
+          <ShieldCheck className="w-5 h-5 text-text-muted shrink-0" />
+          <p className="text-sm text-text-muted">
+            No operations are set to &quot;Always Allow&quot;. All write operations will ask for confirmation.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {alwaysAllowEntries.map(([operationType]) => (
+            <div
+              key={operationType}
+              className="flex items-center justify-between gap-4 p-4 bg-surface border border-border rounded-xl"
+            >
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="w-4 h-4 text-accent shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">
+                    {formatOperationType(operationType)}
+                  </p>
+                  <p className="text-xs text-text-muted font-mono mt-0.5">{operationType}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onReset(operationType)}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-error bg-surface border border-border rounded-lg hover:border-error/30 hover:bg-error/5 transition-colors"
+                title={`Reset "${formatOperationType(operationType)}" to always ask`}
+              >
+                <X className="w-3 h-3" />
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
