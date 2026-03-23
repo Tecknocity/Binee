@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { SendHorizontal } from 'lucide-react';
+import { SendHorizontal, Hexagon } from 'lucide-react';
 
 interface ChatInputProps {
   onSend: (content: string) => void;
@@ -29,6 +29,13 @@ export default function ChatInput({ onSend, disabled, placeholder, autoFocus = t
     }
   }, [autoFocus]);
 
+  // Re-focus after processing completes
+  useEffect(() => {
+    if (!disabled) {
+      textareaRef.current?.focus();
+    }
+  }, [disabled]);
+
   const handleSend = useCallback(() => {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
@@ -42,8 +49,12 @@ export default function ChatInput({ onSend, disabled, placeholder, autoFocus = t
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // Enter sends, Shift+Enter adds newline
+      // Enter or Cmd/Ctrl+Enter sends, Shift+Enter adds newline
       if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         handleSend();
       }
@@ -51,8 +62,21 @@ export default function ChatInput({ onSend, disabled, placeholder, autoFocus = t
     [handleSend],
   );
 
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
+  const modKey = isMac ? '⌘' : 'Ctrl';
+
   return (
     <div className="border-t border-border bg-navy-base/80 backdrop-blur-sm px-4 py-3">
+      {/* Thinking indicator */}
+      {disabled && (
+        <div className="flex items-center gap-2 justify-center mb-2">
+          <Hexagon className="w-3.5 h-3.5 text-accent animate-pulse" />
+          <span className="text-xs text-text-secondary animate-pulse">
+            Binee is thinking...
+          </span>
+        </div>
+      )}
+
       <div className="flex items-end gap-2 max-w-3xl mx-auto">
         <div className="flex-1 relative">
           <textarea
@@ -70,13 +94,15 @@ export default function ChatInput({ onSend, disabled, placeholder, autoFocus = t
           onClick={handleSend}
           disabled={disabled || !value.trim()}
           className="shrink-0 w-10 h-10 rounded-xl bg-accent text-white flex items-center justify-center hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Send (Enter)"
+          title={`Send (${modKey}+Enter)`}
         >
           <SendHorizontal className="w-4 h-4" />
         </button>
       </div>
       <p className="text-center text-[11px] text-text-muted/60 mt-1.5">
         <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Enter</kbd> to send
+        <span className="mx-1.5 text-text-muted/30">|</span>
+        <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">{modKey}</kbd>+<kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Enter</kbd> to send
         <span className="mx-1.5 text-text-muted/30">|</span>
         <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Shift</kbd>+<kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Enter</kbd> for new line
       </p>
