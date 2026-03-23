@@ -10,24 +10,13 @@ import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import ConversationList from './ConversationList';
 import MessageThread from './MessageThread';
 import ChatInput from './ChatInput';
+import EmptyState from './EmptyState';
+import type { EmptyStateVariant } from './EmptyState';
 import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
 import UpgradePrompt from '@/components/credits/UpgradePrompt';
 import { Hexagon, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/client';
 
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Morning';
-  if (hour < 17) return 'Afternoon';
-  return 'Evening';
-}
-
-const SUGGESTED_PROMPTS = [
-  { text: 'Show me all overdue tasks', icon: '🔴' },
-  { text: "Summarize this week's progress", icon: '📊' },
-  { text: 'What are the top priorities for today?', icon: '🎯' },
-  { text: 'Build a dashboard for team performance', icon: '📈' },
-];
 
 /**
  * Interactive workspace setup error screen.
@@ -379,7 +368,14 @@ export default function ChatPage() {
   }
 
   const hasMessages = messages.length > 0;
-  const firstName = user?.display_name?.split(' ')[0] || 'there';
+  const firstName = user?.display_name?.split(' ')[0] || undefined;
+
+  // Determine which empty state variant to show
+  const emptyStateVariant: EmptyStateVariant = isOutOfCredits
+    ? 'no-credits'
+    : workspace && !workspace.clickup_connected
+      ? 'no-clickup'
+      : 'no-conversations';
 
   return (
     <div className="flex h-full overflow-hidden bg-navy-base">
@@ -465,42 +461,21 @@ export default function ChatPage() {
             )}
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center px-6">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center">
-                <Hexagon className="w-5 h-5 text-accent" />
-              </div>
-              <h1 className="text-2xl font-light text-text-primary">
-                {getGreeting()}, {firstName}
-              </h1>
-            </div>
+          <div className="flex-1 min-h-0 flex flex-col">
+            <EmptyState
+              variant={emptyStateVariant}
+              firstName={firstName}
+              onSuggestedPrompt={handleSuggestedPrompt}
+            />
 
-            {/* Chat input — centered */}
-            <div className="w-full max-w-2xl mb-8">
-              {isOutOfCredits ? (
-                <UpgradePrompt />
-              ) : (
+            {/* Show chat input below the welcome empty state */}
+            {emptyStateVariant === 'no-conversations' && (
+              <div className="shrink-0 w-full max-w-2xl mx-auto px-6 pb-6">
                 <ChatInput
                   onSend={handleSend}
                   disabled={isLoading}
                   placeholder="Start a new chat..."
                 />
-              )}
-            </div>
-
-            {/* Suggested prompts */}
-            {!isOutOfCredits && (
-              <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
-                {SUGGESTED_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt.text}
-                    onClick={() => handleSuggestedPrompt(prompt.text)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-surface border border-border hover:border-accent/30 hover:bg-surface-hover transition-all duration-150 text-sm text-text-secondary hover:text-text-primary"
-                  >
-                    <span>{prompt.icon}</span>
-                    <span>{prompt.text}</span>
-                  </button>
-                ))}
               </div>
             )}
           </div>
