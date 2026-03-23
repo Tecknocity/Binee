@@ -269,6 +269,7 @@ export default function ChatPage() {
   const {
     conversations,
     activeConversationId,
+    isLoading: conversationsLoading,
     createConversation,
     deleteConversation,
     setActiveConversation,
@@ -322,14 +323,14 @@ export default function ChatPage() {
   );
 
   const handleSend = useCallback(
-    (content: string) => {
+    async (content: string) => {
       if (isOutOfCredits) {
         setShowCreditsModal(true);
         return;
       }
 
       if (!activeConversationId) {
-        const newId = createConversation();
+        const newId = await createConversation();
         sendMessage(content, newId);
       } else {
         sendMessage(content);
@@ -406,6 +407,7 @@ export default function ChatPage() {
           onSelect={handleSelectConversation}
           onCreate={handleNewChat}
           onDelete={handleDeleteConversation}
+          isLoading={conversationsLoading}
         />
       </aside>
 
