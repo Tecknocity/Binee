@@ -1,12 +1,12 @@
 'use client';
 
 import React from 'react';
-import { Coins } from 'lucide-react';
 import Image from 'next/image';
 import type { ChatMessage, DashboardChoiceData } from '@/hooks/useChat';
 import ToolCallIndicator from './ToolCallIndicator';
 import ActionConfirmation from './ActionConfirmation';
 import DashboardChoiceButtons from './DashboardChoiceButtons';
+import CreditBadge from './CreditBadge';
 
 interface AssistantMessageProps {
   message: ChatMessage;
@@ -286,12 +286,7 @@ export default function AssistantMessage({
           <p className="text-xs text-text-muted">
             {formatTimestamp(message.timestamp)}
           </p>
-          {message.creditsConsumed != null && message.creditsConsumed > 0 && (
-            <span className="inline-flex items-center gap-1 text-xs text-text-muted bg-navy-dark/40 px-2 py-0.5 rounded-full">
-              <Coins className="w-3 h-3" />
-              {message.creditsConsumed} credit{message.creditsConsumed !== 1 ? 's' : ''}
-            </span>
-          )}
+          <CreditBadge creditsConsumed={message.creditsConsumed} />
         </div>
       </div>
     </div>
