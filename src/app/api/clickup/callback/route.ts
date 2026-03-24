@@ -98,7 +98,25 @@ export async function GET(request: NextRequest) {
       console.error("[OAuth] Failed to fetch ClickUp teams:", teamError);
     }
 
-    // Step 5: Register webhooks
+    // Step 5: Create clickup_connections row for sync progress tracking
+    // This MUST exist before sync starts, otherwise progress updates silently fail
+    try {
+      await supabase
+        .from("clickup_connections")
+        .upsert(
+          {
+            workspace_id: workspaceId,
+            clickup_team_id: teamId,
+            sync_status: "idle",
+          },
+          { onConflict: "workspace_id" }
+        );
+    } catch (connError) {
+      console.error("[OAuth] Failed to create clickup_connections row:", connError);
+      // Non-fatal — sync will still work, but onboarding progress UI won't update
+    }
+
+    // Step 6: Register webhooks
     if (teamId) {
       try {
         await registerWebhooks(workspaceId, teamId);
@@ -111,7 +129,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Step 6: Trigger initial sync — fire and forget
+    // Step 7: Trigger initial sync — fire and forget
     performInitialSync(workspaceId)
       .then(async (result) => {
         const now = new Date().toISOString();
@@ -142,7 +160,7 @@ export async function GET(request: NextRequest) {
           .eq("id", workspaceId);
       });
 
-    // Step 7: Redirect to settings with success
+    // Step 8: Redirect to settings with success
     const redirectUrl = new URL("/settings", APP_URL);
     redirectUrl.searchParams.set("success", "clickup_connected");
     return NextResponse.redirect(redirectUrl.toString());

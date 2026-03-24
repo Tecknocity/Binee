@@ -251,6 +251,7 @@ async function updateConnectionProgress(
   const supabase = getSupabaseAdmin();
 
   const updates: Record<string, unknown> = {
+    workspace_id: workspaceId,
     sync_phase: progress.phase,
     sync_current: progress.current,
     sync_total: progress.total,
@@ -267,10 +268,11 @@ async function updateConnectionProgress(
       updates.synced_time_entries = counts.timeEntries;
   }
 
+  // Use upsert to ensure the row exists (handles case where OAuth callback
+  // didn't create it or the row was deleted)
   await supabase
     .from("clickup_connections")
-    .update(updates)
-    .eq("workspace_id", workspaceId);
+    .upsert(updates, { onConflict: "workspace_id" });
 }
 
 async function updateConnectionSyncStatus(
@@ -281,6 +283,7 @@ async function updateConnectionSyncStatus(
   const supabase = getSupabaseAdmin();
 
   const updates: Record<string, unknown> = {
+    workspace_id: workspaceId,
     sync_status: status,
   };
 
@@ -300,10 +303,11 @@ async function updateConnectionSyncStatus(
     updates.sync_completed_at = new Date().toISOString();
   }
 
+  // Use upsert to ensure the row exists (handles case where it wasn't
+  // created during OAuth callback)
   await supabase
     .from("clickup_connections")
-    .update(updates)
-    .eq("workspace_id", workspaceId);
+    .upsert(updates, { onConflict: "workspace_id" });
 }
 
 // ---------------------------------------------------------------------------
