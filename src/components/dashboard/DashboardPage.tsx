@@ -1,119 +1,19 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Plus, MoreVertical, Trash2, GripVertical, LayoutDashboard, Sparkles } from 'lucide-react';
+import { Plus, LayoutDashboard, Sparkles } from 'lucide-react';
 import { useDashboard } from '@/hooks/useDashboard';
 import DashboardSelector from './DashboardSelector';
 import AddWidgetDialog from './AddWidgetDialog';
 import DashboardChatPanel from './DashboardChatPanel';
-import BarChartWidget from './widgets/BarChartWidget';
-import LineChartWidget from './widgets/LineChartWidget';
-import SummaryCardWidget from './widgets/SummaryCardWidget';
-import TableWidget from './widgets/TableWidget';
-import DonutChartWidget from './widgets/DonutChartWidget';
-import TimeTrackingWidget from './widgets/TimeTrackingWidget';
-import WorkloadWidget from './widgets/WorkloadWidget';
-import PriorityBreakdownWidget from './widgets/PriorityBreakdownWidget';
-import ProgressWidget from './widgets/ProgressWidget';
-import RecentActivityWidget from './widgets/RecentActivityWidget';
-
-function WidgetCard({
-  widget,
-  onRemove,
-}: {
-  widget: { id: string; type: string; title: string; config: Record<string, unknown> };
-  onRemove: (id: string) => void;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  function renderContent() {
-    switch (widget.type) {
-      case 'bar':
-        return <BarChartWidget title={widget.title} config={widget.config} />;
-      case 'line':
-        return <LineChartWidget title={widget.title} config={widget.config} />;
-      case 'summary':
-        return <SummaryCardWidget title={widget.title} config={widget.config} />;
-      case 'table':
-        return <TableWidget title={widget.title} config={widget.config} />;
-      case 'donut':
-        return <DonutChartWidget title={widget.title} />;
-      case 'time_tracking':
-        return <TimeTrackingWidget title={widget.title} />;
-      case 'workload':
-        return <WorkloadWidget title={widget.title} />;
-      case 'priority':
-        return <PriorityBreakdownWidget title={widget.title} />;
-      case 'progress':
-        return <ProgressWidget title={widget.title} />;
-      case 'activity':
-        return <RecentActivityWidget title={widget.title} />;
-      default:
-        return (
-          <div className="flex items-center justify-center h-full text-text-muted text-sm">
-            Unknown widget type
-          </div>
-        );
-    }
-  }
-
-  const isSummary = widget.type === 'summary';
-
-  return (
-    <div
-      className={`rounded-2xl bg-surface border border-border overflow-hidden transition-all hover:border-border-light ${
-        widget.type === 'table' ? 'col-span-1 md:col-span-2 lg:col-span-3' : ''
-      } ${
-        widget.type === 'bar' || widget.type === 'line'
-          ? 'col-span-1 md:col-span-1 lg:col-span-1'
-          : ''
-      }`}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/50">
-        <div className="flex items-center gap-2">
-          <GripVertical className="w-4 h-4 text-text-muted/40 cursor-grab" />
-          <h3 className="text-sm font-medium text-text-primary">{widget.title}</h3>
-        </div>
-        <div className="relative">
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Widget options"
-            className="p-1 rounded-md hover:bg-surface-hover text-text-muted hover:text-text-secondary transition-colors"
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full mt-1 w-36 rounded-xl bg-navy-light border border-border shadow-xl z-50 py-1">
-                <button
-                  onClick={() => {
-                    onRemove(widget.id);
-                    setMenuOpen(false);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-surface-hover transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Remove
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className={isSummary ? 'px-5 py-5' : 'p-5'}>{renderContent()}</div>
-    </div>
-  );
-}
+import WidgetGrid from './WidgetGrid';
 
 export default function DashboardPage() {
   const {
     dashboards,
     activeDashboard,
     widgets,
+    isLoading,
     setActiveDashboard,
     createDashboard,
     addWidget,
@@ -122,16 +22,6 @@ export default function DashboardPage() {
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
-
-  // Split widgets into summary vs charts/tables for layout
-  const summaryWidgets = widgets.filter((w) => w.type === 'summary');
-  const chartWidgets = widgets.filter(
-    (w) => w.type === 'bar' || w.type === 'line' || w.type === 'donut' || w.type === 'time_tracking' || w.type === 'priority' || w.type === 'workload'
-  );
-  const tableWidgets = widgets.filter((w) => w.type === 'table');
-  const fullWidthWidgets = widgets.filter(
-    (w) => w.type === 'progress' || w.type === 'activity'
-  );
 
   const handleDashboardUpdated = useCallback(() => {
     // In production, this would refetch dashboard data from Supabase.
@@ -180,44 +70,15 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Summary cards row */}
-      {summaryWidgets.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {summaryWidgets.map((w) => (
-            <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
-          ))}
-        </div>
-      )}
+      {/* Widget grid */}
+      <WidgetGrid
+        widgets={widgets}
+        isLoading={isLoading}
+        onRemoveWidget={removeWidget}
+      />
 
-      {/* Charts row */}
-      {chartWidgets.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          {chartWidgets.map((w) => (
-            <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
-          ))}
-        </div>
-      )}
-
-      {/* Table widgets */}
-      {tableWidgets.length > 0 && (
-        <div className="space-y-4 mb-6">
-          {tableWidgets.map((w) => (
-            <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
-          ))}
-        </div>
-      )}
-
-      {/* Full-width widgets (progress, activity) */}
-      {fullWidthWidgets.length > 0 && (
-        <div className="space-y-4 mb-6">
-          {fullWidthWidgets.map((w) => (
-            <WidgetCard key={w.id} widget={w} onRemove={removeWidget} />
-          ))}
-        </div>
-      )}
-
-      {/* Empty state */}
-      {widgets.length === 0 && (
+      {/* Empty state — only when loaded and no widgets */}
+      {!isLoading && widgets.length === 0 && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-16 h-16 rounded-2xl bg-surface border border-border flex items-center justify-center mb-5">
             <LayoutDashboard className="w-7 h-7 text-text-muted" />
