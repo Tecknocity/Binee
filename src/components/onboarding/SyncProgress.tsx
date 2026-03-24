@@ -18,6 +18,8 @@ import type { FullSyncProgress } from '@/lib/clickup/sync';
 interface SyncProgressProps {
   workspaceId: string;
   onComplete?: () => void;
+  /** When 'onboarding', shows friendly rotating messages and estimated time */
+  variant?: 'default' | 'onboarding';
 }
 
 const SYNC_PHASES = ['spaces', 'folders', 'lists', 'tasks', 'members'] as const;
@@ -30,10 +32,51 @@ const PHASE_CONFIG: Record<string, { label: string; icon: React.ReactNode }> = {
   members: { label: 'Members', icon: <Users className="w-4 h-4" /> },
 };
 
-export function SyncProgress({ workspaceId, onComplete }: SyncProgressProps) {
+const ONBOARDING_MESSAGES = [
+  'Getting to know your workspace...',
+  'Mapping out your projects...',
+  'Learning your team structure...',
+  'Discovering your workflows...',
+  'Cataloging your tasks...',
+  'Almost there...',
+];
+
+/** Estimate remaining sync time based on total items and elapsed time */
+function estimateTimeRemaining(progress: FullSyncProgress): string | null {
+  if (!progress.startedAt || progress.total === 0 || progress.current === 0) return null;
+  const elapsed = Date.now() - new Date(progress.startedAt).getTime();
+  const rate = progress.current / elapsed; // items per ms
+  const remaining = (progress.total - progress.current) / rate;
+  if (remaining < 5_000) return 'a few seconds';
+  if (remaining < 60_000) return `about ${Math.ceil(remaining / 1_000)} seconds`;
+  if (remaining < 120_000) return 'about a minute';
+  return `about ${Math.ceil(remaining / 60_000)} minutes`;
+}
+
+/** Estimate total time for large workspaces before sync data is available */
+function estimateBySize(counts: FullSyncProgress['counts']): string | null {
+  const total = counts.spaces + counts.folders + counts.lists + counts.tasks + counts.members;
+  if (total === 0) return null;
+  if (total > 5_000) return 'This is a large workspace — sync may take a few minutes.';
+  if (total > 1_000) return 'This may take about a minute for a workspace this size.';
+  return null;
+}
+
+export function SyncProgress({ workspaceId, onComplete, variant = 'default' }: SyncProgressProps) {
   const [progress, setProgress] = useState<FullSyncProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [messageIdx, setMessageIdx] = useState(0);
   const completeCalled = useRef(false);
+  const isOnboarding = variant === 'onboarding';
+
+  // Rotate onboarding messages every 4 seconds
+  useEffect(() => {
+    if (!isOnboarding) return;
+    const interval = setInterval(() => {
+      setMessageIdx((i) => (i + 1) % ONBOARDING_MESSAGES.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isOnboarding]);
 
   const fetchProgress = useCallback(async () => {
     try {
@@ -124,9 +167,11 @@ export function SyncProgress({ workspaceId, onComplete }: SyncProgressProps) {
             <div className="w-14 h-14 rounded-full bg-accent/15 flex items-center justify-center mx-auto mb-3">
               <RefreshCw className="w-7 h-7 text-accent animate-spin" />
             </div>
-            <h2 className="text-xl font-semibold text-text-primary">Syncing your workspace...</h2>
+            <h2 className="text-xl font-semibold text-text-primary">
+              {isOnboarding ? ONBOARDING_MESSAGES[messageIdx] : 'Syncing your workspace...'}
+            </h2>
             <p className="text-sm text-text-secondary mt-1">
-              {progress?.message ?? 'Pulling data from ClickUp...'}
+              {progress?.message ?? (isOnboarding ? 'Importing your ClickUp data so Binee can help you.' : 'Pulling data from ClickUp...')}
             </p>
           </>
         )}
@@ -219,6 +264,19 @@ export function SyncProgress({ workspaceId, onComplete }: SyncProgressProps) {
           );
         })}
       </div>
+
+      {/* Estimated time (onboarding variant) */}
+      {isOnboarding && isSyncing && progress && (() => {
+        const timeLeft = estimateTimeRemaining(progress);
+        const sizeNote = estimateBySize(progress.counts);
+        const display = timeLeft ? `Estimated time remaining: ${timeLeft}` : sizeNote;
+        if (!display) return null;
+        return (
+          <div className="mb-4 text-center">
+            <p className="text-xs text-text-muted">{display}</p>
+          </div>
+        );
+      })()}
 
       {/* Error details */}
       {error && (
