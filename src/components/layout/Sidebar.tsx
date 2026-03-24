@@ -474,11 +474,19 @@ export default function Sidebar() {
                 {recentConversations.map((conv) => {
                   const isActive = conv.id === activeConversationId && pathname.startsWith('/chat');
                   return (
-                    <button
+                    <div
                       key={conv.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleSelectConversation(conv.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSelectConversation(conv.id);
+                        }
+                      }}
                       className={cn(
-                        'group w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate relative',
+                        'group w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate relative cursor-pointer',
                         isActive
                           ? 'bg-surface-hover text-text-primary'
                           : 'text-text-secondary hover:bg-surface-hover/50 hover:text-text-primary'
@@ -494,7 +502,7 @@ export default function Sidebar() {
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
-                    </button>
+                    </div>
                   );
                 })}
                 {recentConversations.length === 0 && (
