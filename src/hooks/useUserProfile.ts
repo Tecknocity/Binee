@@ -21,6 +21,7 @@ const DEFAULTS: UserProfileData = {
   daily_digest_time: '18:00',
   allow_training: false,
   chat_history_enabled: true,
+  onboarding_completed: false,
 };
 
 export function useUserProfile() {
@@ -74,6 +75,7 @@ export function useUserProfile() {
           daily_digest_time: data.daily_digest_time ?? DEFAULTS.daily_digest_time,
           allow_training: data.allow_training ?? DEFAULTS.allow_training,
           chat_history_enabled: data.chat_history_enabled ?? DEFAULTS.chat_history_enabled,
+          onboarding_completed: data.onboarding_completed ?? DEFAULTS.onboarding_completed,
         });
       }
 

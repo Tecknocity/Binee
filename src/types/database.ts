@@ -26,6 +26,7 @@ export interface UserProfile {
   daily_digest_time: string;
   allow_training: boolean;
   chat_history_enabled: boolean;
+  onboarding_completed: boolean;
   created_at: string;
   updated_at: string;
 }
