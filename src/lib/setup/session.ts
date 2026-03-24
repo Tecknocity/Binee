@@ -19,8 +19,10 @@ export interface SetupPlan {
 
 export interface ManualStep {
   title: string;
+  description: string;
   instructions: string[];
-  category: 'automation' | 'view' | 'setting' | 'custom_field';
+  category: 'automation' | 'view' | 'setting' | 'custom_field' | 'dashboard';
+  clickUpUrl?: string;
   completed: boolean;
 }
 
