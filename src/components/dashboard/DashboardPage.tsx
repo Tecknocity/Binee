@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Plus, LayoutDashboard, Sparkles } from 'lucide-react';
+import { Plus, LayoutDashboard, Sparkles, Save } from 'lucide-react';
 import { useDashboard } from '@/hooks/useDashboard';
 import DashboardSelector from './DashboardSelector';
 import AddWidgetDialog from './AddWidgetDialog';
@@ -14,20 +14,24 @@ export default function DashboardPage() {
     activeDashboard,
     widgets,
     isLoading,
+    isSaving,
     setActiveDashboard,
     createDashboard,
+    deleteDashboard,
+    renameDashboard,
+    duplicateDashboard,
+    saveLayout,
     addWidget,
     removeWidget,
+    refreshDashboards,
   } = useDashboard();
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   const handleDashboardUpdated = useCallback(() => {
-    // In production, this would refetch dashboard data from Supabase.
-    // For now with mock data, this is a placeholder for the refresh mechanism.
-    // The panel notifies us when widgets are created/updated/deleted via AI.
-  }, []);
+    refreshDashboards();
+  }, [refreshDashboards]);
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -38,6 +42,16 @@ export default function DashboardPage() {
           <p className="text-sm text-text-secondary mt-1">Track your workspace metrics and performance</p>
         </div>
         <div className="flex items-center gap-2">
+          {widgets.length > 0 && (
+            <button
+              onClick={saveLayout}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border hover:border-accent/40 hover:bg-surface-hover text-text-secondary hover:text-text-primary text-sm font-medium transition-all disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              {isSaving ? 'Saving...' : 'Save Layout'}
+            </button>
+          )}
           <button
             onClick={() => setAiPanelOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-surface border border-border hover:border-accent/40 hover:bg-surface-hover text-text-secondary hover:text-text-primary text-sm font-medium transition-all group"
@@ -62,6 +76,9 @@ export default function DashboardPage() {
           activeDashboard={activeDashboard}
           onSelect={setActiveDashboard}
           onCreate={createDashboard}
+          onRename={renameDashboard}
+          onDuplicate={duplicateDashboard}
+          onDelete={deleteDashboard}
         />
         {activeDashboard?.description && (
           <span className="text-sm text-text-muted hidden md:block">

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useAuth } from '@/hooks/useAuth';
 import type { Dashboard, DashboardWidget } from '@/types/database';
 
 // ---------------------------------------------------------------------------
@@ -430,7 +431,7 @@ export function useOverdueTasksData(workspaceId: string | null) {
 }
 
 // ---------------------------------------------------------------------------
-// Hook — dashboard management
+// Hook — dashboard management with persistence
 // ---------------------------------------------------------------------------
 
 export interface DashboardState {
@@ -438,70 +439,134 @@ export interface DashboardState {
   activeDashboard: Dashboard | null;
   widgets: DashboardWidget[];
   isLoading: boolean;
+  isSaving: boolean;
   setActiveDashboard: (id: string) => void;
-  createDashboard: (name: string) => void;
-  deleteDashboard: (id: string) => void;
+  createDashboard: (name: string, description?: string) => Promise<Dashboard | null>;
+  deleteDashboard: (id: string) => Promise<void>;
+  renameDashboard: (id: string, name: string, description?: string) => Promise<void>;
+  duplicateDashboard: (id: string) => Promise<Dashboard | null>;
+  saveLayout: () => Promise<void>;
   addWidget: (config: Partial<DashboardWidget>) => void;
   removeWidget: (id: string) => void;
   updateWidget: (id: string, config: Partial<DashboardWidget>) => void;
+  refreshDashboards: () => Promise<void>;
+}
+
+/** Persist last-active dashboard choice for a user+workspace in Supabase */
+async function persistLastActive(userId: string, workspaceId: string, dashboardId: string) {
+  await supabase
+    .from('user_dashboard_preferences')
+    .upsert(
+      {
+        user_id: userId,
+        workspace_id: workspaceId,
+        last_active_dashboard_id: dashboardId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,workspace_id' }
+    );
+}
+
+/** Load the last-active dashboard id for a user+workspace */
+async function loadLastActive(userId: string, workspaceId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('user_dashboard_preferences')
+    .select('last_active_dashboard_id')
+    .eq('user_id', userId)
+    .eq('workspace_id', workspaceId)
+    .single();
+  return data?.last_active_dashboard_id ?? null;
 }
 
 export function useDashboard(): DashboardState {
   const { workspace_id } = useWorkspace();
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch dashboards and widgets from Supabase
-  useEffect(() => {
+  // Track whether initial load has resolved the last-active dashboard
+  const initialLoadDone = useRef(false);
+
+  // -----------------------------------------------------------------------
+  // Fetch dashboards on mount and resolve which one to activate
+  // -----------------------------------------------------------------------
+  const fetchDashboards = useCallback(async () => {
     if (!workspace_id) { setIsLoading(false); return; }
 
-    (async () => {
-      const { data: dbDashboards } = await supabase
+    const { data: dbDashboards } = await supabase
+      .from('dashboards')
+      .select('*')
+      .eq('workspace_id', workspace_id)
+      .order('created_at', { ascending: true });
+
+    let dashList = (dbDashboards ?? []) as Dashboard[];
+
+    // Create a default dashboard if none exist
+    if (dashList.length === 0) {
+      const { data: newDash } = await supabase
         .from('dashboards')
+        .insert({
+          workspace_id,
+          name: 'Project Overview',
+          description: 'Key project metrics and team performance',
+          layout: [],
+          layout_json: {},
+          is_default: true,
+        })
+        .select()
+        .single();
+      if (newDash) dashList = [newDash as Dashboard];
+    }
+
+    setDashboards(dashList);
+
+    // Determine which dashboard to activate
+    let activeId: string | null = null;
+
+    // 1. Try to load the user's last-active preference
+    if (userId) {
+      activeId = await loadLastActive(userId, workspace_id);
+      // Verify the saved preference still exists
+      if (activeId && !dashList.find((d) => d.id === activeId)) {
+        activeId = null;
+      }
+    }
+
+    // 2. Fall back to the default dashboard
+    if (!activeId) {
+      activeId = dashList.find((d) => d.is_default)?.id ?? dashList[0]?.id ?? null;
+    }
+
+    setActiveDashboardId(activeId);
+    initialLoadDone.current = true;
+
+    // Fetch widgets for the active dashboard
+    if (activeId) {
+      const { data: dbWidgets } = await supabase
+        .from('dashboard_widgets')
         .select('*')
         .eq('workspace_id', workspace_id)
-        .order('created_at', { ascending: true });
+        .eq('dashboard_id', activeId);
+      setWidgets(dbWidgets ?? []);
+    }
 
-      let dashList = dbDashboards ?? [];
+    setIsLoading(false);
+  }, [workspace_id, userId]);
 
-      // Create a default dashboard if none exist
-      if (dashList.length === 0) {
-        const { data: newDash } = await supabase
-          .from('dashboards')
-          .insert({
-            workspace_id,
-            name: 'Project Overview',
-            description: 'Key project metrics and team performance',
-            layout: [],
-            is_default: true,
-          })
-          .select()
-          .single();
-        if (newDash) dashList = [newDash];
-      }
-
-      setDashboards(dashList);
-      const activeId = dashList.find((d) => d.is_default)?.id ?? dashList[0]?.id ?? null;
-      setActiveDashboardId(activeId);
-
-      if (activeId) {
-        const { data: dbWidgets } = await supabase
-          .from('dashboard_widgets')
-          .select('*')
-          .eq('workspace_id', workspace_id)
-          .eq('dashboard_id', activeId);
-        setWidgets(dbWidgets ?? []);
-      }
-
-      setIsLoading(false);
-    })();
-  }, [workspace_id]);
-
-  // Reload widgets when active dashboard changes
   useEffect(() => {
-    if (!workspace_id || !activeDashboardId) return;
+    fetchDashboards();
+  }, [fetchDashboards]);
+
+  // -----------------------------------------------------------------------
+  // Reload widgets when active dashboard changes (after initial load)
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (!workspace_id || !activeDashboardId || !initialLoadDone.current) return;
     (async () => {
       const { data: dbWidgets } = await supabase
         .from('dashboard_widgets')
@@ -514,35 +579,168 @@ export function useDashboard(): DashboardState {
 
   const activeDashboard = dashboards.find((d) => d.id === activeDashboardId) ?? null;
 
+  // -----------------------------------------------------------------------
+  // Switch active dashboard — persists the preference
+  // -----------------------------------------------------------------------
   const setActiveDashboard = useCallback((id: string) => {
     setActiveDashboardId(id);
-  }, []);
+    if (userId && workspace_id) {
+      persistLastActive(userId, workspace_id, id);
+    }
+  }, [userId, workspace_id]);
 
-  const createDashboard = useCallback(async (name: string) => {
-    if (!workspace_id) return;
+  // -----------------------------------------------------------------------
+  // Create a new dashboard
+  // -----------------------------------------------------------------------
+  const createDashboard = useCallback(async (name: string, description?: string): Promise<Dashboard | null> => {
+    if (!workspace_id) return null;
     const { data: newDash } = await supabase
       .from('dashboards')
       .insert({
         workspace_id,
         name,
-        description: null,
+        description: description ?? null,
         layout: [],
+        layout_json: {},
         is_default: false,
       })
       .select()
       .single();
     if (newDash) {
-      setDashboards((prev) => [...prev, newDash]);
-      setActiveDashboardId(newDash.id);
+      const dash = newDash as Dashboard;
+      setDashboards((prev) => [...prev, dash]);
+      setActiveDashboardId(dash.id);
+      if (userId) persistLastActive(userId, workspace_id, dash.id);
+      return dash;
     }
-  }, [workspace_id]);
+    return null;
+  }, [workspace_id, userId]);
 
+  // -----------------------------------------------------------------------
+  // Delete a dashboard (falls back to next available)
+  // -----------------------------------------------------------------------
   const deleteDashboard = useCallback(async (id: string) => {
     await supabase.from('dashboards').delete().eq('id', id);
-    setDashboards((prev) => prev.filter((d) => d.id !== id));
+    setDashboards((prev) => {
+      const remaining = prev.filter((d) => d.id !== id);
+      // If we deleted the active dashboard, switch to next available
+      if (activeDashboardId === id) {
+        const nextId = remaining.find((d) => d.is_default)?.id ?? remaining[0]?.id ?? null;
+        setActiveDashboardId(nextId);
+        if (userId && workspace_id && nextId) {
+          persistLastActive(userId, workspace_id, nextId);
+        }
+      }
+      return remaining;
+    });
     setWidgets((prev) => prev.filter((w) => w.dashboard_id !== id));
+  }, [activeDashboardId, userId, workspace_id]);
+
+  // -----------------------------------------------------------------------
+  // Rename / update a dashboard's metadata
+  // -----------------------------------------------------------------------
+  const renameDashboard = useCallback(async (id: string, name: string, description?: string) => {
+    const updates: Record<string, unknown> = { name };
+    if (description !== undefined) updates.description = description;
+
+    const { data: updated } = await supabase
+      .from('dashboards')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (updated) {
+      setDashboards((prev) => prev.map((d) => (d.id === id ? (updated as Dashboard) : d)));
+    }
   }, []);
 
+  // -----------------------------------------------------------------------
+  // Duplicate a dashboard (copies widgets too)
+  // -----------------------------------------------------------------------
+  const duplicateDashboard = useCallback(async (id: string): Promise<Dashboard | null> => {
+    if (!workspace_id) return null;
+
+    const source = dashboards.find((d) => d.id === id);
+    if (!source) return null;
+
+    // Create the new dashboard
+    const { data: newDash } = await supabase
+      .from('dashboards')
+      .insert({
+        workspace_id,
+        name: `${source.name} (Copy)`,
+        description: source.description,
+        layout: source.layout,
+        layout_json: source.layout_json ?? {},
+        is_default: false,
+      })
+      .select()
+      .single();
+
+    if (!newDash) return null;
+    const dash = newDash as Dashboard;
+
+    // Copy all widgets from source dashboard
+    const { data: sourceWidgets } = await supabase
+      .from('dashboard_widgets')
+      .select('*')
+      .eq('dashboard_id', id)
+      .eq('workspace_id', workspace_id);
+
+    if (sourceWidgets && sourceWidgets.length > 0) {
+      const widgetInserts = sourceWidgets.map((w: DashboardWidget) => ({
+        workspace_id,
+        dashboard_id: dash.id,
+        type: w.type,
+        title: w.title,
+        config: w.config,
+        position: w.position,
+      }));
+      await supabase.from('dashboard_widgets').insert(widgetInserts);
+    }
+
+    setDashboards((prev) => [...prev, dash]);
+    setActiveDashboardId(dash.id);
+    if (userId) persistLastActive(userId, workspace_id, dash.id);
+    return dash;
+  }, [workspace_id, dashboards, userId]);
+
+  // -----------------------------------------------------------------------
+  // Save the current layout snapshot to layout_json
+  // -----------------------------------------------------------------------
+  const saveLayout = useCallback(async () => {
+    if (!activeDashboardId || !workspace_id) return;
+    setIsSaving(true);
+
+    // Snapshot current widget layout as layout_json
+    const layoutSnapshot = {
+      widgets: widgets.map((w) => ({
+        id: w.id,
+        type: w.type,
+        title: w.title,
+        config: w.config,
+        position: w.position,
+      })),
+      savedAt: new Date().toISOString(),
+    };
+
+    const { data: updated } = await supabase
+      .from('dashboards')
+      .update({ layout_json: layoutSnapshot })
+      .eq('id', activeDashboardId)
+      .select()
+      .single();
+
+    if (updated) {
+      setDashboards((prev) => prev.map((d) => (d.id === activeDashboardId ? (updated as Dashboard) : d)));
+    }
+
+    setIsSaving(false);
+  }, [activeDashboardId, workspace_id, widgets]);
+
+  // -----------------------------------------------------------------------
+  // Widget CRUD
+  // -----------------------------------------------------------------------
   const addWidget = useCallback(
     async (config: Partial<DashboardWidget>) => {
       if (!workspace_id || !activeDashboardId) return;
@@ -582,16 +780,29 @@ export function useDashboard(): DashboardState {
     }
   }, []);
 
+  // -----------------------------------------------------------------------
+  // Public refresh function
+  // -----------------------------------------------------------------------
+  const refreshDashboards = useCallback(async () => {
+    setIsLoading(true);
+    await fetchDashboards();
+  }, [fetchDashboards]);
+
   return {
     dashboards,
     activeDashboard,
     widgets,
     isLoading,
+    isSaving,
     setActiveDashboard,
     createDashboard,
     deleteDashboard,
+    renameDashboard,
+    duplicateDashboard,
+    saveLayout,
     addWidget,
     removeWidget,
     updateWidget,
+    refreshDashboards,
   };
 }

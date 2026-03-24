@@ -276,8 +276,18 @@ export interface Dashboard {
   name: string;
   description: string | null;
   layout: Record<string, unknown>[];
+  layout_json: Record<string, unknown>;
   is_default: boolean;
   created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserDashboardPreference {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  last_active_dashboard_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -390,6 +400,7 @@ export interface Tables {
   credit_transactions: CreditTransaction;
   dashboards: Dashboard;
   dashboard_widgets: DashboardWidget;
+  user_dashboard_preferences: UserDashboardPreference;
   health_check_results: HealthCheckResult;
   health_snapshots: HealthSnapshot;
   setup_sessions: SetupSession;
