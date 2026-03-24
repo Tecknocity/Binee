@@ -13,7 +13,8 @@ import {
   FileText,
   Sparkles,
 } from 'lucide-react';
-import type { ExecutionProgress as ExecutionProgressType, ExecutionResult, SetupPlan } from '@/lib/setup/session';
+import type { ExecutionProgress as ExecutionProgressType, ExecutionResult } from '@/lib/setup/session';
+import type { SetupPlan } from '@/lib/setup/types';
 
 interface ExecutionProgressProps {
   progress: ExecutionProgressType | null;
@@ -53,20 +54,8 @@ export function ExecutionProgress({ progress, result, plan }: ExecutionProgressP
         items.push({ name: `${space.name} / ${folder.name}`, type: 'folder' });
         for (const list of folder.lists) {
           items.push({ name: `${folder.name} / ${list.name}`, type: 'list' });
-          for (const task of list.tasks) {
-            items.push({ name: task.name, type: 'task' });
-          }
         }
       }
-      for (const list of space.folderlessLists) {
-        items.push({ name: `${space.name} / ${list.name}`, type: 'list' });
-        for (const task of list.tasks) {
-          items.push({ name: task.name, type: 'task' });
-        }
-      }
-    }
-    for (const doc of plan.docs) {
-      items.push({ name: doc.name, type: 'doc' });
     }
     return items;
   }, [plan]);
