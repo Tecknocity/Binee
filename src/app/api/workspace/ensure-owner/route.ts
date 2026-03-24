@@ -184,6 +184,96 @@ export async function POST(request: NextRequest) {
 
   const actions: string[] = [];
 
+  // ---------------------------------------------------------------------------
+  // Helper: Inherit ClickUp connection from an existing connected workspace.
+  // When a new user signs up and a fresh workspace is created, there may
+  // already be a workspace in the DB with ClickUp tokens (e.g. from a
+  // previous user or a DB reset). Copy the connection fields so the new
+  // user doesn't have to re-authorize ClickUp.
+  // ---------------------------------------------------------------------------
+  async function inheritClickUpConnection(targetWorkspaceId: string): Promise<boolean> {
+    // Check if target already has ClickUp connected
+    const { data: targetWs } = await admin
+      .from('workspaces')
+      .select('clickup_connected')
+      .eq('id', targetWorkspaceId)
+      .single();
+
+    if (targetWs?.clickup_connected) return false; // Already connected
+
+    // Find an existing workspace with a ClickUp connection
+    const { data: connectedWs } = await admin
+      .from('workspaces')
+      .select('id, clickup_access_token, clickup_refresh_token, clickup_token_expires_at, clickup_connected, clickup_team_id, clickup_team_name, clickup_plan_tier, clickup_sync_status, clickup_last_synced_at, last_sync_at, clickup_webhook_id, clickup_webhook_endpoint, clickup_last_webhook_at')
+      .eq('clickup_connected', true)
+      .not('clickup_access_token', 'is', null)
+      .neq('id', targetWorkspaceId)
+      .limit(1)
+      .single();
+
+    if (!connectedWs) return false; // No connected workspace found
+
+    console.log('ensure-owner: inheriting ClickUp connection from workspace', connectedWs.id, 'to', targetWorkspaceId);
+
+    // Copy ClickUp connection fields to the new workspace
+    const { error: copyErr } = await admin
+      .from('workspaces')
+      .update({
+        clickup_access_token: connectedWs.clickup_access_token,
+        clickup_refresh_token: connectedWs.clickup_refresh_token,
+        clickup_token_expires_at: connectedWs.clickup_token_expires_at,
+        clickup_connected: true,
+        clickup_team_id: connectedWs.clickup_team_id,
+        clickup_team_name: connectedWs.clickup_team_name,
+        clickup_plan_tier: connectedWs.clickup_plan_tier,
+        clickup_sync_status: connectedWs.clickup_sync_status,
+        clickup_last_synced_at: connectedWs.clickup_last_synced_at,
+        last_sync_at: connectedWs.last_sync_at,
+        clickup_webhook_id: connectedWs.clickup_webhook_id,
+        clickup_webhook_endpoint: connectedWs.clickup_webhook_endpoint,
+        clickup_last_webhook_at: connectedWs.clickup_last_webhook_at,
+      })
+      .eq('id', targetWorkspaceId);
+
+    if (copyErr) {
+      console.error('ensure-owner: failed to inherit ClickUp connection', copyErr.message);
+      return false;
+    }
+
+    // Also create/copy clickup_connections row for sync progress tracking
+    const { data: existingConn } = await admin
+      .from('clickup_connections')
+      .select('*')
+      .eq('workspace_id', connectedWs.id)
+      .single();
+
+    if (existingConn) {
+      // Copy the connection row for the new workspace
+      const { id: _id, workspace_id: _wsId, created_at: _ca, updated_at: _ua, ...connFields } = existingConn;
+      await admin
+        .from('clickup_connections')
+        .upsert(
+          { workspace_id: targetWorkspaceId, ...connFields },
+          { onConflict: 'workspace_id' }
+        );
+    } else {
+      // Create a minimal clickup_connections row
+      await admin
+        .from('clickup_connections')
+        .upsert(
+          {
+            workspace_id: targetWorkspaceId,
+            clickup_team_id: connectedWs.clickup_team_id,
+            sync_status: connectedWs.clickup_sync_status === 'complete' ? 'complete' : 'idle',
+          },
+          { onConflict: 'workspace_id' }
+        );
+    }
+
+    console.log('ensure-owner: ClickUp connection inherited successfully');
+    return true;
+  }
+
   // Case 3: No workspace at all — create one + member row
   if (!ownedWorkspaces || ownedWorkspaces.length === 0) {
     // If user has member rows for workspaces they don't own (invited),
@@ -224,6 +314,12 @@ export async function POST(request: NextRequest) {
           if (!backfillErr) recheckActions.push(`backfilled_member_for_${ws.id}`);
         }
       }
+      // Try to inherit ClickUp connection for the trigger-created workspace
+      for (const ws of recheck) {
+        const inherited = await inheritClickUpConnection(ws.id);
+        if (inherited) recheckActions.push('inherited_clickup_connection');
+      }
+
       return NextResponse.json({ actions: ['trigger_created_workspace', ...recheckActions] });
     }
 
@@ -313,6 +409,11 @@ export async function POST(request: NextRequest) {
     }
 
     actions.push('created_workspace', 'created_member');
+
+    // Try to inherit ClickUp connection from an existing connected workspace
+    const inherited = await inheritClickUpConnection(newWorkspace.id);
+    if (inherited) actions.push('inherited_clickup_connection');
+
     console.log('ensure-owner: complete —', actions.join(', '));
     return NextResponse.json({ actions });
   }
@@ -374,6 +475,12 @@ export async function POST(request: NextRequest) {
     } else {
       actions.push(`promoted_${member.id}`);
     }
+  }
+
+  // Try to inherit ClickUp connection for owned workspaces that aren't connected yet
+  for (const wsId of ownedIds) {
+    const inherited = await inheritClickUpConnection(wsId);
+    if (inherited) actions.push(`inherited_clickup_for_${wsId}`);
   }
 
   console.log('ensure-owner: complete —', actions.length > 0 ? actions.join(', ') : 'no_changes');
