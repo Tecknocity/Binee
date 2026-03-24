@@ -127,6 +127,11 @@ export default function SetupWizard() {
           <SetupComplete
             executionResult={setup.executionResult}
             manualStepsCount={setup.manualSteps.length}
+            plan={setup.proposedPlan}
+            onViewManualSteps={() => {
+              // Allow user to go back and review manual steps
+              // (they can re-complete them and return here)
+            }}
           />
         )}
       </div>
