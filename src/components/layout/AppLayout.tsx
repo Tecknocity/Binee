@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
+import ClickUpReminderBanner from '@/components/onboarding/ClickUpReminderBanner';
 
 // Pages that need full-height edge-to-edge layout (no padding)
 const FULL_BLEED_PAGES = ['/chat'];
@@ -16,6 +17,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <Header />
+        <ClickUpReminderBanner />
         <main className="flex-1 min-h-0 overflow-auto">
           {isFullBleed ? (
             children

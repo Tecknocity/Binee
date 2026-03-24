@@ -170,8 +170,19 @@ export function useOnboarding(): UseOnboardingReturn {
 
   const skipOnboarding = useCallback(async () => {
     await markOnboardingComplete();
+
+    // Record the skip timestamp so we can show a reminder banner later
+    if (user) {
+      const supabase = supabaseRef.current;
+      await supabase
+        .from('user_profiles')
+        .update({ onboarding_skipped_at: new Date().toISOString() })
+        .eq('user_id', user.id);
+    }
+
     setShouldShow(false);
-  }, [markOnboardingComplete]);
+    router.push('/chat');
+  }, [markOnboardingComplete, user, router]);
 
   return {
     currentStep,
