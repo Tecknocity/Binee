@@ -10,6 +10,8 @@ import {
   Settings,
   Tag,
   ArrowRight,
+  ExternalLink,
+  BarChart3,
 } from 'lucide-react';
 import type { ManualStep, ExecutionResult } from '@/lib/setup/session';
 
@@ -41,6 +43,11 @@ const CATEGORY_META: Record<string, { icon: React.ReactNode; label: string; colo
     icon: <Tag className="w-3 h-3" />,
     label: 'Custom Field',
     color: 'bg-purple-600/15 text-purple-600',
+  },
+  dashboard: {
+    icon: <BarChart3 className="w-3 h-3" />,
+    label: 'Dashboard',
+    color: 'bg-accent/15 text-accent',
   },
 };
 
@@ -119,7 +126,6 @@ export function ManualStepsGuide({
 
 function StepCard({
   step,
-  index,
   onToggle,
 }: {
   step: ManualStep;
@@ -164,6 +170,12 @@ function StepCard({
               {meta.label}
             </span>
           </div>
+          {/* Description — always visible below the title */}
+          {step.description && (
+            <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              {step.description}
+            </p>
+          )}
         </div>
 
         {/* Expand */}
@@ -188,6 +200,19 @@ function StepCard({
               </li>
             ))}
           </ol>
+
+          {/* ClickUp link */}
+          {step.clickUpUrl && (
+            <a
+              href={step.clickUpUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 mt-3 ml-8 text-xs font-medium text-accent hover:text-accent-hover transition-colors"
+            >
+              Open in ClickUp
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
         </div>
       )}
     </div>
