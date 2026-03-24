@@ -141,8 +141,32 @@ export function useOnboarding(): UseOnboardingReturn {
   const completeOnboarding = useCallback(async () => {
     await markOnboardingComplete();
     setShouldShow(false);
+
+    // B-083: Auto-create the first conversation with a welcome message
+    // so the user lands on a real conversation with workspace stats
+    try {
+      const res = await fetch('/api/chat/welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id,
+          user_id: user?.id,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.conversation_id) {
+          router.push(`/chat/${data.conversation_id}`);
+          return;
+        }
+      }
+    } catch {
+      // Fall through to default redirect if welcome creation fails
+    }
+
     router.push('/chat');
-  }, [markOnboardingComplete, router]);
+  }, [markOnboardingComplete, router, workspace_id, user]);
 
   const skipOnboarding = useCallback(async () => {
     await markOnboardingComplete();
