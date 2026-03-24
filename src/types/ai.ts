@@ -44,6 +44,18 @@ export interface BineeContext {
     role: 'user' | 'assistant';
     content: string;
   }>;
+  /** B-070: Active dashboard context, populated when taskType === 'dashboard_request' */
+  activeDashboard?: {
+    id: string;
+    name: string;
+    widgets: Array<{
+      id: string;
+      title: string;
+      type: string;
+      summary_config: Record<string, unknown>;
+    }>;
+  };
+
   /** B-065: Health snapshot data, populated when taskType === 'health_check' */
   healthSnapshot?: {
     health_score: number;

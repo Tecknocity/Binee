@@ -606,47 +606,126 @@ export async function handleUpdateDashboardWidget(
     return { error: `Widget not found: ${fetchError?.message ?? 'unknown'}`, success: false };
   }
 
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  // Capture before state for summary
+  const beforeState = {
+    title: existing.title as string,
+    type: existing.type as string,
+    config: { ...(existing.config as Record<string, unknown>) },
+  };
 
-  if (input.title && typeof input.title === 'string') {
-    updates.title = input.title;
+  const dbUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const existingConfig = { ...(existing.config as Record<string, unknown>) };
+  const changes: string[] = [];
+
+  // B-070: Support both the new `updates` wrapper format and legacy flat format
+  const updates = (input.updates as Record<string, unknown>) ?? input;
+
+  // Apply title change
+  if (updates.title && typeof updates.title === 'string') {
+    dbUpdates.title = updates.title;
+    changes.push(`title: "${beforeState.title}" → "${updates.title}"`);
   }
 
-  if (input.widget_type && typeof input.widget_type === 'string') {
-    const resolvedType = resolveWidgetType(input.widget_type as string);
+  // Apply widget type change
+  const widgetTypeInput = updates.widget_type as string | undefined;
+  if (widgetTypeInput) {
+    const resolvedType = resolveWidgetType(widgetTypeInput);
     if (!resolvedType) {
       return {
-        error: `Unsupported widget type "${input.widget_type}". Supported types: ${SUPPORTED_WIDGET_TYPES.join(', ')}`,
+        error: `Unsupported widget type "${widgetTypeInput}". Supported types: ${SUPPORTED_WIDGET_TYPES.join(', ')}`,
         success: false,
       };
     }
-    updates.type = resolvedType;
+    dbUpdates.type = resolvedType;
+    changes.push(`type: "${beforeState.type}" → "${resolvedType}"`);
   }
 
-  if (input.config && typeof input.config === 'object') {
-    updates.config = {
-      ...(existing.config as Record<string, unknown>),
-      ...(input.config as Record<string, unknown>),
-    };
+  // Apply date_range change
+  if (updates.date_range && typeof updates.date_range === 'object') {
+    const dateRange = updates.date_range as Record<string, unknown>;
+
+    // Handle presets like "last_30_days", "last_7_days", etc.
+    if (dateRange.preset && typeof dateRange.preset === 'string') {
+      const resolved = resolveDatePreset(dateRange.preset);
+      existingConfig.filters = {
+        ...((existingConfig.filters as Record<string, unknown>) ?? {}),
+        date_range: resolved,
+      };
+      changes.push(`date_range: preset "${dateRange.preset}"`);
+    } else {
+      existingConfig.filters = {
+        ...((existingConfig.filters as Record<string, unknown>) ?? {}),
+        date_range: dateRange,
+      };
+      changes.push(`date_range: ${JSON.stringify(dateRange)}`);
+    }
   }
 
-  // If data_query is provided, re-query and merge into config
-  if (input.data_query && typeof input.data_query === 'object') {
+  // Apply filters change
+  if (Array.isArray(updates.filters)) {
+    const filterArray = updates.filters as Array<{ field?: string; value?: unknown }>;
+    const currentFilters = (existingConfig.filters as Record<string, unknown>) ?? {};
+
+    for (const filter of filterArray) {
+      if (filter.field && filter.value !== undefined) {
+        currentFilters[filter.field] = filter.value;
+        changes.push(`filter: ${filter.field} = ${JSON.stringify(filter.value)}`);
+      }
+    }
+    existingConfig.filters = currentFilters;
+  }
+
+  // Apply grouping change
+  if (updates.grouping && typeof updates.grouping === 'string') {
+    const oldGrouping = existingConfig.group_by ?? 'status';
+    existingConfig.group_by = updates.grouping;
+    changes.push(`grouping: "${oldGrouping}" → "${updates.grouping}"`);
+  }
+
+  // Apply sort change
+  if (updates.sort && typeof updates.sort === 'object') {
+    const sort = updates.sort as { by?: string; order?: string };
+    const sortBy = sort.order === 'asc' ? 'value_asc' : sort.order === 'desc' ? 'value_desc' : sort.by === 'name' ? 'name' : 'value_desc';
+    existingConfig.sort_by = sortBy;
+    changes.push(`sort: ${JSON.stringify(sort)}`);
+  }
+
+  // Legacy flat format support: config and data_query
+  if (input.config && typeof input.config === 'object' && !input.updates) {
+    Object.assign(existingConfig, input.config as Record<string, unknown>);
+  }
+  if (input.data_query && typeof input.data_query === 'object' && !input.updates) {
     const dataQuery = input.data_query as DataQuery;
-    const existingConfig = (updates.config ?? existing.config) as Record<string, unknown>;
-    updates.config = {
-      ...existingConfig,
-      data_source: dataQuery.data_source ?? existingConfig.data_source,
-      metric: dataQuery.metric ?? existingConfig.metric,
-      group_by: dataQuery.group_by ?? existingConfig.group_by,
-      filters: dataQuery.filters ?? existingConfig.filters,
-      sort_by: dataQuery.sort_by ?? existingConfig.sort_by,
-    };
+    if (dataQuery.data_source) existingConfig.data_source = dataQuery.data_source;
+    if (dataQuery.metric) existingConfig.metric = dataQuery.metric;
+    if (dataQuery.group_by) existingConfig.group_by = dataQuery.group_by;
+    if (dataQuery.filters) existingConfig.filters = dataQuery.filters;
+    if (dataQuery.sort_by) existingConfig.sort_by = dataQuery.sort_by;
   }
 
+  dbUpdates.config = existingConfig;
+
+  // Re-query cached data if the data query changed (date range, filters, grouping)
+  let refreshedData: { data: Record<string, unknown>[]; summary: Record<string, unknown> } | null = null;
+  const dataQueryChanged = changes.some((c) =>
+    c.startsWith('date_range:') || c.startsWith('filter:') || c.startsWith('grouping:'),
+  );
+
+  if (dataQueryChanged && existingConfig.data_source) {
+    const reQuery: DataQuery = {
+      data_source: existingConfig.data_source as string,
+      metric: existingConfig.metric as string | undefined,
+      group_by: existingConfig.group_by as string | undefined,
+      filters: existingConfig.filters as Record<string, unknown> | undefined,
+      sort_by: existingConfig.sort_by as string | undefined,
+    };
+    refreshedData = await executeDataQuery(reQuery, workspaceId);
+  }
+
+  // Save updated config to Supabase
   const { error: updateError } = await supabase
     .from('dashboard_widgets')
-    .update(updates)
+    .update(dbUpdates)
     .eq('id', widgetId)
     .eq('workspace_id', workspaceId);
 
@@ -660,15 +739,91 @@ export async function handleUpdateDashboardWidget(
     .eq('id', existing.dashboard_id)
     .single();
 
+  const afterTitle = (dbUpdates.title as string) ?? beforeState.title;
+  const afterType = (dbUpdates.type as string) ?? beforeState.type;
+
   return {
     success: true,
     widget: {
       id: widgetId,
-      title: (updates.title as string) ?? existing.title,
-      type: (updates.type as string) ?? existing.type,
+      title: afterTitle,
+      type: afterType,
       dashboard: dashboard?.name ?? 'Unknown',
     },
-    message: `Widget "${(updates.title as string) ?? existing.title}" has been updated on dashboard "${dashboard?.name}".`,
+    before: {
+      title: beforeState.title,
+      type: beforeState.type,
+      config_summary: summarizeConfig(beforeState.config),
+    },
+    after: {
+      title: afterTitle,
+      type: afterType,
+      config_summary: summarizeConfig(existingConfig),
+    },
+    changes,
+    ...(refreshedData ? {
+      refreshed_data: {
+        data_points: refreshedData.data.length,
+        sample: refreshedData.data.slice(0, 5),
+        summary: refreshedData.summary,
+      },
+    } : {}),
+    message: `Widget "${afterTitle}" updated on dashboard "${dashboard?.name}". Changes: ${changes.join(', ') || 'configuration merged'}.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers for update_dashboard_widget
+// ---------------------------------------------------------------------------
+
+function resolveDatePreset(preset: string): { start: string; end: string } {
+  const now = new Date();
+  const end = now.toISOString().split('T')[0];
+  let start: Date;
+
+  switch (preset) {
+    case 'last_7_days':
+      start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case 'last_14_days':
+      start = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+      break;
+    case 'last_30_days':
+      start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      break;
+    case 'last_60_days':
+      start = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+      break;
+    case 'last_90_days':
+      start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      break;
+    case 'this_week': {
+      start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      break;
+    }
+    case 'this_month':
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+    case 'last_month':
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return {
+        start: start.toISOString().split('T')[0],
+        end: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0],
+      };
+    default:
+      start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  }
+
+  return { start: start.toISOString().split('T')[0], end };
+}
+
+function summarizeConfig(config: Record<string, unknown>): Record<string, unknown> {
+  return {
+    data_source: config.data_source ?? 'tasks',
+    group_by: config.group_by ?? 'status',
+    filters: config.filters ?? {},
+    sort_by: config.sort_by ?? null,
   };
 }
 

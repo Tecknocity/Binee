@@ -273,8 +273,27 @@ function buildContextSection(
     }
   }
 
-  // Dashboard context
-  if (dashboardContext) {
+  // B-070: Active dashboard context with widget list
+  if (context.activeDashboard) {
+    const ad = context.activeDashboard;
+    const widgetLines = ad.widgets.map(
+      (w) => `  - "${w.title}" (${w.type}, ID: ${w.id}) — source: ${(w.summary_config.data_source as string) ?? 'tasks'}, group_by: ${(w.summary_config.group_by as string) ?? 'status'}`,
+    );
+
+    const dashSection = [
+      `### Active Dashboard`,
+      `Dashboard: "${ad.name}" (ID: ${ad.id})`,
+      `Widgets (${ad.widgets.length}):`,
+      ...widgetLines,
+    ].join('\n');
+
+    const currentTokens = parts.reduce((sum, p) => sum + estimateTokens(p), 0);
+    const dashTokens = estimateTokens(dashSection);
+    if (currentTokens + dashTokens + 10 <= budget) {
+      parts.push(dashSection);
+    }
+  } else if (dashboardContext) {
+    // Fallback: minimal dashboard context (legacy path)
     parts.push(
       `### Current Dashboard\nDashboard: "${dashboardContext.dashboardName}" (ID: ${dashboardContext.dashboardId})`,
     );

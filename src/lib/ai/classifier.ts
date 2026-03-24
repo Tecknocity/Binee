@@ -31,6 +31,9 @@ const PATTERNS: Record<TaskType, RegExp[]> = {
     /\b(build a dashboard|show me a chart|create a widget|track over time|add a widget|add widget)\b/i,
     /\b(visualize|graph|report|metric|kpi|dashboard|new dashboard|create dashboard)\b/i,
     /\b(burn ?down|velocity|throughput|update widget|delete widget|remove widget|modify widget)\b/i,
+    /\b(change .*(chart|widget|graph|dashboard) to|switch .*(chart|widget) to)\b/i,
+    /\b(add a filter|remove filter|change (the )?date range|last \d+ days|group by|sort by)\b.*\b(widget|chart|dashboard|graph)?\b/i,
+    /\b(edit widget|reconfigure widget|change grouping|update the chart|modify the dashboard)\b/i,
   ],
   analysis_audit: [
     /\b(audit|review|improve|clean up|identify issues)\b/i,
