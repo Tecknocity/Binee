@@ -507,7 +507,7 @@ export function useDashboard(): DashboardState {
     let dashList = (dbDashboards ?? []) as Dashboard[];
 
     // Create a default dashboard if none exist
-    if (dashList.length === 0) {
+    if (dashList.length === 0 && userId) {
       const { data: newDash } = await supabase
         .from('dashboards')
         .insert({
@@ -517,6 +517,7 @@ export function useDashboard(): DashboardState {
           layout: [],
           layout_json: {},
           is_default: true,
+          created_by: userId,
         })
         .select()
         .single();
@@ -593,7 +594,7 @@ export function useDashboard(): DashboardState {
   // Create a new dashboard
   // -----------------------------------------------------------------------
   const createDashboard = useCallback(async (name: string, description?: string): Promise<Dashboard | null> => {
-    if (!workspace_id) return null;
+    if (!workspace_id || !userId) return null;
     const { data: newDash } = await supabase
       .from('dashboards')
       .insert({
@@ -603,6 +604,7 @@ export function useDashboard(): DashboardState {
         layout: [],
         layout_json: {},
         is_default: false,
+        created_by: userId,
       })
       .select()
       .single();
@@ -664,6 +666,7 @@ export function useDashboard(): DashboardState {
     if (!source) return null;
 
     // Create the new dashboard
+    if (!userId) return null;
     const { data: newDash } = await supabase
       .from('dashboards')
       .insert({
@@ -673,6 +676,7 @@ export function useDashboard(): DashboardState {
         layout: source.layout,
         layout_json: source.layout_json ?? {},
         is_default: false,
+        created_by: userId,
       })
       .select()
       .single();
