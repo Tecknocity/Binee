@@ -8,6 +8,7 @@ import {
   Users,
   TrendingUp,
   Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   XAxis,
@@ -60,14 +61,37 @@ function CustomTooltip({ active, payload, label }: any) {
 
 export default function HealthPage() {
   const { workspace_id } = useWorkspace();
-  const { healthResult, metrics, historicalScores, isLoading, lastCheckAt, runCheck } =
+  const { healthResult, metrics, historicalScores, isLoading, error, lastCheckAt, runCheck } =
     useHealth(workspace_id ?? undefined);
+
+  const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+  const sortedIssues = healthResult?.issues
+    ? [...healthResult.issues].sort(
+        (a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3)
+      )
+    : [];
 
   if (isLoading && !healthResult) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
         <Loader2 className="w-6 h-6 text-accent animate-spin" />
         <p className="text-sm text-text-muted">Running health check...</p>
+      </div>
+    );
+  }
+
+  if (error && !healthResult) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
+        <AlertTriangle className="w-6 h-6 text-error" />
+        <p className="text-sm text-text-muted">{error}</p>
+        <button
+          onClick={runCheck}
+          className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Retry
+        </button>
       </div>
     );
   }
@@ -143,19 +167,28 @@ export default function HealthPage() {
       </div>
 
       {/* Issues */}
-      {healthResult && healthResult.issues.length > 0 && (
+      {healthResult && (
         <section>
           <div className="flex items-center gap-2 mb-4">
             <h2 className="text-lg font-semibold text-text-primary">Issues</h2>
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-error/10 text-error">
-              {healthResult.issues.length}
-            </span>
+            {sortedIssues.length > 0 && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-error/10 text-error">
+                {sortedIssues.length}
+              </span>
+            )}
           </div>
-          <div className="space-y-3">
-            {healthResult.issues.map((issue) => (
-              <IssueCard key={issue.id} issue={issue} />
-            ))}
-          </div>
+          {sortedIssues.length > 0 ? (
+            <div className="space-y-3">
+              {sortedIssues.map((issue) => (
+                <IssueCard key={issue.id} issue={issue} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-surface border border-border p-8 flex flex-col items-center gap-2">
+              <CheckCircle2 className="w-8 h-8 text-success" />
+              <p className="text-sm text-text-secondary">No issues detected — your workspace is healthy!</p>
+            </div>
+          )}
         </section>
       )}
 
