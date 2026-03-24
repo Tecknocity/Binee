@@ -55,6 +55,63 @@ export interface StatusPlan {
 }
 
 // ---------------------------------------------------------------------------
+// B-079: Execution step tracking
+// ---------------------------------------------------------------------------
+
+export type ExecutionStepStatus = 'pending' | 'in_progress' | 'success' | 'error' | 'skipped';
+
+export interface ExecutionStep {
+  id: string;
+  type: 'space' | 'folder' | 'list';
+  name: string;
+  parentName?: string;
+  status: ExecutionStepStatus;
+  error?: string;
+  clickupId?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// B-079: Wizard step names
+// ---------------------------------------------------------------------------
+
+export type SetupWizardStep =
+  | 'business_chat'
+  | 'preview'
+  | 'executing'
+  | 'manual_steps'
+  | 'complete';
+
+// ---------------------------------------------------------------------------
+// B-079: Setup session state (persisted to Supabase)
+// ---------------------------------------------------------------------------
+
+export interface SetupSessionState {
+  wizardStep: SetupWizardStep;
+  businessProfile: {
+    businessDescription: string | null;
+    teamSize: string | null;
+    departments: string[] | null;
+    tools: string[] | null;
+    workflows: string[] | null;
+    painPoints: string[] | null;
+  };
+  plan: SetupPlan | null;
+  executionSteps: ExecutionStep[];
+  executionResult: {
+    success: boolean;
+    totalItems: number;
+    successCount: number;
+    errorCount: number;
+  } | null;
+  manualStepsCompleted: number[];
+  conversationId: string;
+  startedAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
