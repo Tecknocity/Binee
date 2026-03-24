@@ -164,7 +164,7 @@ export async function handleChat(
   // -------------------------------------------------------------------------
   // Step 4-5: Build workspace context (B-041) + fetch brain modules (B-KB)
   // -------------------------------------------------------------------------
-  const context = await buildContext(workspace_id, user_id, conversation_id);
+  const context = await buildContext(workspace_id, user_id, conversation_id, classification.taskType);
   const clickUpConnected = context.workspace.clickup_connected;
 
   // -------------------------------------------------------------------------

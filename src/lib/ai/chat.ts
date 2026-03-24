@@ -89,7 +89,7 @@ export async function handleChatMessage(
   }
 
   // 4. Build context
-  const context = await buildContext(workspace_id, user_id, conversation_id);
+  const context = await buildContext(workspace_id, user_id, conversation_id, classification.taskType);
 
   // 5. Determine if ClickUp is connected — controls tool availability
   const clickUpConnected = context.workspace.clickup_connected;
