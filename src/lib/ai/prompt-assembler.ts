@@ -255,6 +255,24 @@ function buildContextSection(
     }
   }
 
+  // B-065: Health snapshot data (populated for health_check task type)
+  if (context.healthSnapshot) {
+    const hs = context.healthSnapshot;
+    const healthJson = JSON.stringify({
+      health_score: hs.health_score,
+      health_factors: hs.health_factors,
+      active_issues: hs.active_issues,
+      critical_count: hs.critical_count,
+      warning_count: hs.warning_count,
+    }, null, 0);
+
+    const currentTokens = parts.reduce((sum, p) => sum + estimateTokens(p), 0);
+    const healthTokens = estimateTokens(healthJson);
+    if (currentTokens + healthTokens + 15 <= budget) {
+      parts.push(`### Health Snapshot\n\`\`\`json\n${healthJson}\n\`\`\``);
+    }
+  }
+
   // Dashboard context
   if (dashboardContext) {
     parts.push(
