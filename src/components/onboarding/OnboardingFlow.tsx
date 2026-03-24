@@ -37,6 +37,9 @@ export default function OnboardingFlow() {
   // If onboarding shouldn't show, render nothing
   if (!onboarding.shouldShow) return null;
 
+  // Only show skip on the ClickUp connect step (step 0) — sync/complete are not skippable
+  const canSkip = onboarding.currentStep === 0 && !onboarding.clickUpConnected;
+
   return (
     <div className="fixed inset-0 z-50 bg-navy-base flex flex-col">
       {/* Header */}
@@ -47,12 +50,14 @@ export default function OnboardingFlow() {
           </div>
           <span className="text-sm font-semibold text-text-primary">Binee</span>
         </div>
-        <button
-          onClick={onboarding.skipOnboarding}
-          className="text-xs text-text-muted hover:text-text-secondary transition-colors"
-        >
-          Skip for now
-        </button>
+        {canSkip && (
+          <button
+            onClick={onboarding.skipOnboarding}
+            className="text-xs text-text-muted hover:text-text-secondary transition-colors"
+          >
+            Skip for now
+          </button>
+        )}
       </div>
 
       {/* Step indicator */}
@@ -68,6 +73,7 @@ export default function OnboardingFlow() {
             loading={onboarding.clickUpLoading}
             onConnect={onboarding.handleClickUpConnect}
             onRefresh={onboarding.refreshClickUpStatus}
+            onSkip={onboarding.skipOnboarding}
           />
         )}
 
@@ -96,11 +102,13 @@ function WelcomeConnectStep({
   loading,
   onConnect,
   onRefresh,
+  onSkip,
 }: {
   connected: boolean;
   loading: boolean;
   onConnect: () => void;
   onRefresh: () => void;
+  onSkip: () => void;
 }) {
   if (loading) {
     return (
@@ -186,6 +194,14 @@ function WelcomeConnectStep({
             </button>
           </div>
         </div>
+
+        {/* Skip link */}
+        <button
+          onClick={onSkip}
+          className="text-xs text-text-muted hover:text-text-secondary transition-colors underline underline-offset-2"
+        >
+          I&apos;ll connect later — take me to chat
+        </button>
       </div>
     </div>
   );
