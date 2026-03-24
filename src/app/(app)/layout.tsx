@@ -5,6 +5,7 @@ import { AuthProvider } from '@/components/auth/AuthProvider';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppLayout from '@/components/layout/AppLayout';
+import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
@@ -32,6 +33,7 @@ export default function AppRouteLayout({ children }: { children: React.ReactNode
         <WorkspaceProvider>
           <SidebarProvider>
             <Suspense fallback={<AppLoadingFallback />}>
+              <OnboardingFlow />
               <AppLayout>{children}</AppLayout>
             </Suspense>
           </SidebarProvider>
