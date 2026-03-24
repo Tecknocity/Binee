@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { SetupPlan as LegacySetupPlan } from './session';
 import type {
   BusinessProfile,
@@ -9,15 +9,23 @@ import { generateManualSteps } from './manual-steps';
 import { getModule, getModulesByPrefix } from '@/lib/ai/knowledge-base';
 
 // ---------------------------------------------------------------------------
-// Anthropic client
+// Anthropic client (lazy — server-only)
 // ---------------------------------------------------------------------------
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
 
 const SONNET_MODEL_ID = 'claude-sonnet-4-6';
 const MAX_TOKENS = 4096;
+
+let _anthropic: Anthropic | null = null;
+
+async function getAnthropicClient(): Promise<Anthropic> {
+  if (!_anthropic) {
+    const { default: AnthropicSDK } = await import('@anthropic-ai/sdk');
+    _anthropic = new AnthropicSDK({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return _anthropic;
+}
 
 // ---------------------------------------------------------------------------
 // KB module keys
@@ -65,6 +73,7 @@ export async function generateSetupPlan(
   const systemPrompt = buildSystemPrompt(setupperContent, templatesContent);
   const userMessage = buildUserMessage(businessProfile);
 
+  const anthropic = await getAnthropicClient();
   const response = await anthropic.messages.create({
     model: SONNET_MODEL_ID,
     max_tokens: MAX_TOKENS,
@@ -74,8 +83,8 @@ export async function generateSetupPlan(
 
   // Step 3 — Parse AI response into structured SetupPlan
   const responseText = response.content
-    .filter((block: { type: string }): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block: Anthropic.TextBlock) => block.text)
+    .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+    .map((block) => block.text)
     .join('');
 
   const plan = parseSetupPlanResponse(responseText);
