@@ -13,6 +13,7 @@ import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
 import type { EmptyStateVariant } from './EmptyState';
 import WelcomeMessage from './WelcomeMessage';
+import WelcomeSuggestions from './WelcomeSuggestions';
 import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
 import UpgradePrompt from '@/components/credits/UpgradePrompt';
 import { Hexagon, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -385,6 +386,12 @@ export default function ChatPage() {
     workspace?.clickup_connected &&
     conversations.length === 0;
 
+  // B-083: Show suggestion cards when the only message is the auto-generated welcome
+  const isWelcomeConversation =
+    messages.length === 1 &&
+    messages[0].role === 'assistant' &&
+    !isLoading;
+
   return (
     <div className="flex h-full overflow-hidden bg-navy-base">
       {/* Mobile sidebar overlay */}
@@ -459,6 +466,10 @@ export default function ChatPage() {
               onAlwaysAllowAction={handleAlwaysAllowAction}
               onDashboardChoice={handleDashboardChoice}
             />
+            {/* B-083: Show suggestion cards after the welcome message */}
+            {isWelcomeConversation && (
+              <WelcomeSuggestions onSuggestedPrompt={handleSuggestedPrompt} />
+            )}
             {isOutOfCredits ? (
               <UpgradePrompt />
             ) : (
