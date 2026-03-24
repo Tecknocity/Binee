@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Plus, Check, LayoutDashboard, Pencil, Copy, Trash2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { ChevronDown, Plus, Check, LayoutDashboard, Pencil, Copy, Trash2, AlertTriangle } from 'lucide-react';
 import type { Dashboard } from '@/types/database';
 
 interface DashboardSelectorProps {
@@ -28,22 +28,37 @@ export default function DashboardSelector({
   const [newName, setNewName] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [deletingDashboard, setDeletingDashboard] = useState<Dashboard | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
+  const closeDropdown = useCallback(() => {
+    setOpen(false);
+    setCreating(false);
+    setNewName('');
+    setRenamingId(null);
+  }, []);
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setCreating(false);
-        setNewName('');
-        setRenamingId(null);
+        closeDropdown();
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        closeDropdown();
+        setDeletingDashboard(null);
       }
     }
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeDropdown]);
 
   useEffect(() => {
     if (creating && inputRef.current) {
@@ -162,7 +177,7 @@ export default function DashboardSelector({
                       )}
                       {onDelete && !d.is_default && dashboards.length > 1 && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); onDelete(d.id); setOpen(false); }}
+                          onClick={(e) => { e.stopPropagation(); setDeletingDashboard(d); }}
                           aria-label={`Delete ${d.name}`}
                           className="p-1.5 rounded-lg hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
                         >
@@ -204,6 +219,47 @@ export default function DashboardSelector({
                 Create Dashboard
               </button>
             )}
+          </div>
+        </div>
+      )}
+      {/* Delete confirmation modal */}
+      {deletingDashboard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setDeletingDashboard(null)}
+          />
+          <div className="relative bg-navy-light border border-border rounded-xl p-6 w-full max-w-sm shadow-2xl mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">Delete Dashboard</h3>
+                <p className="text-xs text-text-muted">This action cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-sm text-text-secondary mb-6">
+              Are you sure you want to delete <span className="font-medium text-text-primary">{deletingDashboard.name}</span>? All widgets on this dashboard will also be removed.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeletingDashboard(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  onDelete?.(deletingDashboard.id);
+                  setDeletingDashboard(null);
+                  closeDropdown();
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
