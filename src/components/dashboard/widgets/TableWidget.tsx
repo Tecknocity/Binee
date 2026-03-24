@@ -1,42 +1,84 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { useOverdueTasksData, type OverdueTask } from '@/hooks/useDashboard';
+import { useOverdueTasksData } from '@/hooks/useDashboard';
 import { useWorkspace } from '@/hooks/useWorkspace';
 
-type SortKey = keyof OverdueTask;
-type SortDir = 'asc' | 'desc';
+interface ColumnDefinition {
+  key: string;
+  label: string;
+  align?: 'left' | 'center' | 'right';
+  format?: 'text' | 'number' | 'priority' | 'date' | 'badge';
+  width?: string;
+  badgeColors?: Record<string, string>;
+}
 
-const priorityColors: Record<string, string> = {
+interface TableWidgetConfig {
+  data?: Array<Record<string, unknown>>;
+  columns?: ColumnDefinition[];
+  sortable?: boolean;
+  defaultSortKey?: string;
+  defaultSortDir?: 'asc' | 'desc';
+  emptyMessage?: string;
+  maxRows?: number;
+}
+
+const defaultPriorityColors: Record<string, string> = {
   urgent: 'bg-error/15 text-error',
   high: 'bg-warning/15 text-warning',
   normal: 'bg-info/15 text-info',
   low: 'bg-surface-hover text-text-muted',
 };
 
+const defaultOverdueColumns: ColumnDefinition[] = [
+  { key: 'name', label: 'Task', align: 'left' },
+  { key: 'assignee', label: 'Assignee', align: 'left' },
+  { key: 'priority', label: 'Priority', align: 'left', format: 'priority' },
+  { key: 'list', label: 'List', align: 'left' },
+  { key: 'daysOverdue', label: 'Overdue', align: 'right', format: 'number' },
+];
+
 interface TableWidgetProps {
   title?: string;
+  config?: TableWidgetConfig;
 }
 
-export default function TableWidget({ title }: TableWidgetProps) {
-  const [sortKey, setSortKey] = useState<SortKey>('daysOverdue');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+export default function TableWidget({ title, config }: TableWidgetProps) {
   const { workspace_id } = useWorkspace();
-  const { data } = useOverdueTasksData(workspace_id);
+  const { data: hookData } = useOverdueTasksData(workspace_id);
 
-  const sorted = [...data].sort((a, b) => {
-    const aVal = a[sortKey];
-    const bVal = b[sortKey];
-    if (typeof aVal === 'number' && typeof bVal === 'number') {
-      return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
-    }
-    return sortDir === 'asc'
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
-  });
+  const data = config?.data ?? hookData;
+  const columns = config?.columns ?? defaultOverdueColumns;
+  const sortable = config?.sortable ?? true;
+  const emptyMessage = config?.emptyMessage ?? 'No data available';
+  const maxRows = config?.maxRows;
 
-  function toggleSort(key: SortKey) {
+  const [sortKey, setSortKey] = useState<string>(
+    config?.defaultSortKey ?? columns[columns.length - 1]?.key ?? ''
+  );
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(config?.defaultSortDir ?? 'desc');
+
+  const sorted = useMemo(() => {
+    const rows = [...data] as Array<Record<string, unknown>>;
+    if (!sortable || !sortKey) return maxRows ? rows.slice(0, maxRows) : rows;
+
+    rows.sort((a, b) => {
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return sortDir === 'asc'
+        ? String(aVal ?? '').localeCompare(String(bVal ?? ''))
+        : String(bVal ?? '').localeCompare(String(aVal ?? ''));
+    });
+
+    return maxRows ? rows.slice(0, maxRows) : rows;
+  }, [data, sortKey, sortDir, sortable, maxRows]);
+
+  function toggleSort(key: string) {
+    if (!sortable) return;
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -45,7 +87,8 @@ export default function TableWidget({ title }: TableWidgetProps) {
     }
   }
 
-  function SortIcon({ col }: { col: SortKey }) {
+  function SortIcon({ col }: { col: string }) {
+    if (!sortable) return null;
     if (sortKey !== col) return <ArrowUpDown className="w-3 h-3 text-text-muted" />;
     return sortDir === 'asc' ? (
       <ArrowUp className="w-3 h-3 text-accent" />
@@ -54,18 +97,53 @@ export default function TableWidget({ title }: TableWidgetProps) {
     );
   }
 
-  const columns: { key: SortKey; label: string; className?: string }[] = [
-    { key: 'name', label: 'Task', className: 'text-left' },
-    { key: 'assignee', label: 'Assignee', className: 'text-left' },
-    { key: 'priority', label: 'Priority', className: 'text-left' },
-    { key: 'list', label: 'List', className: 'text-left' },
-    { key: 'daysOverdue', label: 'Overdue', className: 'text-right' },
-  ];
+  function renderCell(row: Record<string, unknown>, col: ColumnDefinition) {
+    const value = row[col.key];
+    const displayValue = value == null ? '—' : String(value);
+
+    switch (col.format) {
+      case 'priority': {
+        const strVal = String(displayValue).toLowerCase();
+        const colors = col.badgeColors ?? defaultPriorityColors;
+        const colorClass = colors[strVal] ?? 'bg-surface-hover text-text-muted';
+        return (
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colorClass}`}>
+            {String(displayValue)}
+          </span>
+        );
+      }
+      case 'badge': {
+        const strVal = String(displayValue).toLowerCase();
+        const colors = col.badgeColors ?? {};
+        const colorClass = colors[strVal] ?? 'bg-accent/15 text-accent';
+        return (
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colorClass}`}>
+            {String(displayValue)}
+          </span>
+        );
+      }
+      case 'number':
+        return (
+          <span className="font-mono text-text-primary font-medium">
+            {typeof value === 'number' ? value.toLocaleString() : displayValue}
+            {col.key === 'daysOverdue' && typeof value === 'number' ? 'd' : ''}
+          </span>
+        );
+      case 'date':
+        return (
+          <span className="text-text-secondary">
+            {typeof value === 'string' ? new Date(value).toLocaleDateString() : String(displayValue)}
+          </span>
+        );
+      default:
+        return <span>{String(displayValue)}</span>;
+    }
+  }
 
   if (!data.length) {
     return (
       <div className="flex items-center justify-center h-full text-text-muted text-sm">
-        No overdue tasks
+        {emptyMessage}
       </div>
     );
   }
@@ -78,7 +156,10 @@ export default function TableWidget({ title }: TableWidgetProps) {
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`py-2.5 px-3 font-medium text-text-muted text-xs uppercase tracking-wider cursor-pointer hover:text-text-secondary transition-colors ${col.className ?? ''}`}
+                className={`py-2.5 px-3 font-medium text-text-muted text-xs uppercase tracking-wider transition-colors ${
+                  sortable ? 'cursor-pointer hover:text-text-secondary' : ''
+                } ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'}`}
+                style={col.width ? { width: col.width } : undefined}
                 onClick={() => toggleSort(col.key)}
               >
                 <span className="inline-flex items-center gap-1.5">
@@ -90,28 +171,21 @@ export default function TableWidget({ title }: TableWidgetProps) {
           </tr>
         </thead>
         <tbody>
-          {sorted.map((task) => (
+          {sorted.map((row, idx) => (
             <tr
-              key={task.id}
+              key={(row.id as string) ?? idx}
               className="border-b border-border/50 hover:bg-surface-hover/50 transition-colors"
             >
-              <td className="py-2.5 px-3 text-text-primary font-medium max-w-[200px] truncate">
-                {task.name}
-              </td>
-              <td className="py-2.5 px-3 text-text-secondary">{task.assignee}</td>
-              <td className="py-2.5 px-3">
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full font-medium ${priorityColors[task.priority]}`}
+              {columns.map((col) => (
+                <td
+                  key={col.key}
+                  className={`py-2.5 px-3 ${
+                    col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
+                  } ${col.key === columns[0]?.key ? 'text-text-primary font-medium max-w-[200px] truncate' : 'text-text-secondary'}`}
                 >
-                  {task.priority}
-                </span>
-              </td>
-              <td className="py-2.5 px-3 text-text-secondary">{task.list}</td>
-              <td className="py-2.5 px-3 text-right">
-                <span className="text-error font-medium">
-                  {task.daysOverdue}d
-                </span>
-              </td>
+                  {renderCell(row, col)}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>

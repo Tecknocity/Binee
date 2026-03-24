@@ -29,13 +29,13 @@ function WidgetCard({
   function renderContent() {
     switch (widget.type) {
       case 'bar':
-        return <BarChartWidget title={widget.title} />;
+        return <BarChartWidget title={widget.title} config={widget.config} />;
       case 'line':
-        return <LineChartWidget title={widget.title} />;
+        return <LineChartWidget title={widget.title} config={widget.config} />;
       case 'summary':
         return <SummaryCardWidget title={widget.title} config={widget.config} />;
       case 'table':
-        return <TableWidget title={widget.title} />;
+        return <TableWidget title={widget.title} config={widget.config} />;
       case 'donut':
         return <DonutChartWidget title={widget.title} />;
       case 'time_tracking':
