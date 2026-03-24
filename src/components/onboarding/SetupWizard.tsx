@@ -100,8 +100,8 @@ export default function SetupWizard() {
           <StructurePreview
             plan={setup.proposedPlan}
             onApprove={setup.approvePlan}
-            onRequestChanges={setup.requestChanges}
-            onStartOver={setup.restartSetup}
+            onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
+            onReject={setup.restartSetup}
           />
         )}
 
