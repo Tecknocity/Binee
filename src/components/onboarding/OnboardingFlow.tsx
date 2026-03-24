@@ -207,7 +207,7 @@ function SyncStep({
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-2xl">
-        <SyncProgress workspaceId={workspaceId} onComplete={onComplete} />
+        <SyncProgress workspaceId={workspaceId} onComplete={onComplete} variant="onboarding" />
 
         {syncComplete && (
           <div className="mt-4 text-center">
