@@ -299,32 +299,46 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'update_dashboard_widget',
     description:
-      'Update an existing dashboard widget. Can change its title, type, data query, or configuration. Always confirm with the user before updating.',
+      'Update an existing widget\'s configuration. Use this when the user wants to change a widget\'s date range, filters, grouping, sorting, or title. Identify the target widget from the active dashboard context.',
     input_schema: {
       type: 'object' as const,
       properties: {
         widget_id: {
           type: 'string',
-          description: 'The ID of the widget to update',
+          description: 'ID of the widget to update',
         },
-        title: {
-          type: 'string',
-          description: 'New title for the widget',
-        },
-        widget_type: {
-          type: 'string',
-          description: 'New widget type (determined by AI from KB knowledge)',
-        },
-        data_query: {
+        updates: {
           type: 'object',
-          description: 'Updated query definition for what data to display (same structure as create)',
-        },
-        config: {
-          type: 'object',
-          description: 'Updated widget configuration (merged with existing config)',
+          description: 'Config changes to apply to the widget',
+          properties: {
+            title: {
+              type: 'string',
+              description: 'New title for the widget',
+            },
+            date_range: {
+              type: 'object',
+              description: 'New date range filter (e.g. { "start": "2026-02-22", "end": "2026-03-24" } or { "preset": "last_30_days" })',
+            },
+            filters: {
+              type: 'array',
+              description: 'Array of filter objects to apply (e.g. [{ "field": "priority", "value": "urgent" }])',
+            },
+            grouping: {
+              type: 'string',
+              description: 'New grouping dimension (e.g. "status", "assignee", "priority", "list", "day", "week", "month")',
+            },
+            sort: {
+              type: 'object',
+              description: 'Sort configuration (e.g. { "by": "value", "order": "desc" })',
+            },
+            widget_type: {
+              type: 'string',
+              description: 'New widget type (determined by AI from KB knowledge)',
+            },
+          },
         },
       },
-      required: ['widget_id'],
+      required: ['widget_id', 'updates'],
     },
   },
   {

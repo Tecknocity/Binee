@@ -111,6 +111,18 @@ export async function buildContext(
     conversationHistory,
   };
 
+  // B-070: When task is a dashboard request, fetch active dashboard with widgets
+  if (taskType === 'dashboard_request') {
+    try {
+      const activeDashboard = await fetchActiveDashboard(workspaceId);
+      if (activeDashboard) {
+        result.activeDashboard = activeDashboard;
+      }
+    } catch (err) {
+      console.warn('[context] Failed to fetch active dashboard for dashboard_request:', err);
+    }
+  }
+
   // B-065: When task is a health check, fetch health score + active issues
   if (taskType === 'health_check') {
     try {
@@ -558,4 +570,62 @@ async function fetchConversationHistory(
     role: m.role as 'user' | 'assistant',
     content: m.content as string,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// B-070: Active dashboard with widget summaries
+// ---------------------------------------------------------------------------
+
+async function fetchActiveDashboard(
+  workspaceId: string,
+): Promise<{
+  id: string;
+  name: string;
+  widgets: Array<{
+    id: string;
+    title: string;
+    type: string;
+    summary_config: Record<string, unknown>;
+  }>;
+} | null> {
+  const supabase = getSupabaseAdmin();
+
+  // Find the most recently updated dashboard (or default) for this workspace
+  const { data: dashboard } = await supabase
+    .from('dashboards')
+    .select('id, name')
+    .eq('workspace_id', workspaceId)
+    .order('is_default', { ascending: false })
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!dashboard) return null;
+
+  // Fetch all widgets on that dashboard
+  const { data: widgets } = await supabase
+    .from('dashboard_widgets')
+    .select('id, title, type, config')
+    .eq('workspace_id', workspaceId)
+    .eq('dashboard_id', dashboard.id)
+    .order('created_at', { ascending: true });
+
+  return {
+    id: dashboard.id,
+    name: dashboard.name,
+    widgets: (widgets ?? []).map((w) => {
+      const config = (w.config as Record<string, unknown>) ?? {};
+      return {
+        id: w.id,
+        title: w.title,
+        type: w.type,
+        summary_config: {
+          data_source: config.data_source ?? 'tasks',
+          group_by: config.group_by ?? 'status',
+          filters: config.filters ?? {},
+          sort_by: config.sort_by ?? null,
+        },
+      };
+    }),
+  };
 }
