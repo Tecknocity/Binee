@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import type { SetupPlan, ExecutionProgress, ExecutionResult, ManualStep } from '@/lib/setup/session';
+import type { SetupPlan as LegacySetupPlan, ExecutionProgress, ExecutionResult, ManualStep } from '@/lib/setup/session';
 import { executeSetupPlan } from '@/lib/setup/session';
 import { generateDefaultPlan, parseAIResponseToPlan } from '@/lib/setup/planner';
+import type { SetupPlan } from '@/lib/setup/types';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -504,6 +505,12 @@ export function useSetup(): UseSetupReturn {
     window.location.href = '/';
   }, []);
 
+  // Convert legacy plan to B-073 SetupPlan format for StructurePreview
+  const proposedPlanConverted = useMemo<SetupPlan | null>(() => {
+    if (!proposedPlan) return null;
+    return legacyToSetupPlan(proposedPlan);
+  }, [proposedPlan]);
+
   return {
     currentStep,
     clickUpConnected: clickUp.connected,
@@ -511,7 +518,7 @@ export function useSetup(): UseSetupReturn {
     businessDescription,
     businessProfile,
     chatMessages,
-    proposedPlan,
+    proposedPlan: proposedPlanConverted,
     executionProgress,
     executionResult,
     manualSteps,
@@ -526,5 +533,50 @@ export function useSetup(): UseSetupReturn {
     markStepComplete,
     restartSetup,
     goToDashboard,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Legacy → B-073 conversion
+// ---------------------------------------------------------------------------
+
+function legacyToSetupPlan(legacy: LegacySetupPlan): SetupPlan {
+  const defaultStatuses = [
+    { name: 'To Do', color: '#d3d3d3', type: 'open' as const },
+    { name: 'In Progress', color: '#4194f6', type: 'active' as const },
+    { name: 'Review', color: '#f7c948', type: 'active' as const },
+    { name: 'Done', color: '#6bc950', type: 'done' as const },
+    { name: 'Closed', color: '#6b6b80', type: 'closed' as const },
+  ];
+
+  return {
+    business_type: 'general',
+    matched_template: 'default',
+    spaces: legacy.spaces.map((space) => ({
+      name: space.name,
+      folders: [
+        ...space.folders.map((folder) => ({
+          name: folder.name,
+          lists: folder.lists.map((list) => ({
+            name: list.name,
+            statuses: defaultStatuses,
+          })),
+        })),
+        // Convert folderless lists into a "General" folder if they exist
+        ...(space.folderlessLists.length > 0
+          ? [
+              {
+                name: 'General',
+                lists: space.folderlessLists.map((list) => ({
+                  name: list.name,
+                  statuses: defaultStatuses,
+                })),
+              },
+            ]
+          : []),
+      ],
+    })),
+    recommended_clickapps: [],
+    reasoning: '',
   };
 }
