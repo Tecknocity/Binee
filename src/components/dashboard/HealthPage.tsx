@@ -23,6 +23,7 @@ import { useHealth } from '@/hooks/useHealth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import HealthScoreCircle from './HealthScoreCircle';
 import IssueCard from './IssueCard';
+import HealthTrendChart from './HealthTrendChart';
 
 function MetricCard({
   icon: Icon,
@@ -61,7 +62,7 @@ function CustomTooltip({ active, payload, label }: any) {
 
 export default function HealthPage() {
   const { workspace_id } = useWorkspace();
-  const { healthResult, metrics, historicalScores, isLoading, error, lastCheckAt, runCheck } =
+  const { healthResult, metrics, historicalScores, weeklySnapshots, scoreDelta, isLoading, error, lastCheckAt, runCheck } =
     useHealth(workspace_id ?? undefined);
 
   const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
@@ -192,7 +193,15 @@ export default function HealthPage() {
         </section>
       )}
 
-      {/* Trend Chart */}
+      {/* Weekly Trend Chart */}
+      <section>
+        <h2 className="text-lg font-semibold text-text-primary mb-4">
+          Weekly Health Trend
+        </h2>
+        <HealthTrendChart snapshots={weeklySnapshots} delta={scoreDelta} />
+      </section>
+
+      {/* Daily Trend Chart */}
       <section>
         <h2 className="text-lg font-semibold text-text-primary mb-4">
           Health Score Trend (30 days)
