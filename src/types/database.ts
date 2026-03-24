@@ -317,6 +317,16 @@ export interface HealthIssue {
   suggestion: string;
 }
 
+export interface HealthSnapshot {
+  id: string;
+  workspace_id: string;
+  overall_score: number;
+  category_scores: Record<string, number>;
+  previous_score: number | null;
+  snapshot_week: string; // DATE as ISO string (Monday of the week)
+  created_at: string;
+}
+
 export interface SetupSession {
   id: string;
   workspace_id: string;
@@ -381,6 +391,7 @@ export interface Tables {
   dashboards: Dashboard;
   dashboard_widgets: DashboardWidget;
   health_check_results: HealthCheckResult;
+  health_snapshots: HealthSnapshot;
   setup_sessions: SetupSession;
   plan_configurations: PlanConfiguration;
 }
