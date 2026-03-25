@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
 
         if (sub.billing_period === 'monthly') {
           // ---- MONTHLY: Grant credits on every invoice ----
-          await allocateMonthlyCredits(sub.user_id, sub.plan_tier as any);
+          await allocateMonthlyCredits(sub.user_id, sub.plan_tier as PlanTier);
 
         } else if (sub.billing_period === 'annual') {
           // ---- ANNUAL: Stripe only charges once/year ----

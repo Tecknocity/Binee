@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { SetupPlan as LegacySetupPlan, ExecutionProgress, ExecutionResult, ManualStep } from '@/lib/setup/session';
+import type { SetupPlan as SessionSetupPlan, ExecutionProgress, ExecutionResult, ManualStep } from '@/lib/setup/session';
 import { executeSetupPlan } from '@/lib/setup/session';
 import { generateDefaultPlan, parseAIResponseToPlan } from '@/lib/setup/planner';
-import type { SetupPlan } from '@/lib/setup/types';
-import type { SetupWizardStep, SetupSessionState, ExecutionStep } from '@/lib/setup/types';
+import type { SetupPlan as TypedSetupPlan, SetupWizardStep, SetupSessionState, ExecutionStep } from '@/lib/setup/types';
+
+// Both plan formats are used — session.ts (legacy) and types.ts (new B-073)
+type SetupPlan = SessionSetupPlan | TypedSetupPlan;
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -200,7 +202,7 @@ async function loadSessionState(
         workflows: null,
         painPoints: null,
       },
-      plan: (config.plan as SetupPlan) ?? null,
+      plan: (config.plan as SetupSessionState['plan']) ?? null,
       executionSteps: (config.executionSteps as ExecutionStep[]) ?? [],
       executionResult: (config.executionResult as SetupSessionState['executionResult']) ?? null,
       manualStepsCompleted: (config.manualStepsCompleted as number[]) ?? [],
@@ -537,12 +539,12 @@ export function useSetup(): UseSetupReturn {
 
       // Generate plan immediately for template
       setTimeout(() => {
-        const plan = generateDefaultPlan(template);
-        setProposedPlan(plan);
-        setManualSteps(plan.manualSteps);
+        const legacyPlan = generateDefaultPlan(template);
+        setProposedPlan(legacyPlan);
+        setManualSteps(legacyPlan.manualSteps);
         addMessage(
           'assistant',
-          `I've created a workspace structure tailored for your ${template} business. It includes **${plan.spaces.length} spaces** with organized folders, lists, and starter tasks.\n\nLet me show you the full structure for review.`
+          `I've created a workspace structure tailored for your ${template} business. It includes **${legacyPlan.spaces.length} spaces** with organized folders, lists, and starter tasks.\n\nLet me show you the full structure for review.`
         );
         setIsSending(false);
         setCurrentStep(2);
@@ -571,12 +573,12 @@ export function useSetup(): UseSetupReturn {
         const data = await response.json();
         if (data.content) {
           // Try to parse the AI response as a plan
-          const plan = parseAIResponseToPlan(data.content);
-          setProposedPlan(plan);
-          setManualSteps(plan.manualSteps);
+          const parsedPlan = parseAIResponseToPlan(data.content);
+          setProposedPlan(parsedPlan);
+          setManualSteps(parsedPlan.manualSteps);
           addMessage(
             'assistant',
-            `I've designed your workspace structure with **${plan.spaces.length} spaces**, organized folders, lists, and starter tasks.\n\nTake a look and let me know if you'd like any changes.`
+            `I've designed your workspace structure with **${parsedPlan.spaces.length} spaces**, organized folders, lists, and starter tasks.\n\nTake a look and let me know if you'd like any changes.`
           );
           setIsSending(false);
           setCurrentStep(2);
@@ -600,12 +602,12 @@ export function useSetup(): UseSetupReturn {
       planType = 'consulting';
     }
 
-    const plan = generateDefaultPlan(planType);
-    setProposedPlan(plan);
-    setManualSteps(plan.manualSteps);
+    const legacyPlan = generateDefaultPlan(planType);
+    setProposedPlan(legacyPlan);
+    setManualSteps(legacyPlan.manualSteps);
     addMessage(
       'assistant',
-      `I've designed your workspace structure with **${plan.spaces.length} spaces**, organized folders, lists, and starter tasks.\n\nTake a look and let me know if you'd like any changes.`
+      `I've designed your workspace structure with **${legacyPlan.spaces.length} spaces**, organized folders, lists, and starter tasks.\n\nTake a look and let me know if you'd like any changes.`
     );
     setIsSending(false);
     setCurrentStep(2);
@@ -628,7 +630,7 @@ export function useSetup(): UseSetupReturn {
     setCurrentStep(3);
     setIsExecuting(true);
 
-    const result = await executeSetupPlan(workspace_id || 'mock-workspace-id', proposedPlan, (progress) => {
+    const result = await executeSetupPlan(workspace_id || 'mock-workspace-id', proposedPlan as SessionSetupPlan, (progress) => {
       setExecutionProgress({ ...progress });
     });
 
@@ -724,7 +726,7 @@ export function useSetup(): UseSetupReturn {
   // Convert legacy plan to B-073 SetupPlan format for StructurePreview
   const proposedPlanConverted = useMemo<SetupPlan | null>(() => {
     if (!proposedPlan) return null;
-    return legacyToSetupPlan(proposedPlan);
+    return legacyToSetupPlan(proposedPlan as SessionSetupPlan);
   }, [proposedPlan]);
 
   return {
@@ -759,7 +761,7 @@ export function useSetup(): UseSetupReturn {
 // Legacy → B-073 conversion
 // ---------------------------------------------------------------------------
 
-function legacyToSetupPlan(legacy: LegacySetupPlan): SetupPlan {
+function legacyToSetupPlan(legacy: SessionSetupPlan): TypedSetupPlan {
   const defaultStatuses = [
     { name: 'To Do', color: '#d3d3d3', type: 'open' as const },
     { name: 'In Progress', color: '#4194f6', type: 'active' as const },

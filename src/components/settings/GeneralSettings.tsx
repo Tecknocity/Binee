@@ -87,6 +87,7 @@ export default function GeneralSettings() {
   // Hydrate form from user_profiles once loaded
   useEffect(() => {
     if (profileLoading || profileLoaded) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrating form state from fetched profile data
     setPreferredName(profile.preferred_name || user?.display_name?.split(' ')[0] || '');
     setWorkRole(profile.work_role || 'Founder/Owner');
     setPersonalPreferences(profile.personal_preferences || '');

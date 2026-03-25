@@ -14,7 +14,10 @@ import {
 } from 'lucide-react';
 import type { ExecutionProgress as ExecutionProgressType, ExecutionResult } from '@/lib/setup/session';
 import type { ExecutionItem } from '@/lib/setup/executor';
-import type { SetupPlan } from '@/lib/setup/types';
+import type { SetupPlan as TypedSetupPlan } from '@/lib/setup/types';
+import type { SetupPlan as LegacySetupPlan } from '@/lib/setup/session';
+
+type SetupPlan = TypedSetupPlan | LegacySetupPlan;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -160,6 +163,7 @@ export function ExecutionProgress({
       ) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- tracking scroll state after auto-scrolling active item into view
       setHasScrolledOnce(true);
     }
   }, [currentIndex]);

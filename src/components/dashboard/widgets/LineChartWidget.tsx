@@ -85,8 +85,8 @@ export default function LineChartWidget({ title, config }: LineChartWidgetProps)
 
   // Generate unique gradient IDs to avoid collisions with multiple lines
   const gradientIds = useMemo(
-    () => lines.map((_, i) => `lineWidgetGradient-${i}-${Math.random().toString(36).slice(2, 8)}`),
-    [lines.length]
+    () => lines.map((line, i) => `lineWidgetGradient-${i}-${line.dataKey}`),
+    [lines]
   );
 
   if (!data.length) {

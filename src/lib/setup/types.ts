@@ -1,3 +1,5 @@
+import type { SetupPlan as LegacySetupPlan } from '@/lib/setup/session';
+
 // ---------------------------------------------------------------------------
 // B-073: AI Setup Planner types
 // ---------------------------------------------------------------------------
@@ -97,7 +99,7 @@ export interface SetupSessionState {
     workflows: string[] | null;
     painPoints: string[] | null;
   };
-  plan: SetupPlan | null;
+  plan: SetupPlan | LegacySetupPlan | null;
   executionSteps: ExecutionStep[];
   executionResult: {
     success: boolean;

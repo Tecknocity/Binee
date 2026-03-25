@@ -94,6 +94,8 @@ export interface OrchestrationMetadata {
 // ---------------------------------------------------------------------------
 
 export interface ChatHandlerResponse extends AssistantResponse {
+  /** Billing result metadata */
+  _billing?: unknown;
   /** Orchestration metadata for debugging and observability */
   _orchestration?: OrchestrationMetadata;
 }

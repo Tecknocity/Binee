@@ -6,7 +6,7 @@ import type { ChatMessage, DashboardChoiceData } from '@/hooks/useChat';
 import ToolCallIndicator from './ToolCallIndicator';
 import ActionConfirmation from './ActionConfirmation';
 import DashboardChoiceButtons from './DashboardChoiceButtons';
-import CreditBadge from './CreditBadge';
+import CreditBadge from './MessageCreditBadge';
 
 interface AssistantMessageProps {
   message: ChatMessage;

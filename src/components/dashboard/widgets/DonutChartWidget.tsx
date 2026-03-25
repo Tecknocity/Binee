@@ -12,7 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
   'Blocked': '#EF4444',
 };
 
-function CustomTooltip({ active, payload }: any) {
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number }> }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-lg bg-navy-dark border border-border px-3 py-2 shadow-lg">

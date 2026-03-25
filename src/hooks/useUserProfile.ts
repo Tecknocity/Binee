@@ -37,6 +37,7 @@ export function useUserProfile() {
   // Load profile on mount when user is available
   useEffect(() => {
     if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- setting loading false when no user is present
       setLoading(false);
       return;
     }
@@ -87,6 +88,7 @@ export function useUserProfile() {
   }, [user?.id]);
 
   // Upsert profile data
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- deps intentionally exclude full user object to avoid unnecessary re-creation
   const saveProfile = useCallback(async (updates: Partial<UserProfileData>) => {
     if (!user) return { error: 'Not authenticated' };
 

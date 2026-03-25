@@ -14,20 +14,17 @@ interface CreditIndicatorProps {
 export default function CreditIndicator({ balance }: CreditIndicatorProps) {
   const [animating, setAnimating] = useState(false);
   const prevBalance = useRef(balance);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   useEffect(() => {
     // Only animate when balance decreases (deduction)
     if (prevBalance.current > balance) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- animation trigger on balance change
       setAnimating(true);
-      const timer = setTimeout(() => setAnimating(false), 1200);
-      return () => clearTimeout(timer);
+      timerRef.current = setTimeout(() => setAnimating(false), 1200);
     }
     prevBalance.current = balance;
-  }, [balance]);
-
-  // Update ref after effect runs
-  useEffect(() => {
-    prevBalance.current = balance;
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [balance]);
 
   if (!animating) return null;

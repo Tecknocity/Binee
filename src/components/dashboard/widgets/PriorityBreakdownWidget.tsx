@@ -20,12 +20,12 @@ const PRIORITY_COLORS = {
   low: '#6B6B80',
 };
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-lg bg-navy-dark border border-border px-3 py-2 shadow-lg">
       <p className="text-xs text-text-muted mb-1.5">{label}</p>
-      {payload.map((entry: any) => (
+      {payload.map((entry) => (
         <p key={entry.name} className="text-xs text-text-primary flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
           {entry.name}: {entry.value}
@@ -35,10 +35,10 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-function CustomLegend({ payload }: any) {
+function CustomLegend({ payload }: { payload?: Array<{ value: string; color: string }> }) {
   return (
     <div className="flex items-center justify-center gap-4 mt-2">
-      {payload?.map((entry: any) => (
+      {payload?.map((entry) => (
         <div key={entry.value} className="flex items-center gap-1.5 text-[11px] text-text-muted">
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
           {entry.value}

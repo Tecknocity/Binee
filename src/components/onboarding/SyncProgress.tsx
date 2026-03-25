@@ -96,6 +96,7 @@ export function SyncProgress({ workspaceId, onComplete, variant = 'default' }: S
 
   // Poll every 2 seconds while syncing
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchProgress is an async data fetch that sets state on completion
     fetchProgress();
     const interval = setInterval(fetchProgress, 2000);
     return () => clearInterval(interval);

@@ -379,6 +379,66 @@ export interface AddCreditsResult {
   added?: number;
 }
 
+// Billing types — mirrors user-scoped billing tables (migration 024)
+export interface UserCreditAccount {
+  id: string;
+  user_id: string;
+  balance: number;
+  lifetime_credits: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserSubscription {
+  id: string;
+  user_id: string;
+  plan_tier: '50' | '100' | '250' | '500' | '1000';
+  billing_period: 'monthly' | 'annual';
+  status: 'active' | 'canceled' | 'past_due' | 'trialing';
+  stripe_customer_id: string | null;
+  payment_provider_id: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  annual_end_date: string | null;
+  last_credit_allocation_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserCreditTransaction {
+  id: string;
+  user_id: string;
+  amount: number;
+  balance_after: number;
+  type: string;
+  description: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface CreditUsage {
+  id: string;
+  user_id: string;
+  session_id: string | null;
+  action_type: string;
+  credits_used: number;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface WeeklyUsageSummary {
+  id: string;
+  workspace_id: string;
+  week_start: string;
+  total_credits: number;
+  chat_credits: number;
+  health_check_credits: number;
+  setup_credits: number;
+  dashboard_credits: number;
+  briefing_credits: number;
+  created_at: string;
+}
+
 // Supabase Tables type map for client typing
 export interface Tables {
   profiles: Profile;
@@ -406,4 +466,9 @@ export interface Tables {
   health_snapshots: HealthSnapshot;
   setup_sessions: SetupSession;
   plan_configurations: PlanConfiguration;
+  user_credit_accounts: UserCreditAccount;
+  user_subscriptions: UserSubscription;
+  user_credit_transactions: UserCreditTransaction;
+  credit_usage: CreditUsage;
+  weekly_usage_summaries: WeeklyUsageSummary;
 }

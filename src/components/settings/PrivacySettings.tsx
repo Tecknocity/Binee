@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { Save, Loader2, Download, Trash2, ShieldCheck, RotateCcw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,23 +17,20 @@ export default function PrivacySettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [profileLoaded, setProfileLoaded] = useState(false);
+  const profileHydrated = useRef(false);
 
   // Action preferences (B-055)
-  const [actionPrefs, setActionPrefs] = useState<Record<string, ActionPreference>>({});
+  const [actionPrefs, setActionPrefs] = useState<Record<string, ActionPreference>>(getActionPreferences);
 
-  // Load action preferences from localStorage
+  // Hydrate form from user_profiles once loaded
   useEffect(() => {
-    setActionPrefs(getActionPreferences());
-  }, []);
-
-  // Hydrate form from user_profiles
-  useEffect(() => {
-    if (profileLoading || profileLoaded) return;
+    if (profileLoading || profileHydrated.current) return;
+    profileHydrated.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration from async profile data
     setAllowTraining(profile.allow_training);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration from async profile data
     setChatHistory(profile.chat_history_enabled);
-    setProfileLoaded(true);
-  }, [profileLoading, profileLoaded, profile]);
+  }, [profileLoading, profile]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

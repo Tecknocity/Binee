@@ -74,6 +74,7 @@ function SearchDialog({
   // Focus input when opened
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting search query when modal opens
       setQuery('');
       setTimeout(() => inputRef.current?.focus(), 50);
     }

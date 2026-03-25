@@ -1,9 +1,11 @@
 'use client';
 
+/* eslint-disable react-hooks/set-state-in-effect -- all hooks in this file follow async-data-fetch-then-setState pattern inside useEffect */
+
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/components/auth/AuthProvider';
 import type { Dashboard, DashboardWidget } from '@/types/database';
 
 // ---------------------------------------------------------------------------

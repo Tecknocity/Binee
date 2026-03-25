@@ -14,7 +14,10 @@ import {
   List,
 } from 'lucide-react';
 import type { ExecutionResult } from '@/lib/setup/session';
-import type { SetupPlan } from '@/lib/setup/types';
+import type { SetupPlan as TypedSetupPlan } from '@/lib/setup/types';
+import type { SetupPlan as LegacySetupPlan } from '@/lib/setup/session';
+
+type SetupPlan = TypedSetupPlan | LegacySetupPlan;
 
 // ---------------------------------------------------------------------------
 // Types

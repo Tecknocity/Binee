@@ -150,7 +150,6 @@ export async function updateModule(
     .update({
       content,
       token_estimate: tokenEstimate,
-      version: supabase.rpc ? undefined : undefined, // version bump handled below
       updated_at: new Date().toISOString(),
     })
     .eq('module_key', moduleKey);

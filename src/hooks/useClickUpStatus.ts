@@ -27,6 +27,7 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
     loading: true,
   });
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- useCallback deps intentionally include workspace object fields for fallback
   const fetchStatus = useCallback(async () => {
     if (!workspace_id) {
       setStatus({ connected: false, teamName: null, loading: false });
@@ -62,6 +63,7 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
   }, [workspace_id, workspace?.clickup_team_id, workspace?.clickup_team_name]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchStatus is an async data fetch that sets state on completion
     fetchStatus();
   }, [fetchStatus]);
 

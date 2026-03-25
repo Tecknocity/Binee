@@ -103,7 +103,7 @@ async function executeDataQuery(
 }
 
 async function queryTasksData(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
   dataQuery: DataQuery,
   workspaceId: string,
 ): Promise<{ data: Record<string, unknown>[]; summary: Record<string, unknown> }> {
@@ -248,7 +248,7 @@ async function queryTasksData(
 }
 
 async function queryTimeEntriesData(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
   dataQuery: DataQuery,
   workspaceId: string,
 ): Promise<{ data: Record<string, unknown>[]; summary: Record<string, unknown> }> {
@@ -341,7 +341,7 @@ async function queryTimeEntriesData(
 }
 
 async function queryTeamData(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
   dataQuery: DataQuery,
   workspaceId: string,
 ): Promise<{ data: Record<string, unknown>[]; summary: Record<string, unknown> }> {
@@ -389,7 +389,7 @@ async function queryTeamData(
 }
 
 async function queryHealthData(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
   workspaceId: string,
 ): Promise<{ data: Record<string, unknown>[]; summary: Record<string, unknown> }> {
   const { data: result } = await supabase

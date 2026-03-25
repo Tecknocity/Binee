@@ -81,17 +81,17 @@ export default function WeeklyUsageSummary() {
       .then(({ data: rows }) => {
         if (rows) {
           setData(
-            rows.map((r: Record<string, number | string>) => ({
-              week: new Date(r.week_start).toLocaleDateString('en-US', {
+            rows.map((r) => ({
+              week: new Date(String(r.week_start)).toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
               }),
-              total: r.total_credits ?? 0,
-              chat: r.chat_credits ?? 0,
-              health_check: r.health_check_credits ?? 0,
-              setup: r.setup_credits ?? 0,
-              dashboard: r.dashboard_credits ?? 0,
-              briefing: r.briefing_credits ?? 0,
+              total: Number(r.total_credits ?? 0),
+              chat: Number(r.chat_credits ?? 0),
+              health_check: Number(r.health_check_credits ?? 0),
+              setup: Number(r.setup_credits ?? 0),
+              dashboard: Number(r.dashboard_credits ?? 0),
+              briefing: Number(r.briefing_credits ?? 0),
             }))
           );
         }

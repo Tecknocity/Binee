@@ -52,6 +52,7 @@ export default function SettingsLayout() {
   // Sync tab from URL when navigating back to settings with a different ?tab=
   useEffect(() => {
     if (tabParam && validTabs.has(tabParam) && tabParam !== activeTab) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync URL param to local state
       setActiveTab(tabParam as TabId);
     }
   }, [tabParam, activeTab]);

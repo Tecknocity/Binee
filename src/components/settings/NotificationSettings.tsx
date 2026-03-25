@@ -91,6 +91,7 @@ export default function NotificationSettings() {
   // Hydrate form from user_profiles
   useEffect(() => {
     if (profileLoading || profileLoaded) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrating form state from fetched profile data
     setNotificationsEnabled(profile.notifications_enabled);
     setTaskComplete(profile.notify_task_complete);
     setDailyStandup(profile.notify_daily_standup);

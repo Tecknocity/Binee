@@ -171,6 +171,7 @@ export default function DashboardChatPanel({
   // Reset when panel opens with new dashboard
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset messages when panel opens with new dashboard context
       setMessages([
         {
           id: 'panel-welcome',
