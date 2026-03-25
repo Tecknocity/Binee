@@ -219,7 +219,7 @@ export default function Sidebar() {
 
   const handleSelectConversation = (id: string) => {
     setActiveConversation(id);
-    router.push('/chat');
+    router.push(`/chat/${id}`);
     setMobileOpen(false);
   };
 
