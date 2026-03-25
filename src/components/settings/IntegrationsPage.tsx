@@ -6,9 +6,14 @@ import { Plug, CheckCircle, AlertCircle, ExternalLink, RefreshCw, Loader2, Arrow
 import Link from 'next/link';
 
 export default function IntegrationsPage() {
-  const { workspace } = useAuth();
+  const { workspace, refreshWorkspace } = useAuth();
   const isConnected = !!workspace?.clickup_team_id;
   const [syncing, setSyncing] = useState(false);
+
+  const handleConnect = () => {
+    if (!workspace?.id) return;
+    window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace.id)}`;
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -108,7 +113,10 @@ export default function IntegrationsPage() {
                 </div>
               </div>
             ) : (
-              <button className="flex items-center gap-2 px-5 py-2.5 bg-[#7B68EE] hover:bg-[#6A5ACD] text-white font-medium rounded-lg transition-colors">
+              <button
+                onClick={handleConnect}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#7B68EE] hover:bg-[#6A5ACD] text-white font-medium rounded-lg transition-colors"
+              >
                 <Plug className="w-4 h-4" />
                 Connect ClickUp
                 <ExternalLink className="w-3.5 h-3.5 ml-1" />

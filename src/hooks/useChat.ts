@@ -1,7 +1,13 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { createBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/components/auth/AuthProvider';
 import type { ToolCallResult } from '@/types/ai';
+import {
+  shouldAutoApprove,
+  setActionPreference,
+} from '@/lib/ai/action-preferences';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,11 +23,16 @@ export interface ToolCallDisplay {
   description: string;
   status: ToolCallStatus;
   result?: string;
+  resultSummary?: string;
   error?: string;
+  tool_input?: Record<string, unknown>;
+  durationMs?: number;
 }
 
 export interface ActionConfirmationData {
   id: string;
+  tool_name: string;
+  trust_tier: 'low' | 'medium' | 'high';
   description: string;
   details: string;
   confirmed: boolean | null; // null = pending
@@ -48,287 +59,132 @@ export interface ChatMessage {
 }
 
 // ---------------------------------------------------------------------------
-// Mock messages per conversation
+// B-054: Human-friendly tool call descriptions & result summaries
 // ---------------------------------------------------------------------------
 
-function getMockMessages(conversationId: string): ChatMessage[] {
-  const mocks: Record<string, ChatMessage[]> = {
-    'conv-1': [
-      {
-        id: 'msg-1-1',
-        role: 'user',
-        content: 'Show me all overdue tasks in the Engineering team.',
-        timestamp: new Date('2026-03-11T09:00:00'),
-      },
-      {
-        id: 'msg-1-2',
-        role: 'assistant',
-        content:
-          'Let me look up the overdue tasks in your Engineering team workspace.',
-        timestamp: new Date('2026-03-11T09:00:02'),
-        creditsConsumed: 1,
-        toolCalls: [
-          {
-            id: 'tc-1',
-            tool_name: 'clickup_get_tasks',
-            description: 'Looking up overdue tasks in Engineering...',
-            status: 'success',
-            result: 'Found 12 overdue tasks across 3 lists',
-          },
-        ],
-      },
-      {
-        id: 'msg-1-3',
-        role: 'assistant',
-        content:
-          "Here's a summary of **12 overdue tasks** in the Engineering team:\n\n### Critical (3)\n- **Fix payment processing bug** -due Mar 5, assigned to Sarah\n- **Database migration v2.4** -due Mar 7, assigned to Mike\n- **API rate limiter update** -due Mar 8, unassigned\n\n### High Priority (5)\n- Refactor auth middleware -due Mar 6\n- Update CI pipeline -due Mar 9\n- Add monitoring alerts -due Mar 9\n- Fix memory leak in worker -due Mar 10\n- Update SDK documentation -due Mar 10\n\n### Medium Priority (4)\n- Clean up legacy endpoints *(and 3 others)*\n\nWould you like me to reassign any of these or update their due dates?",
-        timestamp: new Date('2026-03-11T09:00:05'),
-        creditsConsumed: 3,
-      },
-      {
-        id: 'msg-1-4',
-        role: 'user',
-        content:
-          'Reassign "API rate limiter update" to Jake and push the due date to March 15.',
-        timestamp: new Date('2026-03-11T09:01:00'),
-      },
-      {
-        id: 'msg-1-5',
-        role: 'assistant',
-        content:
-          'I\'d like to update the task **"API rate limiter update"** with these changes:',
-        timestamp: new Date('2026-03-11T09:01:02'),
-        creditsConsumed: 1,
-        actionConfirmation: {
-          id: 'ac-1',
-          description:
-            'Update task "API rate limiter update"',
-          details:
-            'Assignee: unassigned \u2192 Jake Morrison\nDue date: Mar 8 \u2192 Mar 15, 2026',
-          confirmed: true,
-        },
-      },
-      {
-        id: 'msg-1-6',
-        role: 'assistant',
-        content:
-          'Done! I\'ve updated **"API rate limiter update"**:\n- Assigned to **Jake Morrison**\n- Due date set to **March 15, 2026**',
-        timestamp: new Date('2026-03-11T09:01:10'),
-        creditsConsumed: 1,
-        toolCalls: [
-          {
-            id: 'tc-2',
-            tool_name: 'clickup_update_task',
-            description: 'Updating task assignee and due date...',
-            status: 'success',
-            result: 'Task updated successfully',
-          },
-        ],
-      },
-    ],
-    'conv-2': [
-      {
-        id: 'msg-2-1',
-        role: 'user',
-        content: 'What does our sprint velocity look like over the past month?',
-        timestamp: new Date('2026-03-10T14:00:00'),
-      },
-      {
-        id: 'msg-2-2',
-        role: 'assistant',
-        content:
-          "I'll pull up your sprint data to analyze velocity trends.",
-        timestamp: new Date('2026-03-10T14:00:03'),
-        creditsConsumed: 1,
-        toolCalls: [
-          {
-            id: 'tc-3',
-            tool_name: 'clickup_get_tasks',
-            description: 'Fetching completed tasks from last 4 sprints...',
-            status: 'success',
-            result: 'Retrieved data for sprints 21-24',
-          },
-        ],
-      },
-      {
-        id: 'msg-2-3',
-        role: 'assistant',
-        content:
-          "Here's your sprint velocity over the past 4 sprints:\n\n| Sprint | Points Committed | Points Completed | Velocity |\n|--------|-----------------|------------------|----------|\n| Sprint 21 | 42 | 38 | 90% |\n| Sprint 22 | 45 | 41 | 91% |\n| Sprint 23 | 50 | 35 | 70% |\n| Sprint 24 | 40 | 37 | 93% |\n\n**Average velocity: 86%**\n\nSprint 23 had a noticeable dip. Looking at the data, that coincided with 3 team members being out for the holidays. Sprint 24 shows a strong recovery.\n\n**Recommendation:** Your sustainable velocity is around **38-40 points per sprint**. I'd suggest committing to 40 points for the next sprint to maintain consistency.",
-        timestamp: new Date('2026-03-10T14:00:08'),
-        creditsConsumed: 3,
-      },
-      {
-        id: 'msg-2-4',
-        role: 'user',
-        content: 'Create a task to review sprint planning process.',
-        timestamp: new Date('2026-03-10T14:02:00'),
-      },
-      {
-        id: 'msg-2-5',
-        role: 'assistant',
-        content: "I'll create that task for you. Here's what I'm planning:",
-        timestamp: new Date('2026-03-10T14:02:02'),
-        creditsConsumed: 1,
-        actionConfirmation: {
-          id: 'ac-2',
-          description: 'Create new task in Backlog list',
-          details:
-            'Title: Review sprint planning process\nPriority: Normal\nList: Backlog\nAssignee: You',
-          confirmed: null, // pending confirmation
-        },
-      },
-    ],
-    'conv-3': [
-      {
-        id: 'msg-3-1',
-        role: 'user',
-        content: 'Summarize what the design team accomplished this week.',
-        timestamp: new Date('2026-03-09T16:30:00'),
-      },
-      {
-        id: 'msg-3-2',
-        role: 'assistant',
-        content: "Let me check the Design team's completed tasks this week.",
-        timestamp: new Date('2026-03-09T16:30:02'),
-        creditsConsumed: 1,
-        toolCalls: [
-          {
-            id: 'tc-4',
-            tool_name: 'clickup_get_tasks',
-            description: 'Fetching Design team tasks completed this week...',
-            status: 'success',
-            result: 'Found 18 completed tasks',
-          },
-        ],
-      },
-      {
-        id: 'msg-3-3',
-        role: 'assistant',
-        content:
-          "The Design team had a productive week! Here's the summary:\n\n**Completed: 18 tasks** (up from 14 last week)\n\n### Highlights\n- Finalized the **new onboarding flow** mockups (5 screens)\n- Completed **brand guideline v2** documentation\n- Shipped the **settings page redesign** to dev\n- Created **3 new illustration assets** for the marketing site\n\n### In Progress\n- Dashboard analytics redesign (60% complete)\n- Mobile responsive audit (started)\n\n### Blockers\n- Waiting on copy from Marketing for the pricing page redesign\n\nOverall the team is tracking well. The onboarding flow was a major deliverable that's now ready for engineering.",
-        timestamp: new Date('2026-03-09T16:30:08'),
-        creditsConsumed: 3,
-      },
-    ],
-    'conv-4': [
-      {
-        id: 'msg-4-1',
-        role: 'user',
-        content: 'Can you help me set up a new project space for Q2 planning?',
-        timestamp: new Date('2026-03-08T10:00:00'),
-      },
-      {
-        id: 'msg-4-2',
-        role: 'assistant',
-        content:
-          "I'd be happy to help set up a Q2 planning space! Let me check your current workspace structure first.",
-        timestamp: new Date('2026-03-08T10:00:03'),
-        creditsConsumed: 1,
-        toolCalls: [
-          {
-            id: 'tc-5',
-            tool_name: 'clickup_get_spaces',
-            description: 'Loading workspace structure...',
-            status: 'error',
-            error: "Couldn't access workspace -rate limit reached. Please try again in a moment.",
-          },
-        ],
-      },
-      {
-        id: 'msg-4-3',
-        role: 'assistant',
-        content:
-          "It looks like we hit a rate limit with ClickUp's API. This usually resolves in about 30 seconds. Want me to try again, or would you prefer to describe what you'd like and I'll set it up once the limit resets?",
-        timestamp: new Date('2026-03-08T10:00:05'),
-        creditsConsumed: 1,
-      },
-    ],
-    'conv-5': [
-      {
-        id: 'msg-5-1',
-        role: 'user',
-        content: 'Hey Binee, create a dashboard for me to track all overdue tasks by team in October.',
-        timestamp: new Date('2026-03-11T11:00:00'),
-      },
-      {
-        id: 'msg-5-2',
-        role: 'assistant',
-        content: "I can build that for you! I'll create a dashboard with overdue task tracking broken down by team for October.\n\nWould you like me to create a **new dashboard** for this, or **add widgets to an existing dashboard**?",
-        timestamp: new Date('2026-03-11T11:00:03'),
-        creditsConsumed: 1,
-        toolCalls: [
-          {
-            id: 'tc-5-1',
-            tool_name: 'list_dashboards',
-            description: 'Checking existing dashboards...',
-            status: 'success',
-            result: 'Found 2 dashboards: Project Overview, Sprint Tracker',
-          },
-        ],
-        dashboardChoices: [
-          {
-            id: 'dc-new',
-            type: 'new_dashboard',
-            label: 'Create a new dashboard',
-          },
-          {
-            id: 'dc-proj',
-            type: 'existing_dashboard',
-            label: 'Add to existing dashboard',
-            dashboardName: 'Project Overview',
-            dashboardId: 'dash-1',
-          },
-          {
-            id: 'dc-sprint',
-            type: 'existing_dashboard',
-            label: 'Add to existing dashboard',
-            dashboardName: 'Sprint Tracker',
-            dashboardId: 'dash-2',
-          },
-        ],
-        selectedDashboardChoice: 'dc-new',
-      },
-      {
-        id: 'msg-5-3',
-        role: 'user',
-        content: 'Create a new dashboard for this.',
-        timestamp: new Date('2026-03-11T11:00:10'),
-      },
-      {
-        id: 'msg-5-4',
-        role: 'assistant',
-        content: 'I\'ve created your **"October Overdue Tasks"** dashboard with the following widgets:\n\n- **Overdue by Team** -Bar chart comparing overdue task counts across teams\n- **Total Overdue** -Summary card showing 23 overdue tasks in October\n- **Overdue Tasks Detail** -Table listing each overdue task with assignee, team, and days overdue\n\nYou can view it on the **Dashboards** page. Want me to add anything else to this dashboard?',
-        timestamp: new Date('2026-03-11T11:00:15'),
-        creditsConsumed: 3,
-        toolCalls: [
-          {
-            id: 'tc-5-2',
-            tool_name: 'create_dashboard_widget',
-            description: 'Creating bar chart: Overdue by Team...',
-            status: 'success',
-            result: 'Widget created on "October Overdue Tasks" dashboard',
-          },
-          {
-            id: 'tc-5-3',
-            tool_name: 'create_dashboard_widget',
-            description: 'Creating summary card: Total Overdue...',
-            status: 'success',
-            result: 'Widget created',
-          },
-          {
-            id: 'tc-5-4',
-            tool_name: 'create_dashboard_widget',
-            description: 'Creating table: Overdue Tasks Detail...',
-            status: 'success',
-            result: 'Widget created',
-          },
-        ],
-      },
-    ],
+const TOOL_LABELS: Record<string, { pending: string; success: string; icon: string }> = {
+  clickup_get_tasks: { pending: 'Looking up tasks', success: 'Found tasks', icon: 'search' },
+  clickup_get_spaces: { pending: 'Loading workspace structure', success: 'Loaded workspace', icon: 'folder' },
+  clickup_get_task: { pending: 'Fetching task details', success: 'Retrieved task', icon: 'file' },
+  clickup_get_members: { pending: 'Loading team members', success: 'Loaded members', icon: 'users' },
+  clickup_get_lists: { pending: 'Fetching lists', success: 'Retrieved lists', icon: 'list' },
+  clickup_get_folders: { pending: 'Loading folders', success: 'Loaded folders', icon: 'folder' },
+  clickup_update_task: { pending: 'Updating task', success: 'Task updated', icon: 'edit' },
+  clickup_create_task: { pending: 'Creating task', success: 'Task created', icon: 'plus' },
+  create_task: { pending: 'Creating task', success: 'Task created', icon: 'plus' },
+  update_task: { pending: 'Updating task', success: 'Task updated', icon: 'edit' },
+  assign_task: { pending: 'Assigning task', success: 'Task assigned', icon: 'user' },
+  move_task: { pending: 'Moving task', success: 'Task moved', icon: 'move' },
+  list_dashboards: { pending: 'Checking dashboards', success: 'Found dashboards', icon: 'layout' },
+  create_dashboard_widget: { pending: 'Creating widget', success: 'Widget created', icon: 'plus' },
+  update_dashboard_widget: { pending: 'Updating widget', success: 'Widget updated', icon: 'edit' },
+  write_operation: { pending: 'Executing action', success: 'Action completed', icon: 'check' },
+};
+
+function formatToolCallDescription(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  status: 'pending' | 'success' | 'error',
+): string {
+  const label = TOOL_LABELS[toolName];
+  const base = label
+    ? status === 'pending' ? label.pending : label.success
+    : status === 'pending' ? `Running ${toolName.replace(/_/g, ' ')}` : `Completed ${toolName.replace(/_/g, ' ')}`;
+
+  // Add context from tool_input
+  const context = toolInput.name ?? toolInput.list_name ?? toolInput.title ?? toolInput.assignee_name;
+  if (context && typeof context === 'string') {
+    return `${base}: "${context}"`;
+  }
+  return base;
+}
+
+function formatResultSummary(toolName: string, result: Record<string, unknown>): string {
+  if (result.tasks && Array.isArray(result.tasks)) {
+    return `Found ${result.tasks.length} task${result.tasks.length !== 1 ? 's' : ''}`;
+  }
+  if (result.count !== undefined) {
+    return `Found ${result.count} result${result.count !== 1 ? 's' : ''}`;
+  }
+  if (result.task && typeof result.task === 'object') {
+    const task = result.task as Record<string, unknown>;
+    return task.name ? `Task: "${task.name}"` : 'Task retrieved';
+  }
+  if (result.message && typeof result.message === 'string') {
+    return result.message;
+  }
+  if (result.success === true) {
+    return TOOL_LABELS[toolName]?.success ?? 'Completed successfully';
+  }
+  if (typeof result === 'string') return result;
+  return TOOL_LABELS[toolName]?.success ?? 'Completed';
+}
+
+function formatErrorMessage(error: string): string {
+  if (error.toLowerCase().includes('rate limit')) return 'Rate limit reached — try again shortly';
+  if (error.toLowerCase().includes('not found')) return 'Resource not found';
+  if (error.toLowerCase().includes('permission')) return 'Permission denied';
+  if (error.toLowerCase().includes('timeout')) return 'Request timed out';
+  return error;
+}
+
+// ---------------------------------------------------------------------------
+// Map a database message row to ChatMessage
+// ---------------------------------------------------------------------------
+
+interface DbMessageRow {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  credits_used: number;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+function mapDbMessage(row: DbMessageRow): ChatMessage | null {
+  // Skip system messages — they're internal context, not displayed
+  if (row.role === 'system') return null;
+
+  const msg: ChatMessage = {
+    id: row.id,
+    role: row.role as MessageRole,
+    content: row.content,
+    timestamp: new Date(row.created_at),
+    creditsConsumed: row.credits_used > 0 ? row.credits_used : undefined,
   };
 
-  return mocks[conversationId] ?? [];
+  // Hydrate tool calls from metadata if present
+  if (row.metadata?.tool_calls && Array.isArray(row.metadata.tool_calls)) {
+    msg.toolCalls = (row.metadata.tool_calls as ToolCallResult[]).map(
+      (tc, i) => ({
+        id: `${row.id}-tc-${i}`,
+        tool_name: tc.tool_name,
+        description: tc.success
+          ? formatToolCallDescription(tc.tool_name, tc.tool_input, 'success')
+          : formatToolCallDescription(tc.tool_name, tc.tool_input, 'error'),
+        status: tc.success ? ('success' as const) : ('error' as const),
+        result: tc.success ? JSON.stringify(tc.result) : undefined,
+        resultSummary: tc.success ? formatResultSummary(tc.tool_name, tc.result) : undefined,
+        error: tc.error ? formatErrorMessage(tc.error) : undefined,
+        tool_input: tc.tool_input,
+      }),
+    );
+  }
+
+  // Hydrate pending action from metadata if present
+  if (row.metadata?.pending_action && typeof row.metadata.pending_action === 'object') {
+    const pa = row.metadata.pending_action as Record<string, unknown>;
+    msg.actionConfirmation = {
+      id: pa.id as string,
+      tool_name: pa.tool_name as string,
+      trust_tier: pa.trust_tier as 'low' | 'medium' | 'high',
+      description: pa.description as string,
+      details: pa.details as string,
+      confirmed: (pa.confirmed as boolean | null) ?? null,
+    };
+  }
+
+  return msg;
 }
 
 // ---------------------------------------------------------------------------
@@ -336,27 +192,134 @@ function getMockMessages(conversationId: string): ChatMessage[] {
 // ---------------------------------------------------------------------------
 
 export function useChat(conversationId: string | null) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    conversationId ? getMockMessages(conversationId) : [],
-  );
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const totalCredits = useRef(0);
+  const { workspace, user } = useAuth();
+  const supabase = createBrowserClient();
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // Ref to allow auto-approve to call confirmAction before it's defined in the hook
+  const confirmActionRef = useRef<(actionId: string, confirmed: boolean) => void>(() => {});
 
-  // Reset messages when conversation changes
-  const loadConversation = useCallback((id: string | null) => {
-    if (id) {
-      setMessages(getMockMessages(id));
-    } else {
-      setMessages([]);
+  // -------------------------------------------------------------------------
+  // Load messages from database
+  // -------------------------------------------------------------------------
+
+  const loadConversation = useCallback(
+    async (id: string | null) => {
+      setError(null);
+
+      if (!id || !workspace || !user) {
+        setMessages([]);
+        totalCredits.current = 0;
+        return;
+      }
+
+      setIsLoadingHistory(true);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('messages')
+          .select('id, role, content, credits_used, metadata, created_at')
+          .eq('conversation_id', id)
+          .eq('workspace_id', workspace.id)
+          .order('created_at', { ascending: true })
+          .limit(200);
+
+        if (fetchError) {
+          console.error('Failed to load messages:', fetchError.message);
+          setMessages([]);
+          totalCredits.current = 0;
+          return;
+        }
+
+        const mapped = (data ?? [])
+          .map((row) => mapDbMessage(row as DbMessageRow))
+          .filter((m): m is ChatMessage => m !== null);
+
+        // Sum up credits from loaded messages
+        totalCredits.current = mapped.reduce(
+          (sum, m) => sum + (m.creditsConsumed ?? 0),
+          0,
+        );
+
+        setMessages(mapped);
+      } catch {
+        setMessages([]);
+        totalCredits.current = 0;
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    },
+    [workspace, user, supabase],
+  );
+
+  // Load messages when conversationId changes
+  useEffect(() => {
+    loadConversation(conversationId);
+  }, [conversationId, loadConversation]);
+
+  // -------------------------------------------------------------------------
+  // Realtime subscription for new messages
+  // -------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!conversationId || !workspace?.id) return;
+
+    // Clean up previous subscription
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
     }
-    setError(null);
-  }, []);
+
+    const channel = supabase
+      .channel(`messages-${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as DbMessageRow;
+          const mapped = mapDbMessage(row);
+          if (!mapped) return;
+
+          setMessages((prev) => {
+            // Avoid duplicates — optimistic inserts or double deliveries
+            if (prev.some((m) => m.id === mapped.id)) return prev;
+            return [...prev, mapped];
+          });
+
+          if (mapped.creditsConsumed) {
+            totalCredits.current += mapped.creditsConsumed;
+          }
+        },
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [conversationId, workspace?.id, supabase]);
+
+  // -------------------------------------------------------------------------
+  // Send a message via the AI chat API
+  // -------------------------------------------------------------------------
 
   const sendMessage = useCallback(
     async (content: string, overrideConversationId?: string) => {
       const effectiveId = overrideConversationId || conversationId;
       if (!effectiveId || !content.trim()) return;
+
+      const workspaceId = workspace?.id ?? '';
+      const userId = user?.id ?? '';
 
       const userMessage: ChatMessage = {
         id: `msg-${Date.now()}`,
@@ -374,8 +337,8 @@ export function useChat(conversationId: string | null) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            workspace_id: 'ws-mock-001',
-            user_id: 'user-mock-001',
+            workspace_id: workspaceId,
+            user_id: userId,
             conversation_id: effectiveId,
             message: content.trim(),
           }),
@@ -392,12 +355,27 @@ export function useChat(conversationId: string | null) {
             id: `tc-${Date.now()}-${i}`,
             tool_name: tc.tool_name,
             description: tc.success
-              ? `Completed ${tc.tool_name}`
-              : `Failed ${tc.tool_name}`,
+              ? formatToolCallDescription(tc.tool_name, tc.tool_input, 'success')
+              : formatToolCallDescription(tc.tool_name, tc.tool_input, 'error'),
             status: tc.success ? ('success' as const) : ('error' as const),
             result: tc.success ? JSON.stringify(tc.result) : undefined,
-            error: tc.error,
+            resultSummary: tc.success ? formatResultSummary(tc.tool_name, tc.result) : undefined,
+            error: tc.error ? formatErrorMessage(tc.error) : undefined,
+            tool_input: tc.tool_input,
           }));
+
+        // B-045: If the response includes a pending action, attach it as actionConfirmation
+        const actionConfirmation: ActionConfirmationData | undefined =
+          data.pending_action
+            ? {
+                id: data.pending_action.id,
+                tool_name: data.pending_action.tool_name,
+                trust_tier: data.pending_action.trust_tier,
+                description: data.pending_action.description,
+                details: data.pending_action.details,
+                confirmed: null, // pending user decision
+              }
+            : undefined;
 
         const assistantMessage: ChatMessage = {
           id: `msg-${Date.now()}-resp`,
@@ -406,12 +384,20 @@ export function useChat(conversationId: string | null) {
           timestamp: new Date(),
           creditsConsumed: data.credits_consumed,
           toolCalls: toolCallDisplays,
+          actionConfirmation,
         };
 
         totalCredits.current += data.credits_consumed ?? 0;
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // B-045: Auto-approve if user has "Always Allow" for this operation type
+        if (
+          actionConfirmation &&
+          shouldAutoApprove(actionConfirmation.tool_name, actionConfirmation.trust_tier)
+        ) {
+          confirmActionRef.current(actionConfirmation.id, true);
+        }
       } catch (err) {
-        // On API error, add a mock response so the UI is still functional
         const fallbackMessage: ChatMessage = {
           id: `msg-${Date.now()}-resp`,
           role: 'assistant',
@@ -429,25 +415,103 @@ export function useChat(conversationId: string | null) {
         setIsLoading(false);
       }
     },
-    [conversationId],
+    [conversationId, workspace, user],
   );
 
-  const confirmAction = useCallback((actionId: string, confirmed: boolean) => {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.actionConfirmation?.id === actionId) {
-          return {
-            ...msg,
-            actionConfirmation: {
-              ...msg.actionConfirmation,
-              confirmed,
-            },
-          };
+  // -------------------------------------------------------------------------
+  // B-045: Confirm or cancel a pending write action via API
+  // -------------------------------------------------------------------------
+
+  const confirmAction = useCallback(
+    async (actionId: string, confirmed: boolean) => {
+      const workspaceId = workspace?.id ?? '';
+
+      // Optimistically update the UI
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.actionConfirmation?.id === actionId) {
+            return {
+              ...msg,
+              actionConfirmation: {
+                ...msg.actionConfirmation,
+                confirmed,
+              },
+            };
+          }
+          return msg;
+        }),
+      );
+
+      try {
+        const res = await fetch('/api/chat/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspace_id: workspaceId,
+            conversation_id: conversationId,
+            action_id: actionId,
+            confirmed,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to process confirmation');
         }
-        return msg;
-      }),
-    );
-  }, []);
+
+        const data = await res.json();
+
+        // If confirmed and executed, add a follow-up message with the result
+        if (confirmed && data.status === 'executed' && data.result) {
+          const resultMessage: ChatMessage = {
+            id: `msg-${Date.now()}-confirm`,
+            role: 'assistant',
+            content: data.result.message ?? 'Action completed successfully.',
+            timestamp: new Date(),
+            toolCalls: [
+              {
+                id: `tc-${Date.now()}`,
+                tool_name: data.result.task ? 'write_operation' : 'action',
+                description: 'Executed confirmed action',
+                status: 'success',
+                result: JSON.stringify(data.result),
+              },
+            ],
+          };
+          setMessages((prev) => [...prev, resultMessage]);
+        } else if (data.status === 'failed') {
+          const errorMessage: ChatMessage = {
+            id: `msg-${Date.now()}-err`,
+            role: 'assistant',
+            content: `The action failed: ${data.error ?? 'Unknown error'}. Please try again.`,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+        }
+      } catch {
+        const errorMessage: ChatMessage = {
+          id: `msg-${Date.now()}-err`,
+          role: 'assistant',
+          content:
+            'Sorry, there was an error processing the confirmation. Please try again.',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    },
+    [conversationId, workspace],
+  );
+
+  // Keep ref in sync so auto-approve can call confirmAction
+  confirmActionRef.current = confirmAction;
+
+  // B-045: "Always Allow" — stores preference and confirms the action
+  const alwaysAllowAction = useCallback(
+    (actionId: string, toolName: string) => {
+      setActionPreference(toolName, 'always_allow');
+      confirmAction(actionId, true);
+    },
+    [confirmAction],
+  );
 
   const selectDashboardChoice = useCallback((messageId: string, choiceId: string) => {
     setMessages((prev) =>
@@ -463,9 +527,11 @@ export function useChat(conversationId: string | null) {
   return {
     messages,
     isLoading,
+    isLoadingHistory,
     error,
     sendMessage,
     confirmAction,
+    alwaysAllowAction,
     selectDashboardChoice,
     loadConversation,
     totalCreditsConsumed: totalCredits.current,

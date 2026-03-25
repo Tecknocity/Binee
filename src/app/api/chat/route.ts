@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { handleChatMessage } from '@/lib/ai/chat';
+import { handleChat } from '@/lib/ai/chat-handler';
 import type { ChatRequest } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
@@ -55,7 +55,14 @@ export async function POST(request: NextRequest) {
       message: message.trim(),
     };
 
-    const response = await handleChatMessage(chatRequest);
+    const response = await handleChat(chatRequest);
+
+    // Strip orchestration metadata in production (observability only)
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction) {
+      const { _orchestration: _, ...publicResponse } = response;
+      return NextResponse.json(publicResponse);
+    }
 
     return NextResponse.json(response);
   } catch (error) {

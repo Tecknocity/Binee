@@ -35,17 +35,16 @@ export async function upsertCachedSpaces(
   const supabase = getSupabaseAdmin();
   const rows = spaces.map((space) => ({
     workspace_id: workspaceId,
-    clickup_space_id: space.id,
+    clickup_id: space.id,
     name: space.name,
-    color: space.color,
-    is_private: space.private,
-    statuses: space.statuses,
+    private: space.private,
+    status: space.statuses ?? null,
     synced_at: new Date().toISOString(),
   }));
 
   const { error } = await supabase
     .from("cached_spaces")
-    .upsert(rows, { onConflict: "workspace_id,clickup_space_id" });
+    .upsert(rows, { onConflict: "workspace_id,clickup_id" });
 
   if (error) {
     throw new Error(`Failed to upsert cached spaces: ${error.message}`);
@@ -61,16 +60,16 @@ export async function upsertCachedFolders(
   const supabase = getSupabaseAdmin();
   const rows = folders.map((folder) => ({
     workspace_id: workspaceId,
-    clickup_folder_id: folder.id,
-    clickup_space_id: folder.space.id,
+    clickup_id: folder.id,
+    space_id: folder.space.id,
     name: folder.name,
-    list_count: folder.lists?.length ?? 0,
+    task_count: folder.lists?.length ?? 0,
     synced_at: new Date().toISOString(),
   }));
 
   const { error } = await supabase
     .from("cached_folders")
-    .upsert(rows, { onConflict: "workspace_id,clickup_folder_id" });
+    .upsert(rows, { onConflict: "workspace_id,clickup_id" });
 
   if (error) {
     throw new Error(`Failed to upsert cached folders: ${error.message}`);
@@ -86,18 +85,18 @@ export async function upsertCachedLists(
   const supabase = getSupabaseAdmin();
   const rows = lists.map((list) => ({
     workspace_id: workspaceId,
-    clickup_list_id: list.id,
-    clickup_space_id: list.space.id,
-    clickup_folder_id: list.folder?.id ?? null,
+    clickup_id: list.id,
+    space_id: list.space.id,
+    folder_id: list.folder?.id ?? null,
     name: list.name,
     task_count: list.task_count,
-    statuses: list.statuses,
+    status: list.statuses ?? null,
     synced_at: new Date().toISOString(),
   }));
 
   const { error } = await supabase
     .from("cached_lists")
-    .upsert(rows, { onConflict: "workspace_id,clickup_list_id" });
+    .upsert(rows, { onConflict: "workspace_id,clickup_id" });
 
   if (error) {
     throw new Error(`Failed to upsert cached lists: ${error.message}`);
@@ -118,44 +117,33 @@ export async function upsertCachedTasks(
     const batch = tasks.slice(i, i + BATCH_SIZE);
     const rows = batch.map((task) => ({
       workspace_id: workspaceId,
-      clickup_task_id: task.id,
-      clickup_list_id: task.list.id,
-      clickup_space_id: task.space.id,
-      clickup_folder_id: task.folder?.id ?? null,
+      clickup_id: task.id,
+      list_id: task.list.id,
       name: task.name,
       description: task.description,
       status: task.status.status,
-      status_type: task.status.type,
-      status_color: task.status.color,
-      priority: task.priority?.priority ?? null,
-      priority_id: task.priority?.id ?? null,
-      priority_color: task.priority?.color ?? null,
+      priority: task.priority?.id ? parseInt(task.priority.id, 10) : null,
       assignees: task.assignees.map((a) => ({
         id: a.id,
         username: a.username,
         email: a.email,
       })),
+      tags: task.tags,
       due_date: task.due_date
         ? new Date(parseInt(task.due_date, 10)).toISOString()
         : null,
       start_date: task.start_date
         ? new Date(parseInt(task.start_date, 10)).toISOString()
         : null,
-      time_estimate_ms: task.time_estimate,
-      time_spent_ms: task.time_spent,
-      tags: task.tags,
+      time_estimate: task.time_estimate,
+      time_spent: task.time_spent,
       custom_fields: task.custom_fields,
-      date_created: new Date(parseInt(task.date_created, 10)).toISOString(),
-      date_updated: new Date(parseInt(task.date_updated, 10)).toISOString(),
-      date_closed: task.date_closed
-        ? new Date(parseInt(task.date_closed, 10)).toISOString()
-        : null,
       synced_at: new Date().toISOString(),
     }));
 
     const { error } = await supabase
       .from("cached_tasks")
-      .upsert(rows, { onConflict: "workspace_id,clickup_task_id" });
+      .upsert(rows, { onConflict: "workspace_id,clickup_id" });
 
     if (error) {
       throw new Error(`Failed to upsert cached tasks: ${error.message}`);
@@ -172,18 +160,17 @@ export async function upsertCachedMembers(
   const supabase = getSupabaseAdmin();
   const rows = members.map((member) => ({
     workspace_id: workspaceId,
-    clickup_user_id: member.id,
+    clickup_id: String(member.id),
     username: member.username,
     email: member.email,
-    color: member.color,
     profile_picture: member.profilePicture,
     role: member.role,
     synced_at: new Date().toISOString(),
   }));
 
   const { error } = await supabase
-    .from("cached_members")
-    .upsert(rows, { onConflict: "workspace_id,clickup_user_id" });
+    .from("cached_team_members")
+    .upsert(rows, { onConflict: "workspace_id,clickup_id" });
 
   if (error) {
     throw new Error(`Failed to upsert cached members: ${error.message}`);
@@ -203,12 +190,10 @@ export async function upsertCachedTimeEntries(
     const batch = entries.slice(i, i + BATCH_SIZE);
     const rows = batch.map((entry) => ({
       workspace_id: workspaceId,
-      clickup_time_entry_id: entry.id,
-      clickup_task_id: entry.task.id,
-      task_name: entry.task.name,
-      clickup_user_id: entry.user.id,
-      username: entry.user.username,
-      duration_ms: parseInt(entry.duration, 10),
+      clickup_id: entry.id,
+      task_id: entry.task.id,
+      user_id: String(entry.user.id),
+      duration: parseInt(entry.duration, 10),
       start_time: new Date(parseInt(entry.start, 10)).toISOString(),
       end_time: new Date(parseInt(entry.end, 10)).toISOString(),
       description: entry.description,
@@ -217,7 +202,7 @@ export async function upsertCachedTimeEntries(
 
     const { error } = await supabase
       .from("cached_time_entries")
-      .upsert(rows, { onConflict: "workspace_id,clickup_time_entry_id" });
+      .upsert(rows, { onConflict: "workspace_id,clickup_id" });
 
     if (error) {
       throw new Error(
@@ -252,6 +237,154 @@ async function updateSyncStatus(
   }
 
   await supabase.from("workspaces").update(updates).eq("id", workspaceId);
+}
+
+// ---------------------------------------------------------------------------
+// Persistent progress tracking (clickup_connections table for onboarding UI)
+// ---------------------------------------------------------------------------
+
+async function updateConnectionProgress(
+  workspaceId: string,
+  progress: SyncProgress,
+  counts?: Partial<SyncResult>
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const updates: Record<string, unknown> = {
+    workspace_id: workspaceId,
+    sync_phase: progress.phase,
+    sync_current: progress.current,
+    sync_total: progress.total,
+    sync_message: progress.message,
+  };
+
+  if (counts) {
+    if (counts.spaces !== undefined) updates.synced_spaces = counts.spaces;
+    if (counts.folders !== undefined) updates.synced_folders = counts.folders;
+    if (counts.lists !== undefined) updates.synced_lists = counts.lists;
+    if (counts.tasks !== undefined) updates.synced_tasks = counts.tasks;
+    if (counts.members !== undefined) updates.synced_members = counts.members;
+    if (counts.timeEntries !== undefined)
+      updates.synced_time_entries = counts.timeEntries;
+  }
+
+  // Use upsert to ensure the row exists (handles case where OAuth callback
+  // didn't create it or the row was deleted)
+  await supabase
+    .from("clickup_connections")
+    .upsert(updates, { onConflict: "workspace_id" });
+}
+
+async function updateConnectionSyncStatus(
+  workspaceId: string,
+  status: "syncing" | "complete" | "error",
+  errorMessage?: string
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const updates: Record<string, unknown> = {
+    workspace_id: workspaceId,
+    sync_status: status,
+  };
+
+  if (status === "syncing") {
+    updates.sync_started_at = new Date().toISOString();
+    updates.sync_error = null;
+  }
+
+  if (status === "complete") {
+    updates.last_sync_at = new Date().toISOString();
+    updates.sync_completed_at = new Date().toISOString();
+    updates.sync_phase = "complete";
+  }
+
+  if (status === "error") {
+    updates.sync_error = errorMessage ?? "Unknown error";
+    updates.sync_completed_at = new Date().toISOString();
+  }
+
+  // Use upsert to ensure the row exists (handles case where it wasn't
+  // created during OAuth callback)
+  await supabase
+    .from("clickup_connections")
+    .upsert(updates, { onConflict: "workspace_id" });
+}
+
+// ---------------------------------------------------------------------------
+// Get sync progress (for onboarding UI polling)
+// ---------------------------------------------------------------------------
+
+export interface FullSyncProgress {
+  status: "idle" | "syncing" | "complete" | "error";
+  phase: string | null;
+  current: number;
+  total: number;
+  message: string | null;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  counts: {
+    spaces: number;
+    folders: number;
+    lists: number;
+    tasks: number;
+    members: number;
+    timeEntries: number;
+  };
+}
+
+export async function getSyncProgress(
+  workspaceId: string
+): Promise<FullSyncProgress> {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("clickup_connections")
+    .select(
+      "sync_status, sync_phase, sync_current, sync_total, sync_message, sync_error, sync_started_at, sync_completed_at, synced_spaces, synced_folders, synced_lists, synced_tasks, synced_members, synced_time_entries"
+    )
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (error || !data) {
+    return {
+      status: "idle",
+      phase: null,
+      current: 0,
+      total: 0,
+      message: null,
+      error: null,
+      startedAt: null,
+      completedAt: null,
+      counts: {
+        spaces: 0,
+        folders: 0,
+        lists: 0,
+        tasks: 0,
+        members: 0,
+        timeEntries: 0,
+      },
+    };
+  }
+
+  return {
+    status: data.sync_status ?? "idle",
+    phase: data.sync_phase ?? null,
+    current: data.sync_current ?? 0,
+    total: data.sync_total ?? 0,
+    message: data.sync_message ?? null,
+    error: data.sync_error ?? null,
+    startedAt: data.sync_started_at ?? null,
+    completedAt: data.sync_completed_at ?? null,
+    counts: {
+      spaces: data.synced_spaces ?? 0,
+      folders: data.synced_folders ?? 0,
+      lists: data.synced_lists ?? 0,
+      tasks: data.synced_tasks ?? 0,
+      members: data.synced_members ?? 0,
+      timeEntries: data.synced_time_entries ?? 0,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +618,56 @@ export async function performInitialSync(
 }
 
 // ---------------------------------------------------------------------------
+// Full sync with persistent progress (B-026)
+// ---------------------------------------------------------------------------
+
+/**
+ * runFullSync — entry point for initial ClickUp sync with persistent progress.
+ *
+ * Updates both the `workspaces` table (for backward compat) and the
+ * `clickup_connections` table (for onboarding UI progress tracking via
+ * getSyncProgress). Can be called from an API route or Edge Function.
+ *
+ * Sync order: spaces → folders → lists → tasks → members → time entries
+ */
+export async function runFullSync(workspaceId: string): Promise<SyncResult> {
+  // Mark syncing on both tables
+  await updateConnectionSyncStatus(workspaceId, "syncing");
+
+  const result = await performInitialSync(workspaceId, async (progress) => {
+    // Persist each progress update to clickup_connections for UI polling
+    await updateConnectionProgress(workspaceId, progress);
+  });
+
+  // Update final status on clickup_connections
+  if (result.errors.length > 0 && result.tasks === 0 && result.spaces === 0) {
+    // Total failure
+    await updateConnectionSyncStatus(
+      workspaceId,
+      "error",
+      result.errors.join("; ")
+    );
+  } else {
+    // Success (possibly with non-fatal errors)
+    await updateConnectionSyncStatus(workspaceId, "complete");
+    await updateConnectionProgress(
+      workspaceId,
+      { phase: "complete", current: 1, total: 1, message: "Sync complete" },
+      {
+        spaces: result.spaces,
+        folders: result.folders,
+        lists: result.lists,
+        tasks: result.tasks,
+        members: result.members,
+        timeEntries: result.timeEntries,
+      }
+    );
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Reconciliation sync (lightweight diff-based)
 // ---------------------------------------------------------------------------
 
@@ -527,11 +710,11 @@ export async function performReconciliationSync(
     // Fetch cached space IDs
     const { data: cachedSpaces } = await supabase
       .from("cached_spaces")
-      .select("clickup_space_id")
+      .select("clickup_id")
       .eq("workspace_id", workspaceId);
 
     const cachedSpaceIds = new Set(
-      (cachedSpaces ?? []).map((s: { clickup_space_id: string }) => s.clickup_space_id)
+      (cachedSpaces ?? []).map((s: { clickup_id: string }) => s.clickup_id)
     );
 
     // Find new or removed spaces
@@ -552,7 +735,7 @@ export async function performReconciliationSync(
         .from("cached_spaces")
         .delete()
         .eq("workspace_id", workspaceId)
-        .in("clickup_space_id", removedSpaceIds);
+        .in("clickup_id", removedSpaceIds);
     }
 
     // Reconcile lists for each space
@@ -589,11 +772,11 @@ export async function performReconciliationSync(
 
     const { data: cachedLists } = await supabase
       .from("cached_lists")
-      .select("clickup_list_id")
+      .select("clickup_id")
       .eq("workspace_id", workspaceId);
 
     const removedListIds = (cachedLists ?? [])
-      .map((l: { clickup_list_id: string }) => l.clickup_list_id)
+      .map((l: { clickup_id: string }) => l.clickup_id)
       .filter((id: string) => !currentListIds.has(id));
 
     if (removedListIds.length > 0) {
@@ -601,14 +784,14 @@ export async function performReconciliationSync(
         .from("cached_lists")
         .delete()
         .eq("workspace_id", workspaceId)
-        .in("clickup_list_id", removedListIds);
+        .in("clickup_id", removedListIds);
 
       // Also remove tasks from deleted lists
       await supabase
         .from("cached_tasks")
         .delete()
         .eq("workspace_id", workspaceId)
-        .in("clickup_list_id", removedListIds);
+        .in("list_id", removedListIds);
     }
 
     // Re-sync tasks only for new spaces or spaces with changes
@@ -635,14 +818,14 @@ export async function performReconciliationSync(
         .from("cached_tasks")
         .select("*", { count: "exact", head: true })
         .eq("workspace_id", workspaceId)
-        .eq("clickup_list_id", list.id);
+        .eq("list_id", list.id);
 
       if (count !== null) {
         await supabase
           .from("cached_lists")
           .update({ task_count: count, synced_at: new Date().toISOString() })
           .eq("workspace_id", workspaceId)
-          .eq("clickup_list_id", list.id);
+          .eq("clickup_id", list.id);
       }
     }
 

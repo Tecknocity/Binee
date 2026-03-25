@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { ClickUpOAuthTokens } from "@/types/clickup";
-import * as crypto from "crypto";
+import { encryptToken, decryptToken } from "@/lib/clickup/encryption";
 
 // ---------------------------------------------------------------------------
 // Environment configuration
@@ -11,21 +11,20 @@ const CLICKUP_CLIENT_SECRET = process.env.CLICKUP_CLIENT_SECRET ?? "";
 const CLICKUP_REDIRECT_URI =
   process.env.CLICKUP_REDIRECT_URI ??
   "http://localhost:3000/api/clickup/callback";
-const TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY ?? "";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const ENCRYPTION_ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
 
 // ---------------------------------------------------------------------------
 // OAuth URL generation
 // ---------------------------------------------------------------------------
 
 /**
- * Generates a ClickUp OAuth authorization URL.
+ * Generates a ClickUp OAuth 2.0 authorization URL.
+ *
+ * ClickUp does NOT support PKCE — we use a standard OAuth 2.0 flow with
+ * client_id + client_secret exchanged server-side.
+ *
  * The state parameter encodes the workspace ID so we can associate
  * the callback with the correct workspace.
  */
@@ -37,6 +36,7 @@ export function getClickUpAuthUrl(workspaceId: string): string {
   const params = new URLSearchParams({
     client_id: CLICKUP_CLIENT_ID,
     redirect_uri: CLICKUP_REDIRECT_URI,
+    response_type: "code",
     state,
   });
 
@@ -66,19 +66,25 @@ export function parseOAuthState(state: string): { workspaceId: string } {
 
 /**
  * Exchanges an authorization code for access and refresh tokens.
+ *
+ * IMPORTANT: ClickUp's token endpoint expects parameters as **query params**
+ * on the URL, NOT as a JSON body. This is unlike most of their other endpoints.
+ *
+ * ClickUp tokens currently do not expire.
  */
 export async function exchangeCodeForToken(
   code: string
 ): Promise<ClickUpOAuthTokens> {
-  const res = await fetch("https://api.clickup.com/api/v2/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: CLICKUP_CLIENT_ID,
-      client_secret: CLICKUP_CLIENT_SECRET,
-      code,
-    }),
+  const params = new URLSearchParams({
+    client_id: CLICKUP_CLIENT_ID,
+    client_secret: CLICKUP_CLIENT_SECRET,
+    code,
   });
+
+  const res = await fetch(
+    `https://api.clickup.com/api/v2/oauth/token?${params.toString()}`,
+    { method: "POST" }
+  );
 
   if (!res.ok) {
     const errorText = await res.text();
@@ -118,54 +124,6 @@ export async function refreshAccessToken(
 }
 
 // ---------------------------------------------------------------------------
-// Token encryption / decryption
-// ---------------------------------------------------------------------------
-
-/**
- * Encrypts a token using AES-256-GCM.
- * Returns a base64-encoded string containing IV + ciphertext + auth tag.
- */
-export function encryptToken(token: string): string {
-  const key = deriveKey(TOKEN_ENCRYPTION_KEY);
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
-
-  let encrypted = cipher.update(token, "utf8");
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  const tag = cipher.getAuthTag();
-
-  // Concatenate IV + encrypted + tag
-  const result = Buffer.concat([iv, encrypted, tag]);
-  return result.toString("base64");
-}
-
-/**
- * Decrypts a token that was encrypted with encryptToken().
- */
-export function decryptToken(encrypted: string): string {
-  const key = deriveKey(TOKEN_ENCRYPTION_KEY);
-  const buffer = Buffer.from(encrypted, "base64");
-
-  const iv = buffer.subarray(0, IV_LENGTH);
-  const tag = buffer.subarray(buffer.length - TAG_LENGTH);
-  const ciphertext = buffer.subarray(IV_LENGTH, buffer.length - TAG_LENGTH);
-
-  const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-
-  let decrypted = decipher.update(ciphertext);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
-  return decrypted.toString("utf8");
-}
-
-/**
- * Derives a 32-byte key from the encryption key string using SHA-256.
- */
-function deriveKey(secret: string): Buffer {
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-// ---------------------------------------------------------------------------
 // Token storage
 // ---------------------------------------------------------------------------
 
@@ -175,27 +133,36 @@ function getSupabaseAdmin() {
 
 /**
  * Stores encrypted OAuth tokens in the workspace record.
+ *
+ * ClickUp tokens currently do not expire, so refreshToken and expiresAt
+ * are optional.
  */
 export async function storeTokens(
   workspaceId: string,
   accessToken: string,
-  refreshToken: string,
-  expiresAt: Date
+  refreshToken?: string,
+  expiresAt?: Date
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
 
   const encryptedAccess = encryptToken(accessToken);
-  const encryptedRefresh = encryptToken(refreshToken);
+
+  const updateData: Record<string, unknown> = {
+    clickup_access_token: encryptedAccess,
+    clickup_connected: true,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (refreshToken) {
+    updateData.clickup_refresh_token = encryptToken(refreshToken);
+  }
+  if (expiresAt) {
+    updateData.clickup_token_expires_at = expiresAt.toISOString();
+  }
 
   const { error } = await supabase
     .from("workspaces")
-    .update({
-      clickup_access_token: encryptedAccess,
-      clickup_refresh_token: encryptedRefresh,
-      clickup_token_expires_at: expiresAt.toISOString(),
-      clickup_connected: true,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq("id", workspaceId);
 
   if (error) {
@@ -204,8 +171,11 @@ export async function storeTokens(
 }
 
 /**
- * Retrieves a valid access token for the workspace, refreshing if expired.
- * Returns null if no tokens are stored.
+ * Retrieves a valid access token for the workspace.
+ *
+ * ClickUp tokens currently do not expire. If an expiry is set and the token
+ * is close to expiring, we attempt a refresh. Otherwise we return the stored
+ * token directly.
  */
 export async function getAccessToken(
   workspaceId: string
@@ -228,43 +198,45 @@ export async function getAccessToken(
     return null;
   }
 
-  const expiresAt = new Date(workspace.clickup_token_expires_at);
-  const now = new Date();
+  // If an expiry is set and the token expires within 5 minutes, try to refresh
+  if (workspace.clickup_token_expires_at && workspace.clickup_refresh_token) {
+    const expiresAt = new Date(workspace.clickup_token_expires_at);
+    const now = new Date();
+    const bufferMs = 5 * 60 * 1000;
 
-  // If the token expires within 5 minutes, refresh it
-  const bufferMs = 5 * 60 * 1000;
-  if (expiresAt.getTime() - now.getTime() < bufferMs) {
-    try {
-      const decryptedRefresh = decryptToken(
-        workspace.clickup_refresh_token
-      );
-      const newTokens = await refreshAccessToken(decryptedRefresh);
+    if (expiresAt.getTime() - now.getTime() < bufferMs) {
+      try {
+        const decryptedRefresh = decryptToken(
+          workspace.clickup_refresh_token
+        );
+        const newTokens = await refreshAccessToken(decryptedRefresh);
 
-      const newExpiresAt = new Date(
-        Date.now() + (newTokens.expires_in ?? 3600) * 1000
-      );
+        const newExpiresAt = newTokens.expires_in
+          ? new Date(Date.now() + newTokens.expires_in * 1000)
+          : undefined;
 
-      await storeTokens(
-        workspaceId,
-        newTokens.access_token,
-        newTokens.refresh_token,
-        newExpiresAt
-      );
+        await storeTokens(
+          workspaceId,
+          newTokens.access_token,
+          newTokens.refresh_token,
+          newExpiresAt
+        );
 
-      return newTokens.access_token;
-    } catch (refreshError) {
-      console.error("Failed to refresh ClickUp token:", refreshError);
+        return newTokens.access_token;
+      } catch (refreshError) {
+        console.error("Failed to refresh ClickUp token:", refreshError);
 
-      // Mark workspace as disconnected
-      await supabase
-        .from("workspaces")
-        .update({
-          clickup_connected: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", workspaceId);
+        // Mark workspace as disconnected
+        await supabase
+          .from("workspaces")
+          .update({
+            clickup_connected: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", workspaceId);
 
-      return null;
+        return null;
+      }
     }
   }
 
@@ -296,3 +268,6 @@ export async function disconnectClickUp(
     throw new Error(`Failed to disconnect ClickUp: ${error.message}`);
   }
 }
+
+// Re-export encryption utilities for backwards compatibility
+export { encryptToken, decryptToken } from "@/lib/clickup/encryption";

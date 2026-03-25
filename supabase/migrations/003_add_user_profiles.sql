@@ -26,14 +26,18 @@ create index if not exists idx_user_profiles_user on user_profiles(user_id);
 
 alter table user_profiles enable row level security;
 
+drop policy if exists "Users can view own profile" on user_profiles;
 create policy "Users can view own profile" on user_profiles
   for select using (user_id = auth.uid());
 
+drop policy if exists "Users can update own profile" on user_profiles;
 create policy "Users can update own profile" on user_profiles
   for update using (user_id = auth.uid());
 
+drop policy if exists "Users can insert own profile" on user_profiles;
 create policy "Users can insert own profile" on user_profiles
   for insert with check (user_id = auth.uid());
 
 -- Apply updated_at trigger
+drop trigger if exists set_updated_at on user_profiles;
 create trigger set_updated_at before update on user_profiles for each row execute function update_updated_at();

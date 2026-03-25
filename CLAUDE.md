@@ -58,6 +58,12 @@ supabase/
 - Logo: Use BineeLogo component or PNG files from /public/
 - Use Tailwind utilities, no custom CSS unless necessary
 
+## Git Safety Rules
+- NEVER push to any branch without explicit user permission
+- NEVER run git reset, git revert, or any destructive git commands without explicit user permission
+- NEVER force push under any circumstances without explicit user permission
+- Only commit locally — the user will decide when and where to push
+
 ## Key Rules
 - All database queries go through Supabase client, never raw SQL in frontend
 - All AI calls go through src/lib/ai/ — never call Anthropic directly from components

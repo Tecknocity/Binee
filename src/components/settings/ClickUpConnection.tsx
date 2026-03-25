@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plug, RefreshCw, Loader2, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface ConnectionStatus {
   connected: boolean;
   teamName: string | null;
   lastSyncedAt: string | null;
-  syncStatus: "idle" | "syncing" | "synced" | "error";
+  syncStatus: "idle" | "syncing" | "complete" | "error";
   syncError: string | null;
   rateLimitRemaining: number | null;
   rateLimitTotal: number | null;
@@ -22,6 +23,8 @@ interface ConnectionStatus {
  * for connecting, disconnecting, and manually re-syncing data.
  */
 export function ClickUpConnection() {
+  const { workspace_id, membership } = useWorkspace();
+  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin';
   const [status, setStatus] = useState<ConnectionStatus>({
     connected: false,
     teamName: null,
@@ -37,35 +40,54 @@ export function ClickUpConnection() {
   const [disconnecting, setDisconnecting] = useState(false);
 
   const fetchStatus = useCallback(async () => {
+    if (!workspace_id) {
+      setLoading(false);
+      return;
+    }
     try {
-      const res = await fetch("/api/clickup/status");
+      const res = await fetch(`/api/clickup/status?workspace_id=${encodeURIComponent(workspace_id)}`);
       if (res.ok) {
         const data = await res.json();
-        setStatus(data);
+        setStatus({
+          connected: data.connected ?? false,
+          teamName: data.team_name ?? null,
+          lastSyncedAt: data.last_synced_at ?? null,
+          syncStatus: data.sync_status ?? "idle",
+          syncError: data.sync_error ?? null,
+          rateLimitRemaining: null,
+          rateLimitTotal: null,
+          webhookHealthy: data.webhook_healthy ?? null,
+        });
       }
     } catch (err) {
       console.error("Failed to fetch ClickUp status:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [workspace_id]);
 
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
 
   const handleConnect = () => {
-    window.location.href = "/api/clickup/auth";
+    if (!workspace_id) return;
+    window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}`;
   };
 
   const handleDisconnect = async () => {
+    if (!workspace_id) return;
     if (!confirm("Are you sure you want to disconnect ClickUp? This will remove all cached data.")) {
       return;
     }
 
     setDisconnecting(true);
     try {
-      const res = await fetch("/api/clickup/disconnect", { method: "POST" });
+      const res = await fetch("/api/clickup/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_id }),
+      });
       if (res.ok) {
         setStatus((prev) => ({
           ...prev,
@@ -87,9 +109,14 @@ export function ClickUpConnection() {
   };
 
   const handleResync = async () => {
+    if (!workspace_id) return;
     setSyncing(true);
     try {
-      const res = await fetch("/api/clickup/sync", { method: "POST" });
+      const res = await fetch("/api/clickup/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_id }),
+      });
       if (res.ok) {
         setStatus((prev) => ({ ...prev, syncStatus: "syncing" }));
         const pollInterval = setInterval(async () => {
@@ -200,14 +227,14 @@ export function ClickUpConnection() {
               <p
                 className={cn(
                   "text-sm font-medium",
-                  status.syncStatus === "synced" && "text-success",
+                  status.syncStatus === "complete" && "text-success",
                   status.syncStatus === "syncing" && "text-warning",
                   status.syncStatus === "error" && "text-error",
                   status.syncStatus === "idle" && "text-text-secondary"
                 )}
               >
                 {status.syncStatus === "syncing" && "Syncing..."}
-                {status.syncStatus === "synced" && "Up to date"}
+                {status.syncStatus === "complete" && "Up to date"}
                 {status.syncStatus === "error" && "Error"}
                 {status.syncStatus === "idle" && "Idle"}
               </p>
@@ -266,38 +293,44 @@ export function ClickUpConnection() {
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              onClick={handleResync}
-              disabled={syncing || status.syncStatus === "syncing"}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                "bg-[#7B68EE] text-white hover:bg-[#6A5ACD]",
-                "disabled:cursor-not-allowed disabled:opacity-50"
-              )}
-            >
-              {syncing || status.syncStatus === "syncing" ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
-              {syncing || status.syncStatus === "syncing"
-                ? "Syncing..."
-                : "Re-sync data"}
-            </button>
-            <button
-              onClick={handleDisconnect}
-              disabled={disconnecting}
-              className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                "border border-border text-text-secondary hover:border-error/30 hover:text-error hover:bg-error/5",
-                "disabled:cursor-not-allowed disabled:opacity-50"
-              )}
-            >
-              {disconnecting ? "Disconnecting..." : "Disconnect"}
-            </button>
-          </div>
+          {/* Actions — only owner/admin can manage the connection */}
+          {isAdmin ? (
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={handleResync}
+                disabled={syncing || status.syncStatus === "syncing"}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                  "bg-[#7B68EE] text-white hover:bg-[#6A5ACD]",
+                  "disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                {syncing || status.syncStatus === "syncing" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {syncing || status.syncStatus === "syncing"
+                  ? "Syncing..."
+                  : "Re-sync data"}
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                className={cn(
+                  "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                  "border border-border text-text-secondary hover:border-error/30 hover:text-error hover:bg-error/5",
+                  "disabled:cursor-not-allowed disabled:opacity-50"
+                )}
+              >
+                {disconnecting ? "Disconnecting..." : "Disconnect"}
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-text-muted pt-1">
+              Only workspace owners and admins can manage this integration.
+            </p>
+          )}
         </div>
       )}
 
@@ -309,14 +342,20 @@ export function ClickUpConnection() {
             tracking data. Binee will analyze your workflow and provide
             AI-powered insights.
           </p>
-          <button
-            onClick={handleConnect}
-            className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors bg-[#7B68EE] text-white hover:bg-[#6A5ACD]"
-          >
-            <Plug className="w-4 h-4" />
-            Connect ClickUp
-            <ExternalLink className="w-3.5 h-3.5 ml-1" />
-          </button>
+          {isAdmin ? (
+            <button
+              onClick={handleConnect}
+              className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors bg-[#7B68EE] text-white hover:bg-[#6A5ACD]"
+            >
+              <Plug className="w-4 h-4" />
+              Connect ClickUp
+              <ExternalLink className="w-3.5 h-3.5 ml-1" />
+            </button>
+          ) : (
+            <p className="text-xs text-text-muted">
+              Ask a workspace owner or admin to connect ClickUp.
+            </p>
+          )}
         </div>
       )}
     </div>

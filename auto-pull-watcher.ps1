@@ -3,7 +3,7 @@
 # so the local Next.js dev server always serves the latest code.
 
 $pollInterval = 10
-$branch = "main"
+$branch = "test"
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan

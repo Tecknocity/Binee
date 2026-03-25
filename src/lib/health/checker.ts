@@ -157,6 +157,7 @@ export async function runHealthCheck(workspaceId: string, previousScore?: number
     recommendations: allIssues.map((i) => i.suggestion),
     checked_at: new Date().toISOString(),
     credits_used: 1,
+    previous_score: null,
     created_at: new Date().toISOString(),
   };
 }

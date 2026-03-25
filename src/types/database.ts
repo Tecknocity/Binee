@@ -1,5 +1,36 @@
 // Binee Database Types — mirrors the Supabase schema
 
+export interface Profile {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  preferred_name: string | null;
+  work_role: string | null;
+  personal_preferences: string | null;
+  timezone: string;
+  avatar_url: string | null;
+  notifications_enabled: boolean;
+  notify_task_complete: boolean;
+  notify_daily_standup: boolean;
+  daily_standup_time: string;
+  notify_daily_digest: boolean;
+  daily_digest_time: string;
+  allow_training: boolean;
+  chat_history_enabled: boolean;
+  onboarding_completed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -19,7 +50,7 @@ export interface Workspace {
   clickup_sync_status: 'idle' | 'syncing' | 'error' | 'complete';
   clickup_last_synced_at: string | null;
   clickup_sync_error: string | null;
-  clickup_plan_tier: string | null;
+  clickup_plan_tier: 'free' | 'unlimited' | 'business' | 'business_plus' | 'enterprise' | null;
   last_sync_at: string | null;
   credits_reset_at: string | null;
   settings: Record<string, unknown>;
@@ -36,7 +67,7 @@ export interface WorkspaceMember {
   display_name: string | null;
   avatar_url: string | null;
   invited_email: string | null;
-  status: string;
+  status: 'pending' | 'active' | 'removed';
   joined_at: string | null;
   created_at: string;
   updated_at: string;
@@ -64,6 +95,7 @@ export interface CachedSpace {
   status: Record<string, unknown> | null;
   features: Record<string, unknown> | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -78,6 +110,7 @@ export interface CachedFolder {
   hidden: boolean;
   task_count: number;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -93,6 +126,7 @@ export interface CachedList {
   task_count: number;
   status: Record<string, unknown> | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -115,6 +149,7 @@ export interface CachedTask {
   time_spent: number | null;
   custom_fields: Record<string, unknown>[] | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -133,6 +168,7 @@ export interface CachedTimeEntry {
   billable: boolean;
   tags: string[] | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -148,10 +184,14 @@ export interface CachedTeamMember {
   profile_picture: string | null;
   role: number | null;
   raw_data: Record<string, unknown> | null;
+  data_json: Record<string, unknown> | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
 }
+
+// PRD alias: cached_members view maps to cached_team_members
+export type CachedMember = CachedTeamMember;
 
 export interface WebhookRegistration {
   id: string;
@@ -160,6 +200,21 @@ export interface WebhookRegistration {
   endpoint: string;
   events: string[];
   active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClickupConnection {
+  id: string;
+  workspace_id: string;
+  access_token_encrypted: string | null;
+  refresh_token_encrypted: string | null;
+  token_expires_at: string | null;
+  clickup_user_id: string | null;
+  clickup_team_id: string | null;
+  plan_tier: 'free' | 'unlimited' | 'business' | 'business_plus' | 'enterprise';
+  sync_status: 'idle' | 'syncing' | 'error' | 'complete';
+  last_sync_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -173,6 +228,8 @@ export interface WebhookEvent {
   processed: boolean;
   processed_at: string | null;
   error: string | null;
+  source: string | null;
+  received_at: string;
   created_at: string;
 }
 
@@ -194,8 +251,10 @@ export interface Message {
   conversation_id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  tool_calls_json: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
   credits_used: number;
+  model_used: string | null;
   created_at: string;
 }
 
@@ -205,8 +264,9 @@ export interface CreditTransaction {
   user_id: string | null;
   amount: number;
   balance_after: number;
-  type: 'deduction' | 'purchase' | 'bonus' | 'refund' | 'monthly_reset';
+  type: 'deduction' | 'purchase' | 'bonus' | 'refund' | 'monthly_reset' | 'subscription_grant';
   description: string;
+  message_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
 }
@@ -217,8 +277,18 @@ export interface Dashboard {
   name: string;
   description: string | null;
   layout: Record<string, unknown>[];
+  layout_json: Record<string, unknown>;
   is_default: boolean;
   created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserDashboardPreference {
+  id: string;
+  user_id: string;
+  workspace_id: string;
+  last_active_dashboard_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -244,6 +314,7 @@ export interface HealthCheckResult {
   recommendations: string[];
   checked_at: string;
   credits_used: number;
+  previous_score: number | null;
   created_at: string;
 }
 
@@ -255,6 +326,16 @@ export interface HealthIssue {
   description: string;
   affected_items: string[];
   suggestion: string;
+}
+
+export interface HealthSnapshot {
+  id: string;
+  workspace_id: string;
+  overall_score: number;
+  category_scores: Record<string, number>;
+  previous_score: number | null;
+  snapshot_week: string; // DATE as ISO string (Monday of the week)
+  created_at: string;
 }
 
 export interface SetupSession {
@@ -271,6 +352,14 @@ export interface SetupSession {
   updated_at: string;
 }
 
+export interface PlanConfiguration {
+  plan: string;
+  monthly_credits: number;
+  price_cents: number;
+  max_members: number | null;
+  features: Record<string, unknown>;
+}
+
 // Helper type for deduct_credits RPC response
 export interface DeductCreditsResult {
   success: boolean;
@@ -279,4 +368,107 @@ export interface DeductCreditsResult {
   balance?: number;
   deducted?: number;
   required?: number;
+}
+
+// Helper type for add_credits RPC response
+export interface AddCreditsResult {
+  success: boolean;
+  error?: string;
+  transaction_id?: string;
+  balance?: number;
+  added?: number;
+}
+
+// Billing types — mirrors user-scoped billing tables (migration 024)
+export interface UserCreditAccount {
+  id: string;
+  user_id: string;
+  balance: number;
+  lifetime_credits: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserSubscription {
+  id: string;
+  user_id: string;
+  plan_tier: '50' | '100' | '250' | '500' | '1000';
+  billing_period: 'monthly' | 'annual';
+  status: 'active' | 'canceled' | 'past_due' | 'trialing';
+  stripe_customer_id: string | null;
+  payment_provider_id: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  annual_end_date: string | null;
+  last_credit_allocation_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserCreditTransaction {
+  id: string;
+  user_id: string;
+  amount: number;
+  balance_after: number;
+  type: string;
+  description: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface CreditUsage {
+  id: string;
+  user_id: string;
+  session_id: string | null;
+  action_type: string;
+  credits_used: number;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface WeeklyUsageSummary {
+  id: string;
+  workspace_id: string;
+  week_start: string;
+  total_credits: number;
+  chat_credits: number;
+  health_check_credits: number;
+  setup_credits: number;
+  dashboard_credits: number;
+  briefing_credits: number;
+  created_at: string;
+}
+
+// Supabase Tables type map for client typing
+export interface Tables {
+  profiles: Profile;
+  user_profiles: UserProfile;
+  workspaces: Workspace;
+  workspace_members: WorkspaceMember;
+  workspace_invitations: WorkspaceInvitation;
+  cached_spaces: CachedSpace;
+  cached_folders: CachedFolder;
+  cached_lists: CachedList;
+  cached_tasks: CachedTask;
+  cached_time_entries: CachedTimeEntry;
+  cached_team_members: CachedTeamMember;
+  cached_members: CachedMember;
+  webhook_registrations: WebhookRegistration;
+  clickup_connections: ClickupConnection;
+  webhook_events: WebhookEvent;
+  conversations: Conversation;
+  messages: Message;
+  credit_transactions: CreditTransaction;
+  dashboards: Dashboard;
+  dashboard_widgets: DashboardWidget;
+  user_dashboard_preferences: UserDashboardPreference;
+  health_check_results: HealthCheckResult;
+  health_snapshots: HealthSnapshot;
+  setup_sessions: SetupSession;
+  plan_configurations: PlanConfiguration;
+  user_credit_accounts: UserCreditAccount;
+  user_subscriptions: UserSubscription;
+  user_credit_transactions: UserCreditTransaction;
+  credit_usage: CreditUsage;
+  weekly_usage_summaries: WeeklyUsageSummary;
 }

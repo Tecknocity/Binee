@@ -1,14 +1,24 @@
 'use client';
 
-import { getWorkloadData } from '@/hooks/useDashboard';
+import { useWorkloadData } from '@/hooks/useDashboard';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 interface WorkloadWidgetProps {
   title?: string;
 }
 
 export default function WorkloadWidget({ title }: WorkloadWidgetProps) {
-  const data = getWorkloadData();
-  const maxTasks = Math.max(...data.map((d) => d.total));
+  const { workspace_id } = useWorkspace();
+  const { data } = useWorkloadData(workspace_id);
+  const maxTasks = data.length > 0 ? Math.max(...data.map((d) => d.total)) : 0;
+
+  if (!data.length) {
+    return (
+      <div className="flex items-center justify-center h-full text-text-muted text-sm">
+        No workload data
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

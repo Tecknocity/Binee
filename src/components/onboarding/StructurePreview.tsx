@@ -5,50 +5,47 @@ import {
   FolderOpen,
   Folder,
   List,
-  CheckSquare,
-  FileText,
+  Circle,
   ChevronRight,
   ChevronDown,
-  RotateCcw,
-  MessageSquare,
+  X,
+  Pencil,
   Rocket,
+  Lightbulb,
+  Puzzle,
 } from 'lucide-react';
-import type { SetupPlan } from '@/lib/setup/session';
+import type { SetupPlan as TypedSetupPlan } from '@/lib/setup/types';
+import type { SetupPlan as LegacySetupPlan } from '@/lib/setup/session';
+
+type AnySetupPlan = TypedSetupPlan | LegacySetupPlan;
 
 interface StructurePreviewProps {
-  plan: SetupPlan;
+  plan: AnySetupPlan;
   onApprove: () => void;
-  onRequestChanges: (feedback: string) => void;
-  onStartOver: () => void;
+  onEdit: () => void;
+  onReject: () => void;
 }
 
-export function StructurePreview({ plan, onApprove, onRequestChanges, onStartOver }: StructurePreviewProps) {
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [feedback, setFeedback] = useState('');
+function isTypedPlan(plan: AnySetupPlan): plan is TypedSetupPlan {
+  return 'recommended_clickapps' in plan;
+}
 
-  const handleSubmitFeedback = () => {
-    if (feedback.trim()) {
-      onRequestChanges(feedback.trim());
-      setFeedback('');
-      setShowFeedback(false);
-    }
-  };
+export function StructurePreview({ plan, onApprove, onEdit, onReject }: StructurePreviewProps) {
+  const typed = isTypedPlan(plan);
 
   // Count totals for summary
   let totalFolders = 0;
   let totalLists = 0;
-  let totalTasks = 0;
+  let totalItems = 0;
   for (const space of plan.spaces) {
     for (const folder of space.folders) {
       totalFolders++;
       for (const list of folder.lists) {
         totalLists++;
-        totalTasks += list.tasks.length;
+        totalItems += typed
+          ? (list as TypedSetupPlan['spaces'][0]['folders'][0]['lists'][0]).statuses.length
+          : (list as LegacySetupPlan['spaces'][0]['folders'][0]['lists'][0]).tasks.length;
       }
-    }
-    for (const list of space.folderlessLists) {
-      totalLists++;
-      totalTasks += list.tasks.length;
     }
   }
 
@@ -58,8 +55,10 @@ export function StructurePreview({ plan, onApprove, onRequestChanges, onStartOve
       <div className="py-4">
         <h2 className="text-xl font-semibold text-text-primary">Proposed Workspace Structure</h2>
         <p className="text-sm text-text-secondary mt-1">
-          {plan.spaces.length} spaces &middot; {totalFolders} folders &middot; {totalLists} lists &middot;{' '}
-          {totalTasks} tasks &middot; {plan.docs.length} docs
+          {plan.spaces.length} {plan.spaces.length === 1 ? 'space' : 'spaces'} &middot;{' '}
+          {totalFolders} {totalFolders === 1 ? 'folder' : 'folders'} &middot;{' '}
+          {totalLists} {totalLists === 1 ? 'list' : 'lists'} &middot;{' '}
+          {totalItems} {typed ? 'statuses' : 'tasks'}
         </p>
       </div>
 
@@ -82,117 +81,118 @@ export function StructurePreview({ plan, onApprove, onRequestChanges, onStartOve
                 badge="Folder"
                 badgeColor="bg-warning/15 text-warning"
               >
-                {folder.lists.map((list, li) => (
-                  <TreeNode
-                    key={li}
-                    icon={<List className="w-4 h-4 text-info" />}
-                    label={list.name}
-                    badge={`${list.tasks.length} tasks`}
-                    badgeColor="bg-info/15 text-info"
-                  >
-                    {list.tasks.map((task, ti) => (
-                      <div key={ti} className="flex items-center gap-2 py-1 pl-2 text-sm text-text-secondary">
-                        <CheckSquare className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-                        <span>{task.name}</span>
-                      </div>
-                    ))}
-                  </TreeNode>
-                ))}
-              </TreeNode>
-            ))}
+                {folder.lists.map((list, li) => {
+                  if (typed) {
+                    const typedList = list as TypedSetupPlan['spaces'][0]['folders'][0]['lists'][0];
+                    return (
+                      <TreeNode
+                        key={li}
+                        icon={<List className="w-4 h-4 text-info" />}
+                        label={typedList.name}
+                        badge={`${typedList.statuses.length} statuses`}
+                        badgeColor="bg-info/15 text-info"
+                      >
+                        {typedList.statuses.map((status, sti) => (
+                          <div
+                            key={sti}
+                            className="flex items-center gap-2 py-1 pl-2 text-sm text-text-secondary"
+                          >
+                            <Circle
+                              className="w-3 h-3 flex-shrink-0"
+                              style={{ color: status.color, fill: status.color }}
+                            />
+                            <span>{status.name}</span>
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-surface text-text-muted">
+                              {status.type}
+                            </span>
+                          </div>
+                        ))}
+                        {typedList.description && (
+                          <p className="text-xs text-text-muted pl-2 pb-1 italic">{typedList.description}</p>
+                        )}
+                      </TreeNode>
+                    );
+                  }
 
-            {space.folderlessLists.map((list, li) => (
-              <TreeNode
-                key={`fl-${li}`}
-                icon={<List className="w-4 h-4 text-info" />}
-                label={list.name}
-                badge={`${list.tasks.length} tasks`}
-                badgeColor="bg-info/15 text-info"
-              >
-                {list.tasks.map((task, ti) => (
-                  <div key={ti} className="flex items-center gap-2 py-1 pl-2 text-sm text-text-secondary">
-                    <CheckSquare className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-                    <span>{task.name}</span>
-                  </div>
-                ))}
+                  const legacyList = list as LegacySetupPlan['spaces'][0]['folders'][0]['lists'][0];
+                  return (
+                    <TreeNode
+                      key={li}
+                      icon={<List className="w-4 h-4 text-info" />}
+                      label={legacyList.name}
+                      badge={`${legacyList.tasks.length} tasks`}
+                      badgeColor="bg-info/15 text-info"
+                    >
+                      {legacyList.tasks.map((task, ti) => (
+                        <div
+                          key={ti}
+                          className="flex items-center gap-2 py-1 pl-2 text-sm text-text-secondary"
+                        >
+                          <Circle className="w-3 h-3 flex-shrink-0 text-text-muted" />
+                          <span>{task.name}</span>
+                        </div>
+                      ))}
+                    </TreeNode>
+                  );
+                })}
               </TreeNode>
             ))}
           </TreeNode>
         ))}
 
-        {/* Docs */}
-        {plan.docs.length > 0 && (
+        {/* Recommended ClickApps — only in typed plans */}
+        {typed && (plan as TypedSetupPlan).recommended_clickapps.length > 0 && (
           <TreeNode
-            icon={<FileText className="w-4 h-4 text-success" />}
-            label="Documents"
-            badge={`${plan.docs.length} docs`}
+            icon={<Puzzle className="w-4 h-4 text-success" />}
+            label="Recommended ClickApps"
+            badge={`${(plan as TypedSetupPlan).recommended_clickapps.length}`}
             badgeColor="bg-success/15 text-success"
-            defaultOpen
           >
-            {plan.docs.map((doc, di) => (
-              <div key={di} className="flex items-start gap-2 py-1.5 pl-2">
-                <FileText className="w-3.5 h-3.5 text-text-muted flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-sm text-text-secondary">{doc.name}</span>
-                  {doc.content && (
-                    <p className="text-xs text-text-muted mt-0.5">{doc.content}</p>
-                  )}
-                </div>
-              </div>
-            ))}
+            <div className="flex flex-wrap gap-1.5 py-1 pl-2">
+              {(plan as TypedSetupPlan).recommended_clickapps.map((app, i) => (
+                <span
+                  key={i}
+                  className="text-xs font-medium px-2 py-1 rounded-md bg-success/10 text-success border border-success/20"
+                >
+                  {app}
+                </span>
+              ))}
+            </div>
           </TreeNode>
+        )}
+
+        {/* AI Reasoning — only in typed plans */}
+        {typed && (plan as TypedSetupPlan).reasoning && (
+          <div className="bg-accent/5 border border-accent/15 rounded-xl p-3 mt-2">
+            <div className="flex items-start gap-2">
+              <Lightbulb className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-medium text-accent mb-1">Why this structure?</p>
+                <p className="text-xs text-text-secondary leading-relaxed">{(plan as TypedSetupPlan).reasoning}</p>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Feedback input */}
-      {showFeedback && (
-        <div className="bg-surface border border-border rounded-xl p-4 mb-3">
-          <p className="text-sm text-text-secondary mb-2">What would you like to change?</p>
-          <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="e.g., Add a space for HR, remove the Sales Pipeline folder..."
-            rows={3}
-            className="w-full bg-navy-base border border-border rounded-lg px-3 py-2 text-sm text-text-primary
-              placeholder:text-text-muted outline-none focus:border-accent/40 resize-none"
-          />
-          <div className="flex justify-end gap-2 mt-2">
-            <button
-              onClick={() => setShowFeedback(false)}
-              className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmitFeedback}
-              disabled={!feedback.trim()}
-              className="px-4 py-1.5 bg-accent text-white text-sm font-medium rounded-lg
-                hover:bg-accent/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Submit Feedback
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Action buttons */}
-      <div className="flex items-center justify-between pt-2 border-t border-border">
+      <div className="flex items-center justify-between pt-3 border-t border-border">
         <button
-          onClick={onStartOver}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-text-muted hover:text-text-secondary transition-colors"
+          onClick={onReject}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-text-muted hover:text-error transition-colors"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          Start Over
+          <X className="w-3.5 h-3.5" />
+          Reject
         </button>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowFeedback(!showFeedback)}
+            onClick={onEdit}
             className="flex items-center gap-1.5 px-4 py-2 text-sm text-text-secondary border border-border rounded-lg
               hover:border-accent/40 hover:text-text-primary transition-colors"
           >
-            <MessageSquare className="w-3.5 h-3.5" />
-            Request Changes
+            <Pencil className="w-3.5 h-3.5" />
+            Edit
           </button>
           <button
             onClick={onApprove}

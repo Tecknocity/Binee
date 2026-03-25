@@ -50,14 +50,23 @@ const WEBHOOK_EVENTS = [
 
 /**
  * Registers a webhook with ClickUp to receive real-time updates.
- * Stores the webhook ID in the workspace record for later management.
+ * Called automatically after successful OAuth + initial sync.
+ *
+ * Stores the webhook ID in:
+ * - workspaces.clickup_webhook_id (legacy lookup for incoming events)
+ * - clickup_connections.clickup_webhook_id (primary, for disconnect cleanup)
+ * - webhook_registrations (audit trail)
  */
 export async function registerWebhooks(
   workspaceId: string,
-  teamId: string
+  teamId: string,
+  accessToken?: string
 ): Promise<ClickUpWebhookRegistration> {
   const client = new ClickUpClient(workspaceId);
   const endpoint = `${APP_URL}/api/webhooks/clickup`;
+
+  // First, clean up any stale webhooks for this workspace
+  await cleanupStaleWebhooks(workspaceId, teamId, client);
 
   const result = await client.createWebhook(
     teamId,
@@ -65,27 +74,62 @@ export async function registerWebhooks(
     WEBHOOK_EVENTS
   );
 
-  // Store webhook ID in workspace for later cleanup
+  const webhookId = result.id;
+  const now = new Date().toISOString();
   const supabase = getSupabaseAdmin();
+
+  // Store webhook ID in workspaces table (used by incoming event lookup)
   await supabase
     .from("workspaces")
     .update({
-      clickup_webhook_id: result.id,
+      clickup_webhook_id: webhookId,
       clickup_webhook_endpoint: endpoint,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     })
     .eq("id", workspaceId);
+
+  // Store webhook ID in clickup_connections (primary record for cleanup)
+  await supabase
+    .from("clickup_connections")
+    .update({
+      clickup_webhook_id: webhookId,
+      webhook_endpoint: endpoint,
+      webhook_events: WEBHOOK_EVENTS,
+      updated_at: now,
+    })
+    .eq("workspace_id", workspaceId);
+
+  // Insert into webhook_registrations for audit trail
+  await supabase.from("webhook_registrations").upsert(
+    {
+      workspace_id: workspaceId,
+      clickup_webhook_id: webhookId,
+      endpoint,
+      events: WEBHOOK_EVENTS,
+      active: true,
+      updated_at: now,
+    },
+    { onConflict: "workspace_id,clickup_webhook_id" }
+  );
 
   return result as unknown as ClickUpWebhookRegistration;
 }
 
 /**
- * Removes the registered webhook from ClickUp and clears the workspace record.
+ * Removes the registered webhook from ClickUp and clears all stored records.
+ * Called on disconnect to ensure clean teardown.
  */
 export async function unregisterWebhooks(
   workspaceId: string
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
+
+  // Check both tables for the webhook ID (clickup_connections is primary)
+  const { data: connection } = await supabase
+    .from("clickup_connections")
+    .select("clickup_webhook_id")
+    .eq("workspace_id", workspaceId)
+    .single();
 
   const { data: workspace } = await supabase
     .from("workspaces")
@@ -93,23 +137,87 @@ export async function unregisterWebhooks(
     .eq("id", workspaceId)
     .single();
 
-  if (workspace?.clickup_webhook_id) {
+  const webhookId =
+    connection?.clickup_webhook_id ?? workspace?.clickup_webhook_id;
+
+  if (webhookId) {
     try {
       const client = new ClickUpClient(workspaceId);
-      await client.deleteWebhook(workspace.clickup_webhook_id);
+      await client.deleteWebhook(webhookId);
     } catch (err) {
+      // Webhook deletion may fail if the token is already invalid
       console.error("Failed to delete ClickUp webhook:", err);
     }
   }
 
+  const now = new Date().toISOString();
+
+  // Clear from workspaces table
   await supabase
     .from("workspaces")
     .update({
       clickup_webhook_id: null,
       clickup_webhook_endpoint: null,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     })
     .eq("id", workspaceId);
+
+  // Clear from clickup_connections table
+  await supabase
+    .from("clickup_connections")
+    .update({
+      clickup_webhook_id: null,
+      webhook_endpoint: null,
+      webhook_events: [],
+      updated_at: now,
+    })
+    .eq("workspace_id", workspaceId);
+
+  // Deactivate in webhook_registrations (keep for audit)
+  await supabase
+    .from("webhook_registrations")
+    .update({ active: false, updated_at: now })
+    .eq("workspace_id", workspaceId);
+}
+
+// ---------------------------------------------------------------------------
+// Stale webhook cleanup
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes any existing webhooks for this workspace's endpoint before
+ * registering a new one. Prevents duplicate webhooks if OAuth is re-run.
+ */
+async function cleanupStaleWebhooks(
+  workspaceId: string,
+  teamId: string,
+  client: ClickUpClient
+): Promise<void> {
+  const endpoint = `${APP_URL}/api/webhooks/clickup`;
+
+  try {
+    const { webhooks } = await client.getWebhooks(teamId);
+    const stale = webhooks.filter(
+      (w: Record<string, unknown>) => w.endpoint === endpoint
+    );
+
+    for (const w of stale) {
+      try {
+        await client.deleteWebhook(w.id as string);
+      } catch {
+        // Best-effort cleanup
+      }
+    }
+  } catch {
+    // If we can't list webhooks, proceed with registration anyway
+  }
+
+  // Also clean up local records
+  const supabase = getSupabaseAdmin();
+  await supabase
+    .from("webhook_registrations")
+    .delete()
+    .eq("workspace_id", workspaceId);
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +340,7 @@ async function handleTaskDeleted(
       .from("cached_tasks")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_task_id", taskId);
+      .eq("clickup_id", taskId);
   } catch (err) {
     console.error(`[Webhook] Failed to handle taskDeleted ${taskId}:`, err);
   }
@@ -289,14 +397,14 @@ async function handleListDeleted(
       .from("cached_lists")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_list_id", listId);
+      .eq("clickup_id", listId);
 
     // Also remove tasks belonging to this list
     await supabase
       .from("cached_tasks")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_list_id", listId);
+      .eq("list_id", listId);
   } catch (err) {
     console.error(`[Webhook] Failed to handle listDeleted ${listId}:`, err);
   }
@@ -347,29 +455,40 @@ async function handleSpaceDeleted(
     const supabase = getSupabaseAdmin();
 
     // Remove space and all nested cached data
-    await supabase
-      .from("cached_tasks")
-      .delete()
+    // First get lists belonging to this space so we can remove their tasks
+    const { data: spaceLists } = await supabase
+      .from("cached_lists")
+      .select("clickup_id")
       .eq("workspace_id", workspaceId)
-      .eq("clickup_space_id", spaceId);
+      .eq("space_id", spaceId);
+
+    const spaceListIds = (spaceLists ?? []).map((l: { clickup_id: string }) => l.clickup_id);
+
+    if (spaceListIds.length > 0) {
+      await supabase
+        .from("cached_tasks")
+        .delete()
+        .eq("workspace_id", workspaceId)
+        .in("list_id", spaceListIds);
+    }
 
     await supabase
       .from("cached_lists")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_space_id", spaceId);
+      .eq("space_id", spaceId);
 
     await supabase
       .from("cached_folders")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_space_id", spaceId);
+      .eq("space_id", spaceId);
 
     await supabase
       .from("cached_spaces")
       .delete()
       .eq("workspace_id", workspaceId)
-      .eq("clickup_space_id", spaceId);
+      .eq("clickup_id", spaceId);
   } catch (err) {
     console.error(`[Webhook] Failed to handle spaceDeleted ${spaceId}:`, err);
   }

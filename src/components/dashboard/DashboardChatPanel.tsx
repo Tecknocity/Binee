@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Bot, Loader2, SendHorizontal, Sparkles, Coins } from 'lucide-react';
 import type { ChatMessage } from '@/hooks/useChat';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 // ---------------------------------------------------------------------------
 // Inline markdown renderer (lightweight version for the panel)
@@ -146,6 +148,8 @@ export default function DashboardChatPanel({
   dashboardName,
   onDashboardUpdated,
 }: DashboardChatPanelProps) {
+  const { workspace_id } = useWorkspace();
+  const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -167,6 +171,7 @@ export default function DashboardChatPanel({
   // Reset when panel opens with new dashboard
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset messages when panel opens with new dashboard context
       setMessages([
         {
           id: 'panel-welcome',
@@ -198,8 +203,8 @@ export default function DashboardChatPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          workspace_id: 'ws-mock-001',
-          user_id: 'user-mock-001',
+          workspace_id: workspace_id ?? '',
+          user_id: user?.id ?? '',
           conversation_id: `dashboard-builder-${Date.now()}`,
           message: content,
         }),

@@ -1,18 +1,23 @@
 import { createBrowserClient } from '@/lib/supabase/client';
-import type { CreditTransaction, DeductCreditsResult } from '@/types/database';
+import type { CreditTransaction, DeductCreditsResult, AddCreditsResult } from '@/types/database';
+import { PLAN_TIERS, getTierConfig } from '@/lib/credits/tiers';
 
-// Plan credit allocations
+// Re-export tier configuration
+export { PLAN_TIERS, getTierConfig } from '@/lib/credits/tiers';
+export { grantSubscriptionCredits } from '@/lib/credits/grants';
+
+// Plan credit allocations (derived from centralized tiers for backwards compatibility)
 export const PLAN_CREDITS: Record<string, number> = {
-  free: 10,
-  starter: 200,
-  pro: 600,
+  free: PLAN_TIERS.free.credits_signup,
+  starter: PLAN_TIERS.starter.credits_monthly,
+  pro: PLAN_TIERS.pro.credits_monthly,
 };
 
-// Plan limits
+// Plan limits (derived from centralized tiers for backwards compatibility)
 export const PLAN_LIMITS: Record<string, { maxMembers: number | null; maxDashboards: number | null; canSetup: boolean }> = {
-  free: { maxMembers: 1, maxDashboards: 1, canSetup: false },
-  starter: { maxMembers: 5, maxDashboards: 5, canSetup: true },
-  pro: { maxMembers: null, maxDashboards: null, canSetup: true },
+  free: { maxMembers: PLAN_TIERS.free.max_members, maxDashboards: PLAN_TIERS.free.max_dashboards, canSetup: PLAN_TIERS.free.can_setup },
+  starter: { maxMembers: PLAN_TIERS.starter.max_members, maxDashboards: PLAN_TIERS.starter.max_dashboards, canSetup: PLAN_TIERS.starter.can_setup },
+  pro: { maxMembers: PLAN_TIERS.pro.max_members, maxDashboards: PLAN_TIERS.pro.max_dashboards, canSetup: PLAN_TIERS.pro.can_setup },
 };
 
 export async function deductCredits(
@@ -20,6 +25,7 @@ export async function deductCredits(
   userId: string,
   amount: number,
   description: string,
+  messageId?: string,
   metadata: Record<string, unknown> = {},
 ): Promise<DeductCreditsResult> {
   const supabase = createBrowserClient();
@@ -29,6 +35,7 @@ export async function deductCredits(
     p_user_id: userId,
     p_amount: amount,
     p_description: description,
+    p_message_id: messageId ?? null,
     p_metadata: metadata,
   });
 
@@ -43,51 +50,26 @@ export async function addCredits(
   workspaceId: string,
   userId: string,
   amount: number,
-  type: 'purchase' | 'bonus' | 'refund' | 'monthly_reset',
+  type: 'purchase' | 'bonus' | 'refund' | 'monthly_reset' | 'subscription_grant',
   description: string,
   metadata: Record<string, unknown> = {},
-): Promise<{ success: boolean; error?: string }> {
+): Promise<AddCreditsResult> {
   const supabase = createBrowserClient();
 
-  // Get current balance
-  const { data: workspace, error: wsError } = await supabase
-    .from('workspaces')
-    .select('credit_balance')
-    .eq('id', workspaceId)
-    .single();
-
-  if (wsError || !workspace) {
-    return { success: false, error: wsError?.message || 'Workspace not found' };
-  }
-
-  const newBalance = workspace.credit_balance + amount;
-
-  // Update balance
-  const { error: updateError } = await supabase
-    .from('workspaces')
-    .update({ credit_balance: newBalance })
-    .eq('id', workspaceId);
-
-  if (updateError) {
-    return { success: false, error: updateError.message };
-  }
-
-  // Record transaction
-  const { error: txError } = await supabase.from('credit_transactions').insert({
-    workspace_id: workspaceId,
-    user_id: userId,
-    amount,
-    balance_after: newBalance,
-    type,
-    description,
-    metadata,
+  const { data, error } = await supabase.rpc('add_credits', {
+    p_workspace_id: workspaceId,
+    p_user_id: userId,
+    p_amount: amount,
+    p_type: type,
+    p_description: description,
+    p_metadata: metadata,
   });
 
-  if (txError) {
-    return { success: false, error: txError.message };
+  if (error) {
+    return { success: false, error: error.message };
   }
 
-  return { success: true };
+  return data as AddCreditsResult;
 }
 
 export async function getCreditBalance(workspaceId: string): Promise<number> {

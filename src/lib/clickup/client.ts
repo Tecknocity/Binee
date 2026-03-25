@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import type {
   ClickUpTeam,
   ClickUpSpace,
@@ -13,11 +12,10 @@ import type {
   RateLimitStatus,
 } from "@/types/clickup";
 import { getAccessToken } from "@/lib/clickup/oauth";
+import { refreshTokenIfNeeded, forceRefreshToken } from "@/lib/clickup/token-refresh";
+import { getRateLimit, shouldThrottle } from "@/lib/clickup/rate-limits";
 
 const BASE_URL = "https://api.clickup.com/api/v2";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -52,9 +50,17 @@ export class ClickUpClient {
   private rateLimitTotal = 100;
   private rateLimitResetAt = new Date();
   private maxRetries = 3;
+  private planTier = "free";
+  private requestCount = 0;
+  private windowStart = Date.now();
 
-  constructor(workspaceId: string) {
+  constructor(workspaceId: string, planTier?: string) {
     this.workspaceId = workspaceId;
+    if (planTier) {
+      this.planTier = planTier;
+      this.rateLimitTotal = getRateLimit(planTier);
+      this.rateLimitRemaining = this.rateLimitTotal;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -67,13 +73,40 @@ export class ClickUpClient {
   ): Promise<T> {
     const { method = "GET", body, params } = options;
 
-    const accessToken = await getAccessToken(this.workspaceId);
-    if (!accessToken) {
-      throw new ClickUpApiError(
-        "No valid access token for workspace",
-        401
-      );
+    // Use token-refresh module (falls back to legacy getAccessToken)
+    let accessToken: string;
+    try {
+      accessToken = await refreshTokenIfNeeded(this.workspaceId);
+    } catch {
+      // Fall back to legacy token retrieval if clickup_connections doesn't exist
+      const legacyToken = await getAccessToken(this.workspaceId);
+      if (!legacyToken) {
+        throw new ClickUpApiError(
+          "No valid access token for workspace",
+          401
+        );
+      }
+      accessToken = legacyToken;
     }
+
+    // Reset per-minute counter if the window has elapsed
+    const now = Date.now();
+    if (now - this.windowStart >= 60_000) {
+      this.requestCount = 0;
+      this.windowStart = now;
+    }
+
+    // Wait until the rate-limit window resets if we're close to the cap
+    if (shouldThrottle(this.requestCount, this.planTier)) {
+      const waitMs = Math.max(0, this.rateLimitResetAt.getTime() - now);
+      if (waitMs > 0) {
+        await this.sleep(waitMs);
+      }
+      this.requestCount = 0;
+      this.windowStart = Date.now();
+    }
+
+    this.requestCount++;
 
     const url = new URL(`${BASE_URL}${path}`);
     if (params) {
@@ -83,13 +116,14 @@ export class ClickUpClient {
     }
 
     let lastError: Error | null = null;
+    let hasRetriedWithFreshToken = false;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
         const res = await fetch(url.toString(), {
           method,
           headers: {
-            Authorization: accessToken,
+            Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
           body: body ? JSON.stringify(body) : undefined,
@@ -122,6 +156,21 @@ export class ClickUpClient {
           }
 
           throw new ClickUpRateLimitError(waitMs, await res.text());
+        }
+
+        // On 401, try a forced token refresh once before giving up
+        if (res.status === 401 && !hasRetriedWithFreshToken) {
+          hasRetriedWithFreshToken = true;
+          try {
+            accessToken = await forceRefreshToken(this.workspaceId);
+            continue; // Retry the request with the new token
+          } catch {
+            throw new ClickUpApiError(
+              "ClickUp token expired and refresh failed. Please reconnect.",
+              401,
+              await res.text()
+            );
+          }
         }
 
         if (!res.ok) {
@@ -253,7 +302,7 @@ export class ClickUpClient {
 
   async getTeamMembers(teamId: string): Promise<ClickUpMember[]> {
     const team = await this.getTeam(teamId);
-    return team.members;
+    return team.members.map((m) => m.user);
   }
 
   async getTimeEntries(
@@ -387,6 +436,54 @@ export class ClickUpClient {
     teamId: string
   ): Promise<{ webhooks: Array<Record<string, unknown>> }> {
     return this.request(`/team/${teamId}/webhook`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public HTTP methods
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Perform a GET request to the ClickUp API.
+   * All auth headers, token refresh, rate limiting, and retries are handled
+   * automatically.
+   */
+  async get<T>(
+    path: string,
+    params?: Record<string, string | number | boolean>
+  ): Promise<T> {
+    return this.request<T>(path, { method: "GET", params });
+  }
+
+  /**
+   * Perform a POST request to the ClickUp API.
+   */
+  async post<T>(
+    path: string,
+    body?: Record<string, unknown>,
+    params?: Record<string, string | number | boolean>
+  ): Promise<T> {
+    return this.request<T>(path, { method: "POST", body, params });
+  }
+
+  /**
+   * Perform a PUT request to the ClickUp API.
+   */
+  async put<T>(
+    path: string,
+    body?: Record<string, unknown>,
+    params?: Record<string, string | number | boolean>
+  ): Promise<T> {
+    return this.request<T>(path, { method: "PUT", body, params });
+  }
+
+  /**
+   * Perform a DELETE request to the ClickUp API.
+   */
+  async delete<T = void>(
+    path: string,
+    params?: Record<string, string | number | boolean>
+  ): Promise<T> {
+    return this.request<T>(path, { method: "DELETE", params });
   }
 
   // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { CheckCircle, AlertCircle, Clock, RefreshCw, Loader2, Plug, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,12 +23,14 @@ interface Integration {
 function ClickUpLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <linearGradient id="cu1" x1="4" y1="18" x2="20" y2="6" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#8930FD" />
-        <stop offset="1" stopColor="#49CCF9" />
-      </linearGradient>
-      <path d="M4.5 17.5L8.5 14L12 17L15.5 14L19.5 17.5" stroke="url(#cu1)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4.5 11.5L12 5L19.5 11.5" stroke="url(#cu1)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <defs>
+        <linearGradient id="cu-grad" x1="4" y1="18" x2="20" y2="6" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#8930FD" />
+          <stop offset="1" stopColor="#49CCF9" />
+        </linearGradient>
+      </defs>
+      <path d="M4 17L12 11L20 17" stroke="url(#cu-grad)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 13L12 7L17 13" stroke="url(#cu-grad)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -35,9 +38,12 @@ function ClickUpLogo() {
 function MondayLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <circle cx="6" cy="15" r="2.5" fill="#FF3D57" />
-      <circle cx="12" cy="12" r="2.5" fill="#FFCB00" />
-      <circle cx="18" cy="9" r="2.5" fill="#00CA72" />
+      <path d="M4.5 17C3.67 17 3 16.33 3 15.5V10C3 9.17 3.67 8.5 4.5 8.5S6 9.17 6 10V15.5C6 16.33 5.33 17 4.5 17Z" fill="#FF3D57" />
+      <circle cx="4.5" cy="18.5" r="1.5" fill="#FF3D57" />
+      <path d="M10.5 17C9.67 17 9 16.33 9 15.5V8.5C9 7.67 9.67 7 10.5 7S12 7.67 12 8.5V15.5C12 16.33 11.33 17 10.5 17Z" fill="#FFCB00" />
+      <circle cx="10.5" cy="18.5" r="1.5" fill="#FFCB00" />
+      <path d="M16.5 17C15.67 17 15 16.33 15 15.5V11.5C15 10.67 15.67 10 16.5 10S18 10.67 18 11.5V15.5C18 16.33 17.33 17 16.5 17Z" fill="#00CA72" />
+      <circle cx="16.5" cy="18.5" r="1.5" fill="#00CA72" />
     </svg>
   );
 }
@@ -45,9 +51,9 @@ function MondayLogo() {
 function AsanaLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <circle cx="12" cy="7" r="3.5" fill="#F06A6A" />
-      <circle cx="6.5" cy="15.5" r="3.5" fill="#F06A6A" />
-      <circle cx="17.5" cy="15.5" r="3.5" fill="#F06A6A" />
+      <circle cx="12" cy="6.5" r="3.8" fill="#F06A6A" />
+      <circle cx="6" cy="15.5" r="3.8" fill="#F06A6A" />
+      <circle cx="18" cy="15.5" r="3.8" fill="#F06A6A" />
     </svg>
   );
 }
@@ -55,8 +61,17 @@ function AsanaLogo() {
 function JiraLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <path d="M12 2L20 12L12 22L4 12L12 2Z" fill="#2684FF" opacity="0.9" />
-      <path d="M12 7L16 12L12 17L8 12L12 7Z" fill="white" opacity="0.4" />
+      <defs>
+        <linearGradient id="jira-grad1" x1="12" y1="2" x2="8" y2="14" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0052CC" />
+          <stop offset="1" stopColor="#2684FF" />
+        </linearGradient>
+        <linearGradient id="jira-grad2" x1="12" y1="22" x2="16" y2="10" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0052CC" />
+          <stop offset="1" stopColor="#2684FF" />
+        </linearGradient>
+      </defs>
+      <path d="M21.4 11.3L13.1 2.6C12.5 2 11.5 2 10.9 2.6L2.6 11.3C2 11.9 2 12.9 2.6 13.5L10.9 22.2C11.5 22.8 12.5 22.8 13.1 22.2L21.4 13.5C22 12.9 22 11.9 21.4 11.3ZM12 15.1C10.3 15.1 8.9 13.7 8.9 12S10.3 8.9 12 8.9S15.1 10.3 15.1 12S13.7 15.1 12 15.1Z" fill="#2684FF" />
     </svg>
   );
 }
@@ -64,9 +79,10 @@ function JiraLogo() {
 function LinearLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <path d="M3 19.5L4.5 21C5.33 20.17 19.5 6 19.5 6L18 4.5L3 19.5Z" fill="#5E6AD2" />
-      <path d="M12 3C7.03 3 3 7.03 3 12L12 3Z" fill="#5E6AD2" />
-      <path d="M21 12C21 16.97 16.97 21 12 21L21 12Z" fill="#5E6AD2" />
+      <path d="M3.51 12.96L11.04 20.49C6.76 20.05 3.45 16.56 3.51 12.96Z" fill="#5E6AD2" />
+      <path d="M3.95 10.37L13.63 20.05C14.65 19.7 15.58 19.15 16.39 18.45L4.84 6.9C4.32 7.9 3.99 9.01 3.95 10.37Z" fill="#5E6AD2" />
+      <path d="M5.79 5.79C8.66 2.92 13.27 2.54 16.56 4.63L12 2C7.58 2 4 5.58 4 10L5.79 5.79Z" fill="#5E6AD2" />
+      <path d="M12 2C16.42 2 20 5.58 20 10V12C20 16.42 16.42 20 12 20L3.51 11.51C4 6.28 7.58 2 12 2Z" fill="#5E6AD2" />
     </svg>
   );
 }
@@ -74,12 +90,7 @@ function LinearLogo() {
 function HubSpotLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <circle cx="12" cy="12" r="3" fill="#FF7A59" />
-      <circle cx="12" cy="5" r="1.5" fill="#FF7A59" />
-      <circle cx="12" cy="19" r="1.5" fill="#FF7A59" />
-      <circle cx="5" cy="12" r="1.5" fill="#FF7A59" />
-      <circle cx="19" cy="12" r="1.5" fill="#FF7A59" />
-      <path d="M12 6.5V9M12 15V17.5M6.5 12H9M15 12H17.5" stroke="#FF7A59" strokeWidth="1.2" />
+      <path d="M15.5 7.5V5.5C16.33 5.22 16.93 4.43 16.93 3.5C16.93 2.4 16.03 1.5 14.93 1.5C13.83 1.5 12.93 2.4 12.93 3.5C12.93 4.43 13.53 5.22 14.36 5.5V7.5C13.36 7.72 12.45 8.2 11.72 8.87L5.93 4.63C5.98 4.45 6.01 4.27 6.01 4.07C6.01 2.93 5.08 2 3.94 2C2.8 2 1.87 2.93 1.87 4.07C1.87 5.21 2.8 6.14 3.94 6.14C4.34 6.14 4.71 6.03 5.03 5.83L10.72 10.01C10.24 10.82 9.96 11.76 9.96 12.77C9.96 13.82 10.26 14.8 10.77 15.63L9.14 17.26C8.97 17.21 8.78 17.17 8.59 17.17C7.49 17.17 6.59 18.07 6.59 19.17C6.59 20.27 7.49 21.17 8.59 21.17C9.69 21.17 10.59 20.27 10.59 19.17C10.59 18.93 10.54 18.7 10.46 18.49L12.13 16.83C13 17.42 14.04 17.77 15.17 17.77C18.09 17.77 20.46 15.4 20.46 12.48C20.46 9.79 18.46 7.55 15.84 7.22L15.5 7.5ZM15.17 15.57C13.49 15.57 12.13 14.21 12.13 12.53C12.13 10.85 13.49 9.49 15.17 9.49C16.85 9.49 18.21 10.85 18.21 12.53C18.21 14.21 16.85 15.57 15.17 15.57Z" fill="#FF7A59" />
     </svg>
   );
 }
@@ -87,7 +98,8 @@ function HubSpotLogo() {
 function SalesforceLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <path d="M5 14C5 11.24 7.24 9 10 9C10.7 7.83 12 7 13.5 7C15.43 7 17 8.57 17 10.5V10.5C18.66 10.5 20 11.84 20 13.5C20 15.16 18.66 16.5 17 16.5H7C5.9 16.5 5 15.6 5 14.5V14Z" fill="#00A1E0" />
+      <path d="M10 6.5C10.8 5.6 11.9 5 13.2 5C14.9 5 16.4 5.9 17.1 7.3C17.6 7.1 18.2 7 18.8 7C21.1 7 23 8.9 23 11.2C23 13.5 21.1 15.4 18.8 15.4H5.8C3.7 15.4 2 13.7 2 11.6C2 9.9 3.1 8.4 4.7 7.9C4.6 7.6 4.5 7.2 4.5 6.8C4.5 5.3 5.7 4 7.3 4C8.3 4 9.2 4.5 9.8 5.3" fill="#00A1E0" />
+      <path d="M10 6.5C10.5 5.8 11.2 5.3 12.1 5.1C12.5 5 12.8 5 13.2 5C14.9 5 16.4 5.9 17.1 7.3C17.6 7.1 18.2 7 18.8 7C21.1 7 23 8.9 23 11.2C23 13.5 21.1 15.4 18.8 15.4H5.8C3.7 15.4 2 13.7 2 11.6C2 9.9 3.1 8.4 4.7 7.9C4.6 7.6 4.5 7.2 4.5 6.8C4.5 5.3 5.7 4 7.3 4C8.4 4 9.4 4.6 10 6.5Z" fill="#00A1E0" />
     </svg>
   );
 }
@@ -95,9 +107,9 @@ function SalesforceLogo() {
 function TrelloLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <rect x="3" y="3" width="18" height="18" rx="3" fill="#0079BF" />
-      <rect x="5.5" y="5.5" width="5" height="10" rx="1" fill="white" />
-      <rect x="13.5" y="5.5" width="5" height="7" rx="1" fill="white" />
+      <rect x="2" y="2" width="20" height="20" rx="3" fill="#0079BF" />
+      <rect x="4.5" y="4.5" width="6" height="12" rx="1.2" fill="white" />
+      <rect x="13.5" y="4.5" width="6" height="8" rx="1.2" fill="white" />
     </svg>
   );
 }
@@ -120,12 +132,17 @@ function SlackLogo() {
 function GmailLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <rect x="3" y="5" width="18" height="14" rx="2" fill="#F2F2F2" />
-      <path d="M3 7L12 13L21 7" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M3 7V17" stroke="#4285F4" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M21 7V17" stroke="#34A853" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M3 17L10 12" stroke="#FBBC05" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M21 17L14 12" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M2 6C2 4.9 2.9 4 4 4H20C21.1 4 22 4.9 22 6V18C22 19.1 21.1 20 20 20H4C2.9 20 2 19.1 2 18V6Z" fill="white" />
+      <path d="M2 6L12 13L22 6" stroke="#EA4335" strokeWidth="0" fill="none" />
+      <path d="M22 6L12 13L2 6V4H4L12 10.5L20 4H22V6Z" fill="#EA4335" />
+      <path d="M2 6V18H4V8L12 14.5L20 8V18H22V6L12 13L2 6Z" fill="none" />
+      <path d="M2 6V18C2 19.1 2.9 20 4 20H6V8.5L12 13.5L18 8.5V20H20C21.1 20 22 19.1 22 18V6L12 13L2 6Z" fill="none" />
+      <rect x="2" y="4" width="4" height="16" rx="0" fill="#4285F4" />
+      <rect x="18" y="4" width="4" height="16" rx="0" fill="#34A853" />
+      <path d="M2 4H4L12 10.5L20 4H22V6L12 13L2 6V4Z" fill="#EA4335" />
+      <path d="M2 18V20H6V10L2 6.5V18Z" fill="#C5221F" opacity="0.3" />
+      <path d="M22 18V20H18V10L22 6.5V18Z" fill="#1E8E3E" opacity="0.3" />
+      <path d="M2 4L12 12L22 4" stroke="#D93025" strokeWidth="0" />
     </svg>
   );
 }
@@ -133,13 +150,15 @@ function GmailLogo() {
 function GoogleCalendarLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <rect x="3" y="5" width="18" height="16" rx="2" fill="#4285F4" />
-      <rect x="3" y="3" width="18" height="6" rx="2" fill="#1967D2" />
-      <rect x="5" y="11" width="4" height="3" rx="0.5" fill="white" />
-      <rect x="10" y="11" width="4" height="3" rx="0.5" fill="white" />
-      <rect x="15" y="11" width="4" height="3" rx="0.5" fill="white" />
-      <rect x="5" y="15.5" width="4" height="3" rx="0.5" fill="white" />
-      <rect x="10" y="15.5" width="4" height="3" rx="0.5" fill="white" />
+      <path d="M18 3H6C4.34 3 3 4.34 3 6V18C3 19.66 4.34 21 6 21H18C19.66 21 21 19.66 21 18V6C21 4.34 19.66 3 18 3Z" fill="white" />
+      <path d="M18 3H6C4.34 3 3 4.34 3 6V8H21V6C21 4.34 19.66 3 18 3Z" fill="#4285F4" />
+      <rect x="5.5" y="10" width="3.5" height="3" rx="0.5" fill="#4285F4" />
+      <rect x="10.25" y="10" width="3.5" height="3" rx="0.5" fill="#4285F4" />
+      <rect x="15" y="10" width="3.5" height="3" rx="0.5" fill="#4285F4" />
+      <rect x="5.5" y="14.5" width="3.5" height="3" rx="0.5" fill="#4285F4" />
+      <rect x="10.25" y="14.5" width="3.5" height="3" rx="0.5" fill="#4285F4" />
+      <rect x="15" y="14.5" width="3.5" height="3" rx="0.5" fill="#4285F4" opacity="0.4" />
+      <rect x="3" y="3" width="18" height="18" rx="3" stroke="#DADCE0" strokeWidth="0.5" fill="none" />
     </svg>
   );
 }
@@ -147,10 +166,9 @@ function GoogleCalendarLogo() {
 function GoogleDriveLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <path d="M8 21L3 13L8 5H16L21 13L16 21H8Z" fill="#FBBC05" />
-      <path d="M8 5L16 5L21 13H13L8 5Z" fill="#34A853" />
-      <path d="M3 13L8 5L13 13H3Z" fill="#4285F4" />
-      <path d="M8 21L13 13H21L16 21H8Z" fill="#EA4335" />
+      <path d="M8.6 3H15.4L22 14.5H15.2L8.6 3Z" fill="#0F9D58" />
+      <path d="M2 14.5L5.4 21H18.6L15.2 14.5H2Z" fill="#4285F4" />
+      <path d="M8.6 3L2 14.5H8.8L15.4 3H8.6Z" fill="#FBBC04" />
     </svg>
   );
 }
@@ -158,8 +176,12 @@ function GoogleDriveLogo() {
 function NotionLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <rect x="4" y="3" width="16" height="18" rx="2" fill="white" stroke="#333" strokeWidth="1.2" />
-      <path d="M8 8H16M8 12H14M8 16H12" stroke="#333" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M4.5 4.5C4.5 3.67 5.17 3 6 3H16.5L19.5 6V19.5C19.5 20.33 18.83 21 18 21H6C5.17 21 4.5 20.33 4.5 19.5V4.5Z" fill="white" stroke="#333" strokeWidth="1" />
+      <path d="M7.5 7H12.5L7.5 13V7Z" fill="#333" />
+      <path d="M7.5 7V13L12.5 7H7.5Z" fill="#333" />
+      <path d="M10 10.5L16.5 10.5V17L10 17" stroke="#333" strokeWidth="1" strokeLinecap="round" />
+      <path d="M10 10.5V17" stroke="#333" strokeWidth="1" strokeLinecap="round" />
+      <path d="M16.5 10.5V17" stroke="#333" strokeWidth="1" strokeLinecap="round" />
     </svg>
   );
 }
@@ -168,8 +190,7 @@ function StripeLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
       <rect x="2" y="4" width="20" height="16" rx="3" fill="#635BFF" />
-      <path d="M11.5 10C11.5 9.17 12.17 8.5 13 8.5C13.83 8.5 14.5 9.17 14.5 10C14.5 11 12 11.5 12 13H14.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M9.5 15.5C9.5 14 10.5 13 12 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M12.5 8.5C11 8.5 10.2 9.1 10.2 10C10.2 11.8 14 11.2 14 13.6C14 15.3 12.6 16 11 16C10 16 8.8 15.6 8.2 15.2L8.6 13.8C9.3 14.2 10.2 14.6 11 14.6C11.8 14.6 12.4 14.3 12.4 13.5C12.4 11.6 8.6 12.3 8.6 10C8.6 8.4 9.9 7.2 12.2 7.2C13.1 7.2 14 7.4 14.6 7.7L14.2 9C13.6 8.7 12.9 8.5 12.5 8.5Z" fill="white" />
     </svg>
   );
 }
@@ -177,9 +198,11 @@ function StripeLogo() {
 function QuickBooksLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <circle cx="12" cy="12" r="9" fill="#2CA01C" />
-      <path d="M8 9V15M8 12H11C12.1 12 13 11.1 13 10S12.1 9 11 9H8" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M15 9V15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="10" fill="#2CA01C" />
+      <path d="M7.5 8.5V15.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M7.5 8.5H10.5C12 8.5 13.2 9.5 13.2 11C13.2 12.5 12 13.5 10.5 13.5H7.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16.5 8.5V15.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M16.5 15.5H13.5C12 15.5 10.8 14.5 10.8 13C10.8 11.5 12 10.5 13.5 10.5H16.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -187,15 +210,17 @@ function QuickBooksLogo() {
 function FirefliesLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <circle cx="12" cy="12" r="4" fill="#B845F2" />
-      <circle cx="12" cy="4" r="1.5" fill="#B845F2" opacity="0.6" />
-      <circle cx="12" cy="20" r="1.5" fill="#B845F2" opacity="0.6" />
-      <circle cx="4" cy="12" r="1.5" fill="#B845F2" opacity="0.6" />
-      <circle cx="20" cy="12" r="1.5" fill="#B845F2" opacity="0.6" />
-      <circle cx="6.34" cy="6.34" r="1.2" fill="#B845F2" opacity="0.4" />
-      <circle cx="17.66" cy="17.66" r="1.2" fill="#B845F2" opacity="0.4" />
-      <circle cx="17.66" cy="6.34" r="1.2" fill="#B845F2" opacity="0.4" />
-      <circle cx="6.34" cy="17.66" r="1.2" fill="#B845F2" opacity="0.4" />
+      <defs>
+        <linearGradient id="ff-grad" x1="6" y1="3" x2="18" y2="21" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#B845F2" />
+          <stop offset="1" stopColor="#7B2FD4" />
+        </linearGradient>
+      </defs>
+      <path d="M12 2C12 2 8 6 8 10C8 12.2 9.8 14 12 14C14.2 14 16 12.2 16 10C16 6 12 2 12 2Z" fill="url(#ff-grad)" />
+      <path d="M12 14V18" stroke="#B845F2" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="12" cy="20" r="2" fill="#B845F2" />
+      <path d="M9 16L6 18" stroke="#B845F2" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M15 16L18 18" stroke="#B845F2" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -203,11 +228,11 @@ function FirefliesLogo() {
 function OtterLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <circle cx="12" cy="12" r="9" fill="#0F62FE" />
-      <path d="M8 10C8 10 9.5 8 12 8C14.5 8 16 10 16 10" stroke="white" strokeWidth="1.3" strokeLinecap="round" />
-      <circle cx="9.5" cy="12" r="1" fill="white" />
-      <circle cx="14.5" cy="12" r="1" fill="white" />
-      <path d="M10 15C10 15 11 16 12 16C13 16 14 15 14 15" stroke="white" strokeWidth="1.2" strokeLinecap="round" />
+      <rect x="2" y="2" width="20" height="20" rx="5" fill="#0F62FE" />
+      <path d="M7 11C7 8.24 9.24 6 12 6C14.76 6 17 8.24 17 11V14C17 15.66 15.66 17 14 17H10C8.34 17 7 15.66 7 14V11Z" fill="white" />
+      <circle cx="10" cy="11.5" r="1.2" fill="#0F62FE" />
+      <circle cx="14" cy="11.5" r="1.2" fill="#0F62FE" />
+      <path d="M10.5 14C10.5 14 11.25 15 12 15C12.75 15 13.5 14 13.5 14" stroke="#0F62FE" strokeWidth="1" strokeLinecap="round" />
     </svg>
   );
 }
@@ -215,8 +240,9 @@ function OtterLogo() {
 function CalendlyLogo() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-      <circle cx="12" cy="12" r="9" fill="#006BFF" />
-      <path d="M12 7V12L15 14" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="10" fill="#006BFF" />
+      <path d="M12 6V12H17" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="7" stroke="white" strokeWidth="1.5" fill="none" opacity="0.3" />
     </svg>
   );
 }
@@ -430,13 +456,47 @@ function StatusBadge({ status }: { status: IntegrationStatus }) {
 }
 
 export default function IntegrationsSettingsPage() {
+  const { workspace, refreshWorkspace } = useAuth();
+  const { membership } = useWorkspace();
+  const isAdmin = membership?.role === 'owner' || membership?.role === 'admin';
   const integrations = useIntegrations();
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   const handleSync = async (id: string) => {
+    if (!workspace?.id || id !== 'clickup') return;
     setSyncing(id);
-    await new Promise((r) => setTimeout(r, 2000));
-    setSyncing(null);
+    try {
+      await fetch('/api/clickup/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspace.id }),
+      });
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const handleDisconnect = async (id: string) => {
+    if (!workspace?.id || id !== 'clickup') return;
+    if (!confirm('Are you sure you want to disconnect ClickUp? This will remove all cached data.')) return;
+    setDisconnecting(id);
+    try {
+      const res = await fetch('/api/clickup/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspace.id }),
+      });
+      if (res.ok) {
+        await refreshWorkspace();
+      }
+    } catch (err) {
+      console.error('Disconnect failed:', err);
+    } finally {
+      setDisconnecting(null);
+    }
   };
 
   return (
@@ -488,8 +548,8 @@ export default function IntegrationsSettingsPage() {
                       {integration.description}
                     </p>
 
-                    {/* Actions for connected/connectable integrations */}
-                    {integration.status === 'connected' && (
+                    {/* Actions for connected/connectable integrations — owner/admin only */}
+                    {integration.status === 'connected' && isAdmin && (
                       <div className="flex items-center gap-3 mt-3">
                         <button
                           onClick={() => handleSync(integration.id)}
@@ -503,14 +563,26 @@ export default function IntegrationsSettingsPage() {
                           )}
                           Sync now
                         </button>
-                        <button className="flex items-center gap-1.5 px-3 py-1.5 border border-error/30 rounded-lg text-xs text-error hover:bg-error/10 transition-colors">
-                          Disconnect
+                        <button
+                          onClick={() => handleDisconnect(integration.id)}
+                          disabled={disconnecting === integration.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 border border-error/30 rounded-lg text-xs text-error hover:bg-error/10 transition-colors disabled:opacity-50"
+                        >
+                          {disconnecting === integration.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : null}
+                          {disconnecting === integration.id ? 'Disconnecting...' : 'Disconnect'}
                         </button>
                       </div>
                     )}
-                    {integration.status === 'not_connected' && (
+                    {integration.status === 'not_connected' && isAdmin && (
                       <div className="mt-3">
                         <button
+                          onClick={() => {
+                            if (integration.id === 'clickup' && workspace?.id) {
+                              window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace.id)}`;
+                            }
+                          }}
                           className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
                           style={{ backgroundColor: integration.color }}
                         >
@@ -519,6 +591,11 @@ export default function IntegrationsSettingsPage() {
                           <ExternalLink className="w-3 h-3 ml-0.5" />
                         </button>
                       </div>
+                    )}
+                    {integration.status === 'not_connected' && !isAdmin && (
+                      <p className="text-xs text-text-muted mt-2">
+                        Ask a workspace owner or admin to connect this integration.
+                      </p>
                     )}
                   </div>
                 </div>

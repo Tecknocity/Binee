@@ -4,11 +4,21 @@ import type {
   AssistantResponse,
   ToolCallResult,
 } from '@/types/ai';
-import { classifyMessage, getModelForTask } from '@/lib/ai/router';
+import { classifyMessage } from '@/lib/ai/classifier';
+import { getModelForTask, routeToModel } from '@/lib/ai/router';
 import { buildSystemPrompt, buildSetupPrompt, buildHealthPrompt, buildDashboardPrompt } from '@/lib/ai/prompts';
+import { loadSystemPrompt } from '@/lib/ai/prompts/system-prompt';
 import { buildContext } from '@/lib/ai/context';
 import { BINEE_TOOLS } from '@/lib/ai/tools';
 import { executeTool } from '@/lib/ai/tool-executor';
+import {
+  isWriteOperation,
+  isBlockedOperation,
+  createPendingAction,
+  buildPendingConfirmationResult,
+  buildBlockedOperationResult,
+  getOperationTrustTier,
+} from '@/lib/ai/confirmation';
 import { createClient } from '@supabase/supabase-js';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +62,7 @@ export async function handleChatMessage(
 
   // 2. Get model routing
   const routing = getModelForTask(classification.taskType);
+  const modelConfig = routeToModel(classification.taskType);
 
   // 3. Check credit balance
   const supabase = getSupabaseAdmin();
@@ -78,28 +89,15 @@ export async function handleChatMessage(
   }
 
   // 4. Build context
-  const context = await buildContext(workspace_id, user_id, conversation_id);
+  const context = await buildContext(workspace_id, user_id, conversation_id, classification.taskType);
 
   // 5. Determine if ClickUp is connected — controls tool availability
-  // TODO: Remove DEMO_MODE override once real ClickUp integration is complete.
-  const DEMO_MODE = true;
-  const clickUpConnected = DEMO_MODE || context.workspace.clickup_connected;
+  const clickUpConnected = context.workspace.clickup_connected;
 
-  // 6. Build system prompt based on task type
-  let systemPrompt: string;
-  switch (classification.taskType) {
-    case 'setup_planning':
-      systemPrompt = buildSetupPrompt(context);
-      break;
-    case 'health_analysis':
-      systemPrompt = buildHealthPrompt(context);
-      break;
-    case 'dashboard_design':
-      systemPrompt = buildDashboardPrompt(context);
-      break;
-    default:
-      systemPrompt = buildSystemPrompt(context);
-  }
+  // 6. Build system prompt — load from knowledge base with dynamic context
+  const systemPrompt = await loadSystemPrompt(context, {
+    taskType: classification.taskType,
+  });
 
   // 7. Build message history for the API
   const messages: Anthropic.MessageParam[] = [
@@ -122,11 +120,18 @@ export async function handleChatMessage(
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let finalContent = '';
+  let pendingActionData: {
+    id: string;
+    tool_name: string;
+    trust_tier: 'low' | 'medium' | 'high';
+    description: string;
+    details: string;
+  } | null = null;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await anthropic.messages.create({
-      model: routing.modelId,
-      max_tokens: 4096,
+      model: modelConfig.model,
+      max_tokens: modelConfig.maxTokens,
       system: systemPrompt,
       ...(toolsForApi.length > 0 ? { tools: toolsForApi } : {}),
       messages,
@@ -157,12 +162,43 @@ export async function handleChatMessage(
     messages.push({ role: 'assistant', content: response.content });
 
     // Execute each tool call and collect results
+    // B-045: Write operations are intercepted for user confirmation.
+    //        Blocked operations (deletions) are rejected immediately.
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    let hasWriteInterception = false;
 
     for (const toolUse of toolUseBlocks) {
       const toolInput = toolUse.input as Record<string, unknown>;
-      const result = await executeTool(toolUse.name, toolInput, workspace_id);
-      const success = result.success !== false;
+      let result: Record<string, unknown>;
+      let success: boolean;
+
+      if (isBlockedOperation(toolUse.name)) {
+        // Hard block — deletions are never allowed
+        result = buildBlockedOperationResult(toolUse.name);
+        success = false;
+      } else if (isWriteOperation(toolUse.name)) {
+        // Intercept write operation — create pending action for confirmation
+        const pendingAction = await createPendingAction(
+          workspace_id,
+          conversation_id,
+          toolUse.name,
+          toolInput,
+        );
+        result = buildPendingConfirmationResult(pendingAction);
+        success = true;
+        hasWriteInterception = true;
+        pendingActionData = {
+          id: pendingAction.id,
+          tool_name: toolUse.name,
+          trust_tier: getOperationTrustTier(toolUse.name),
+          description: pendingAction.description,
+          details: pendingAction.details,
+        };
+      } else {
+        // Read-only operation — execute immediately
+        result = await executeTool(toolUse.name, toolInput, workspace_id);
+        success = result.success !== false;
+      }
 
       allToolCalls.push({
         tool_name: toolUse.name,
@@ -182,6 +218,33 @@ export async function handleChatMessage(
 
     // Add tool results to messages for the next round
     messages.push({ role: 'user', content: toolResults });
+
+    // B-045: If a write operation was intercepted, let the model produce one
+    // more response so it can tell the user about the pending confirmation,
+    // then stop the loop — we don't want further tool calls until confirmed.
+    if (hasWriteInterception && round < MAX_TOOL_ROUNDS - 1) {
+      const confirmResponse = await anthropic.messages.create({
+        model: modelConfig.model,
+        max_tokens: modelConfig.maxTokens,
+        system: systemPrompt,
+        ...(toolsForApi.length > 0 ? { tools: toolsForApi } : {}),
+        messages,
+      });
+
+      totalInputTokens += confirmResponse.usage.input_tokens;
+      totalOutputTokens += confirmResponse.usage.output_tokens;
+
+      const confirmTextBlocks: string[] = [];
+      for (const block of confirmResponse.content) {
+        if (block.type === 'text') {
+          confirmTextBlocks.push(block.text);
+        }
+      }
+
+      finalContent = confirmTextBlocks.join('\n') ||
+        'I need your confirmation before executing this action. Please review the details above and confirm or cancel.';
+      break;
+    }
 
     // If this was the last round, we'll break out and use whatever text we have
     if (round === MAX_TOOL_ROUNDS - 1) {
@@ -224,6 +287,8 @@ export async function handleChatMessage(
     tool_calls: allToolCalls.length > 0 ? allToolCalls : null,
     tokens_input: totalInputTokens,
     tokens_output: totalOutputTokens,
+    // B-045: Include pending action data when a write operation awaits confirmation
+    pending_action: pendingActionData,
   };
 }
 

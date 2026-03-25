@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -13,47 +14,57 @@ export interface ClickUpConnectionStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Demo mode — assume ClickUp is always connected.
-// TODO: Remove this flag once real ClickUp OAuth integration is complete.
-// ---------------------------------------------------------------------------
-const DEMO_MODE = true;
-
-// ---------------------------------------------------------------------------
 // Hook — shared ClickUp connection status checker
 // ---------------------------------------------------------------------------
 
 export function useClickUpStatus(): ClickUpConnectionStatus & {
   refetch: () => Promise<void>;
 } {
-  const [status, setStatus] = useState<ClickUpConnectionStatus>(
-    DEMO_MODE
-      ? { connected: true, teamName: 'Demo Workspace', loading: false }
-      : { connected: false, teamName: null, loading: true },
-  );
+  const { workspace_id, workspace } = useWorkspace();
+  const [status, setStatus] = useState<ClickUpConnectionStatus>({
+    connected: false,
+    teamName: null,
+    loading: true,
+  });
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- useCallback deps intentionally include workspace object fields for fallback
   const fetchStatus = useCallback(async () => {
-    if (DEMO_MODE) return;
+    if (!workspace_id) {
+      setStatus({ connected: false, teamName: null, loading: false });
+      return;
+    }
 
     setStatus((prev) => ({ ...prev, loading: true }));
     try {
-      const res = await fetch('/api/clickup/status');
+      const res = await fetch(`/api/clickup/status?workspace_id=${encodeURIComponent(workspace_id)}`);
       if (res.ok) {
         const data = await res.json();
         setStatus({
           connected: data.connected ?? false,
-          teamName: data.teamName ?? null,
+          teamName: data.team_name ?? null,
           loading: false,
         });
       } else {
-        setStatus({ connected: false, teamName: null, loading: false });
+        // Fallback: check workspace object directly
+        setStatus({
+          connected: !!workspace?.clickup_team_id,
+          teamName: workspace?.clickup_team_name ?? null,
+          loading: false,
+        });
       }
     } catch {
-      setStatus({ connected: false, teamName: null, loading: false });
+      // Fallback: check workspace object directly
+      setStatus({
+        connected: !!workspace?.clickup_team_id,
+        teamName: workspace?.clickup_team_name ?? null,
+        loading: false,
+      });
     }
-  }, []);
+  }, [workspace_id, workspace?.clickup_team_id, workspace?.clickup_team_name]);
 
   useEffect(() => {
-    if (!DEMO_MODE) fetchStatus();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchStatus is an async data fetch that sets state on completion
+    fetchStatus();
   }, [fetchStatus]);
 
   return { ...status, refetch: fetchStatus };

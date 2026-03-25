@@ -90,6 +90,7 @@ export default function SetupWizard() {
             messages={setup.chatMessages}
             isSending={setup.isSending}
             messageCount={setup.chatMessages.filter((m) => m.role === 'user').length}
+            businessProfile={setup.businessProfile}
             onSendMessage={setup.sendMessage}
             onSelectTemplate={setup.selectTemplate}
           />
@@ -99,8 +100,8 @@ export default function SetupWizard() {
           <StructurePreview
             plan={setup.proposedPlan}
             onApprove={setup.approvePlan}
-            onRequestChanges={setup.requestChanges}
-            onStartOver={setup.restartSetup}
+            onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
+            onReject={setup.restartSetup}
           />
         )}
 
@@ -126,6 +127,11 @@ export default function SetupWizard() {
           <SetupComplete
             executionResult={setup.executionResult}
             manualStepsCount={setup.manualSteps.length}
+            plan={setup.proposedPlan}
+            onViewManualSteps={() => {
+              // Allow user to go back and review manual steps
+              // (they can re-complete them and return here)
+            }}
           />
         )}
       </div>
