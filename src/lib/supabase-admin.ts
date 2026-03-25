@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * Shared Supabase admin client (service role — bypasses RLS).
@@ -17,4 +17,18 @@ export function getSupabaseAdmin() {
   return createClient(url, serviceKey);
 }
 
-export const supabaseAdmin = getSupabaseAdmin();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _supabaseAdmin: SupabaseClient<any, any, any> | null = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const supabaseAdmin: SupabaseClient<any, any, any> = new Proxy(
+  {} as SupabaseClient<any, any, any>,
+  {
+    get(_target, prop) {
+      if (!_supabaseAdmin) {
+        _supabaseAdmin = getSupabaseAdmin();
+      }
+      return (_supabaseAdmin as unknown as Record<string | symbol, unknown>)[prop];
+    },
+  },
+);

@@ -76,6 +76,6 @@ describe('processExpiredSubscription', () => {
       return arg.subscription_balance !== undefined;
     });
     expect(creditCall).toBeDefined();
-    expect(creditCall[0]).not.toHaveProperty('paygo_balance');
+    expect(creditCall![0]).not.toHaveProperty('paygo_balance');
   });
 });

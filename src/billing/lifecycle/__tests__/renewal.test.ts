@@ -58,7 +58,7 @@ describe('allocateMonthlyCredits', () => {
     });
     expect(updateCall).toBeDefined();
 
-    const nextDate = new Date(updateCall[0].next_credit_allocation_date);
+    const nextDate = new Date(updateCall![0].next_credit_allocation_date);
     const expectedMin = new Date(before);
     expectedMin.setDate(expectedMin.getDate() + CREDIT_ALLOCATION_INTERVAL_DAYS - 1);
     expect(nextDate.getTime()).toBeGreaterThan(expectedMin.getTime());

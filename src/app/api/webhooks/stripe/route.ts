@@ -5,17 +5,12 @@ import { allocateMonthlyCredits } from '@/billing/lifecycle/renewal';
 import { processExpiredSubscription } from '@/billing/lifecycle/cancellation';
 import { handlePaymentFailure } from '@/billing/lifecycle/payment-failure';
 import { handleSetupPurchase } from '@/billing/lifecycle/setup-purchase';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { CREDIT_ALLOCATION_INTERVAL_DAYS } from '@/billing/config';
 import type { PlanTier } from '@/billing/types/subscriptions';
 
 // B-093: Full Stripe webhook handler (replaces old B-020 stub)
 export const dynamic = 'force-dynamic';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
