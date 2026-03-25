@@ -209,16 +209,21 @@ export function useConversations() {
       // Only delete from DB for real (non-temp) IDs
       if (!id.startsWith('conv-')) {
         try {
-          const { error } = await supabase
+          const { error, count } = await supabase
             .from('conversations')
-            .delete()
+            .delete({ count: 'exact' })
             .eq('id', id);
           if (error) {
-            console.error('Failed to delete conversation:', error.message);
+            console.error('Failed to delete conversation:', error.message, error.code);
             // Re-fetch to restore state on failure
             fetchConversations();
+          } else if (count === 0) {
+            // RLS blocked the delete — row still exists in DB
+            console.warn('Delete returned 0 rows — possible RLS policy issue for conversation:', id);
+            fetchConversations();
           }
-        } catch {
+        } catch (err) {
+          console.error('Delete conversation exception:', err);
           fetchConversations();
         }
       }
