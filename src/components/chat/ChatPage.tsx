@@ -7,7 +7,6 @@ import { useChat } from '@/hooks/useChat';
 import type { DashboardChoiceData } from '@/hooks/useChat';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
-import ConversationList from './ConversationList';
 import MessageThread from './MessageThread';
 import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
@@ -16,7 +15,7 @@ import WelcomeMessage from './WelcomeMessage';
 import WelcomeSuggestions from './WelcomeSuggestions';
 import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
 import UpgradePrompt from '@/components/credits/UpgradePrompt';
-import { Hexagon, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Hexagon, Loader2 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/client';
 
 
@@ -252,17 +251,13 @@ export default function ChatPage() {
   const router = useRouter();
   const isNew = searchParams.get('new') === '1';
   const [showCreditsModal, setShowCreditsModal] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const isOutOfCredits = credit_balance <= 0;
 
   // All hooks must be called before any early return (React rules of hooks)
   const {
     conversations,
     activeConversationId,
-    isLoading: conversationsLoading,
     createConversation,
-    deleteConversation,
     setActiveConversation,
   } = useConversations();
 
@@ -291,27 +286,10 @@ export default function ChatPage() {
     loadConversation(effectiveConversationId);
   }, [effectiveConversationId, loadConversation]);
 
-  const handleSelectConversation = useCallback(
-    (id: string) => {
-      setActiveConversation(id);
-      setMobileSidebarOpen(false);
-      router.push(`/chat/${id}`, { scroll: false });
-    },
-    [setActiveConversation, router],
-  );
-
   const handleNewChat = useCallback(() => {
     setActiveConversation(null);
-    setMobileSidebarOpen(false);
     router.push('/chat?new=1', { scroll: false });
   }, [setActiveConversation, router]);
-
-  const handleDeleteConversation = useCallback(
-    (id: string) => {
-      deleteConversation(id);
-    },
-    [deleteConversation],
-  );
 
   const handleSend = useCallback(
     async (content: string) => {
@@ -394,68 +372,8 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full overflow-hidden bg-navy-base">
-      {/* Mobile sidebar overlay */}
-      {mobileSidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setMobileSidebarOpen(false)}
-        />
-      )}
-
-      {/* Left panel — Conversation list sidebar */}
-      <aside
-        className={`
-          ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          fixed inset-y-0 left-0 z-50 w-72 bg-navy-dark border-r border-border
-          transition-transform duration-200 ease-in-out
-          lg:relative lg:inset-auto lg:z-auto lg:transition-none
-          ${sidebarOpen ? 'lg:translate-x-0 lg:w-72' : 'lg:w-0 lg:overflow-hidden lg:border-r-0'}
-        `}
-      >
-        <ConversationList
-          conversations={conversations}
-          activeId={effectiveConversationId}
-          onSelect={handleSelectConversation}
-          onCreate={handleNewChat}
-          onDelete={handleDeleteConversation}
-          isLoading={conversationsLoading}
-        />
-      </aside>
-
-      {/* Right panel — Active conversation or welcome state */}
+      {/* Chat content area */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Panel toggle bar */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 shrink-0">
-          {/* Desktop sidebar toggle */}
-          <button
-            onClick={() => setSidebarOpen((prev) => !prev)}
-            className="hidden lg:flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-colors"
-            title={sidebarOpen ? 'Hide conversations' : 'Show conversations'}
-          >
-            {sidebarOpen ? (
-              <PanelLeftClose className="w-4 h-4" />
-            ) : (
-              <PanelLeftOpen className="w-4 h-4" />
-            )}
-          </button>
-
-          {/* Mobile sidebar toggle */}
-          <button
-            onClick={() => setMobileSidebarOpen(true)}
-            className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-colors"
-            title="Show conversations"
-          >
-            <PanelLeftOpen className="w-4 h-4" />
-          </button>
-
-          {effectiveConversationId && (
-            <span className="text-sm text-text-secondary truncate">
-              {conversations.find((c) => c.id === effectiveConversationId)?.title || 'Conversation'}
-            </span>
-          )}
-        </div>
-
-        {/* Chat content area */}
         {hasMessages ? (
           <div className="flex-1 min-h-0 flex flex-col">
             <MessageThread
