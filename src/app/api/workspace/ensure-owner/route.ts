@@ -283,9 +283,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ actions: ['has_memberships_no_owned_workspace'] });
     }
 
-    // Race condition guard: the DB trigger (handle_new_user) may be creating
-    // a workspace concurrently. Wait briefly and re-check before creating.
-    await new Promise((r) => setTimeout(r, 1000));
+    // Race condition guard: the DB trigger (handle_new_user) may have created
+    // a workspace concurrently, and/or another AuthProvider instance may have
+    // already called this API. Wait and re-check before creating.
+    await new Promise((r) => setTimeout(r, 1500));
     const { data: recheck } = await admin
       .from('workspaces')
       .select('id')
