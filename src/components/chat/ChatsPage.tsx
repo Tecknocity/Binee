@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Plus, MessageSquare } from 'lucide-react';
-import { useConversations } from '@/hooks/useConversations';
+import { useSharedConversations } from '@/contexts/ConversationsContext';
 import { cn } from '@/lib/utils';
 
 function formatRelativeDate(date: Date): string {
@@ -25,7 +25,7 @@ export default function ChatsPage() {
     conversations,
     createConversation,
     setActiveConversation,
-  } = useConversations();
+  } = useSharedConversations();
 
   const [searchQuery, setSearchQuery] = useState('');
 

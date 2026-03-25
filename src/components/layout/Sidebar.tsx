@@ -26,7 +26,8 @@ import {
   PanelLeftOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useConversations, type Conversation } from '@/hooks/useConversations';
+import { useSharedConversations } from '@/contexts/ConversationsContext';
+import type { Conversation } from '@/hooks/useConversations';
 import { useSidebar } from '@/hooks/useSidebar';
 import { BineeLogo } from '@/components/BineeLogo';
 import { useTheme } from 'next-themes';
@@ -199,7 +200,7 @@ export default function Sidebar() {
     createConversation,
     deleteConversation,
     setActiveConversation,
-  } = useConversations();
+  } = useSharedConversations();
 
   // Close user menu on outside click
   useEffect(() => {
