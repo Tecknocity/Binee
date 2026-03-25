@@ -177,7 +177,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     ]);
   }, [refreshWorkspace, workspace?.id, fetchMembers]);
 
-  const loading = authLoading || membersLoading;
+  // Only block rendering on auth loading, not member fetching.
+  // Members loading in the background prevents the "stuck skeleton" issue
+  // where pages wait for the full member list before showing any content.
+  const loading = authLoading;
 
   const value: WorkspaceContextValue = {
     workspace,

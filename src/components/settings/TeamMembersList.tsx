@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { Trash2, ShieldCheck, User, Loader2, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -31,45 +32,17 @@ interface TeamMembersListProps {
 }
 
 export default function TeamMembersList({ onInviteClick }: TeamMembersListProps) {
-  const { workspace, user } = useAuth();
+  const { user } = useAuth();
   const { canInviteMembers, canRemoveMembers } = usePermissions();
-  const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Use members from WorkspaceContext — eliminates duplicate DB query
+  const { members: contextMembers, loading } = useWorkspace();
+  const [localMembers, setLocalMembers] = useState<WorkspaceMember[] | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
 
   const supabaseRef = useRef(createBrowserClient());
 
-  const workspaceId = workspace?.id;
-
-  useEffect(() => {
-    if (!workspaceId) return;
-
-    let cancelled = false;
-    const loadMembers = async () => {
-      setLoading(true);
-      try {
-        const { data } = await supabaseRef.current
-          .from('workspace_members')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .in('status', ['active', 'pending'])
-          .order('created_at', { ascending: true });
-
-        if (!cancelled) {
-          setMembers((data as WorkspaceMember[]) ?? []);
-        }
-      } catch (err) {
-        console.error('Failed to load members:', err);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadMembers();
-    return () => { cancelled = true; };
-  }, [workspaceId]);
+  // Use localMembers if a member was removed this session, otherwise use context
+  const members = localMembers ?? contextMembers;
 
   const handleRemove = async (member: WorkspaceMember) => {
     if (member.role === 'owner') return;
@@ -82,7 +55,8 @@ export default function TeamMembersList({ onInviteClick }: TeamMembersListProps)
         .update({ status: 'removed' })
         .eq('id', member.id);
 
-      setMembers((prev) => prev.filter((m) => m.id !== member.id));
+      // Switch to local state management after removal
+      setLocalMembers(members.filter((m) => m.id !== member.id));
     } catch (err) {
       console.error('Failed to remove member:', err);
     } finally {

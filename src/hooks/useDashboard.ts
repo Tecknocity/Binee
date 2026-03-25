@@ -9,6 +9,52 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import type { Dashboard, DashboardWidget } from '@/types/database';
 
 // ---------------------------------------------------------------------------
+// Simple in-memory query cache — deduplicates concurrent Supabase requests
+// for the same table+workspace. Entries expire after 30 seconds.
+// This prevents N dashboard widgets from each firing their own query for
+// cached_tasks / cached_lists / cached_team_members simultaneously.
+// ---------------------------------------------------------------------------
+
+const CACHE_TTL = 30_000; // 30 seconds
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+  promise?: Promise<T>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const queryCache = new Map<string, CacheEntry<any>>();
+
+async function cachedQuery<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+): Promise<T> {
+  const cached = queryCache.get(key);
+
+  // Return cached data if still fresh
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+
+  // Deduplicate in-flight requests
+  if (cached?.promise) {
+    return cached.promise;
+  }
+
+  const promise = fetcher().then((data) => {
+    queryCache.set(key, { data, timestamp: Date.now() });
+    return data;
+  }).catch((err) => {
+    queryCache.delete(key);
+    throw err;
+  });
+
+  queryCache.set(key, { data: cached?.data, timestamp: cached?.timestamp ?? 0, promise });
+  return promise;
+}
+
+// ---------------------------------------------------------------------------
 // Types for cached data
 // ---------------------------------------------------------------------------
 
@@ -47,6 +93,41 @@ interface CachedList {
 
 const supabase = createBrowserClient();
 
+// ---------------------------------------------------------------------------
+// Shared cached fetchers — all widget hooks share these instead of each
+// making independent queries to the same tables.
+// ---------------------------------------------------------------------------
+
+function fetchCachedTasks(workspaceId: string) {
+  return cachedQuery(`cached_tasks:${workspaceId}`, async () => {
+    const { data } = await supabase
+      .from('cached_tasks')
+      .select('clickup_id, list_id, name, status, priority, assignees, due_date, created_at, updated_at, time_spent')
+      .eq('workspace_id', workspaceId);
+    return (data ?? []) as CachedTask[];
+  });
+}
+
+function fetchCachedLists(workspaceId: string) {
+  return cachedQuery(`cached_lists:${workspaceId}`, async () => {
+    const { data } = await supabase
+      .from('cached_lists')
+      .select('clickup_id, name')
+      .eq('workspace_id', workspaceId);
+    return (data ?? []) as CachedList[];
+  });
+}
+
+function fetchCachedMembers(workspaceId: string) {
+  return cachedQuery(`cached_team_members:${workspaceId}`, async () => {
+    const { data } = await supabase
+      .from('cached_team_members')
+      .select('clickup_id, username')
+      .eq('workspace_id', workspaceId);
+    return (data ?? []) as CachedTeamMember[];
+  });
+}
+
 export function useTaskStatusData(workspaceId: string | null) {
   const [data, setData] = useState<{ name: string; value: number }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,11 +135,8 @@ export function useTaskStatusData(workspaceId: string | null) {
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
     (async () => {
-      const { data: tasks } = await supabase
-        .from('cached_tasks')
-        .select('status')
-        .eq('workspace_id', workspaceId);
-      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+      const tasks = await fetchCachedTasks(workspaceId);
+      if (tasks.length === 0) { setData([]); setLoading(false); return; }
       const counts: Record<string, number> = {};
       for (const t of tasks) {
         const s = t.status ?? 'Unknown';
@@ -79,19 +157,15 @@ export function useSprintProgressData(workspaceId: string | null) {
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
     (async () => {
-      const { data: lists } = await supabase
-        .from('cached_lists')
-        .select('clickup_id, name')
-        .eq('workspace_id', workspaceId);
-      if (!lists || lists.length === 0) { setData([]); setLoading(false); return; }
-
-      const { data: tasks } = await supabase
-        .from('cached_tasks')
-        .select('list_id, status')
-        .eq('workspace_id', workspaceId);
+      // Fetch lists and tasks in parallel using shared cache
+      const [lists, tasks] = await Promise.all([
+        fetchCachedLists(workspaceId),
+        fetchCachedTasks(workspaceId),
+      ]);
+      if (lists.length === 0) { setData([]); setLoading(false); return; }
 
       const items = lists.slice(0, 5).map((list) => {
-        const listTasks = (tasks ?? []).filter((t) => t.list_id === list.clickup_id);
+        const listTasks = tasks.filter((t) => t.list_id === list.clickup_id);
         const completed = listTasks.filter((t) =>
           t.status?.toLowerCase().includes('complete') || t.status?.toLowerCase().includes('closed')
         ).length;
@@ -149,17 +223,13 @@ export function useWorkloadData(workspaceId: string | null) {
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
     (async () => {
-      const { data: tasks } = await supabase
-        .from('cached_tasks')
-        .select('status, assignees, due_date')
-        .eq('workspace_id', workspaceId) as { data: CachedTask[] | null };
+      // Fetch tasks and members in parallel using shared cache
+      const [tasks, members] = await Promise.all([
+        fetchCachedTasks(workspaceId),
+        fetchCachedMembers(workspaceId),
+      ]);
 
-      const { data: members } = await supabase
-        .from('cached_team_members')
-        .select('clickup_id, username')
-        .eq('workspace_id', workspaceId);
-
-      if (!tasks || tasks.length === 0 || !members) { setData([]); setLoading(false); return; }
+      if (tasks.length === 0 || !members) { setData([]); setLoading(false); return; }
 
       const now = new Date().toISOString();
       const memberMap = new Map(members.map((m) => [m.clickup_id, m.username]));
@@ -200,14 +270,11 @@ export function usePriorityBreakdownData(workspaceId: string | null) {
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
     (async () => {
-      const { data: lists } = await supabase
-        .from('cached_lists')
-        .select('clickup_id, name')
-        .eq('workspace_id', workspaceId);
-      const { data: tasks } = await supabase
-        .from('cached_tasks')
-        .select('list_id, priority')
-        .eq('workspace_id', workspaceId);
+      // Fetch lists and tasks in parallel using shared cache
+      const [lists, tasks] = await Promise.all([
+        fetchCachedLists(workspaceId),
+        fetchCachedTasks(workspaceId),
+      ]);
 
       if (!lists || !tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
 
@@ -237,14 +304,13 @@ export function useRecentActivityData(workspaceId: string | null) {
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
     (async () => {
-      const { data: tasks } = await supabase
-        .from('cached_tasks')
-        .select('clickup_id, name, status, assignees, updated_at')
-        .eq('workspace_id', workspaceId)
-        .order('updated_at', { ascending: false })
-        .limit(15) as { data: CachedTask[] | null };
+      const allTasks = await fetchCachedTasks(workspaceId);
+      // Sort and limit locally (cache stores full dataset)
+      const tasks = [...allTasks]
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 15);
 
-      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+      if (tasks.length === 0) { setData([]); setLoading(false); return; }
 
       const now = Date.now();
       const activities = tasks.map((t) => {
@@ -283,18 +349,15 @@ export function useBarChartData(workspaceId: string | null) {
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
     (async () => {
-      const { data: tasks } = await supabase
-        .from('cached_tasks')
-        .select('status, assignees')
-        .eq('workspace_id', workspaceId) as { data: CachedTask[] | null };
-      const { data: members } = await supabase
-        .from('cached_team_members')
-        .select('clickup_id, username')
-        .eq('workspace_id', workspaceId);
+      // Fetch tasks and members in parallel using shared cache
+      const [tasks, members] = await Promise.all([
+        fetchCachedTasks(workspaceId),
+        fetchCachedMembers(workspaceId),
+      ]);
 
-      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+      if (tasks.length === 0) { setData([]); setLoading(false); return; }
 
-      const memberMap = new Map((members ?? []).map((m) => [m.clickup_id, m.username]));
+      const memberMap = new Map(members.map((m) => [m.clickup_id, m.username]));
       const counts: Record<string, number> = {};
 
       for (const t of tasks) {
@@ -330,13 +393,11 @@ export function useLineChartData(workspaceId: string | null) {
     if (!workspaceId) { setLoading(false); return; }
     (async () => {
       const eightWeeksAgo = new Date(Date.now() - 56 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: tasks } = await supabase
-        .from('cached_tasks')
-        .select('status, updated_at')
-        .eq('workspace_id', workspaceId)
-        .gte('updated_at', eightWeeksAgo);
+      const allTasks = await fetchCachedTasks(workspaceId);
+      // Filter locally (cache stores full dataset)
+      const tasks = allTasks.filter((t) => t.updated_at >= eightWeeksAgo);
 
-      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
+      if (tasks.length === 0) { setData([]); setLoading(false); return; }
 
       const weekBuckets: Record<string, number> = {};
       const now = new Date();
@@ -385,21 +446,19 @@ export function useOverdueTasksData(workspaceId: string | null) {
     if (!workspaceId) { setLoading(false); return; }
     (async () => {
       const now = new Date().toISOString();
-      const { data: tasks } = await supabase
-        .from('cached_tasks')
-        .select('clickup_id, name, status, priority, assignees, due_date, list_id')
-        .eq('workspace_id', workspaceId)
-        .lt('due_date', now)
-        .order('due_date', { ascending: true }) as { data: (CachedTask & { list_id: string })[] | null };
+      // Fetch tasks and lists in parallel using shared cache
+      const [allTasks, lists] = await Promise.all([
+        fetchCachedTasks(workspaceId),
+        fetchCachedLists(workspaceId),
+      ]);
+      // Filter overdue tasks locally
+      const tasks = allTasks
+        .filter((t) => t.due_date && t.due_date < now)
+        .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''));
 
-      const { data: lists } = await supabase
-        .from('cached_lists')
-        .select('clickup_id, name')
-        .eq('workspace_id', workspaceId);
+      if (tasks.length === 0) { setData([]); setLoading(false); return; }
 
-      if (!tasks || tasks.length === 0) { setData([]); setLoading(false); return; }
-
-      const listMap = new Map((lists ?? []).map((l) => [l.clickup_id, l.name]));
+      const listMap = new Map(lists.map((l) => [l.clickup_id, l.name]));
       const priorityMap: Record<number, OverdueTask['priority']> = { 1: 'urgent', 2: 'high', 3: 'normal', 4: 'low' };
 
       const overdue = tasks
@@ -500,13 +559,17 @@ export function useDashboard(): DashboardState {
   const fetchDashboards = useCallback(async () => {
     if (!workspace_id) { setIsLoading(false); return; }
 
-    const { data: dbDashboards } = await supabase
-      .from('dashboards')
-      .select('*')
-      .eq('workspace_id', workspace_id)
-      .order('created_at', { ascending: true });
+    // Fetch dashboards and last-active preference in parallel
+    const [dashResult, lastActiveId] = await Promise.all([
+      supabase
+        .from('dashboards')
+        .select('*')
+        .eq('workspace_id', workspace_id)
+        .order('created_at', { ascending: true }),
+      userId ? loadLastActive(userId, workspace_id) : Promise.resolve(null),
+    ]);
 
-    let dashList = (dbDashboards ?? []) as Dashboard[];
+    let dashList = (dashResult.data ?? []) as Dashboard[];
 
     // Create a default dashboard if none exist
     if (dashList.length === 0 && userId) {
@@ -531,13 +594,9 @@ export function useDashboard(): DashboardState {
     // Determine which dashboard to activate
     let activeId: string | null = null;
 
-    // 1. Try to load the user's last-active preference
-    if (userId) {
-      activeId = await loadLastActive(userId, workspace_id);
-      // Verify the saved preference still exists
-      if (activeId && !dashList.find((d) => d.id === activeId)) {
-        activeId = null;
-      }
+    // 1. Use the pre-fetched last-active preference
+    if (lastActiveId && dashList.find((d) => d.id === lastActiveId)) {
+      activeId = lastActiveId;
     }
 
     // 2. Fall back to the default dashboard

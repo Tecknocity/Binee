@@ -228,7 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       memberErr = firstAttempt.error;
     }
 
-    // If the direct query succeeded and returned data, use it
+    // If the direct query succeeded and returned data, fetch workspaces
     if (!memberErr && memberRows && memberRows.length > 0) {
       const workspaceIds = memberRows.map((m) => m.workspace_id);
       const { data: ws, error: wsErr } = await supabase
@@ -244,8 +244,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // --- Attempt 2: Server API fallback (bypasses RLS) ---
-    // This handles: RLS infinite recursion, missing columns, policy issues,
-    // timing races with trigger, or any other reason the direct query fails.
     if (memberErr) {
       console.warn('loadWorkspaces: direct query failed, falling back to API', memberErr.message);
     } else {
@@ -294,22 +292,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * as a last resort.
    */
   const ensureAndLoad = useCallback(async (userId: string): Promise<Workspace[]> => {
-    // Run ensure-owner FIRST (sequential, not parallel) to avoid race conditions
-    // where both the DB trigger and ensure-owner create workspaces simultaneously.
-    const ensureOk = await callEnsureOwnerOnce();
+    // If ensure-owner was already done this session (sessionStorage flag),
+    // skip the API call entirely — go straight to loading workspaces.
+    // This is the common case for page navigations within the same session.
+    const alreadyEnsured = ensureOwnerDone.current;
+
+    if (!alreadyEnsured) {
+      // Run ensure-owner FIRST (sequential, not parallel) to avoid race conditions
+      // where both the DB trigger and ensure-owner create workspaces simultaneously.
+      await callEnsureOwnerOnce();
+    }
 
     // Now load workspaces — the trigger and/or ensure-owner should have created one.
     const loaded = await loadWorkspaces(userId);
-    console.log('ensureAndLoad: ensure-owner =', ensureOk, ', workspaces found =', loaded.length);
 
-    // If still empty, the trigger may need a moment to commit — retry once.
-    if (loaded.length === 0 && ensureOk) {
+    // If still empty and we just ran ensure-owner, the trigger may need a moment — retry once.
+    if (loaded.length === 0 && !alreadyEnsured) {
       console.warn('ensureAndLoad: no workspaces found, retrying load');
-      // Small delay to allow trigger transaction to commit
       await new Promise((r) => setTimeout(r, 500));
-      const retried = await loadWorkspaces(userId);
-      console.log('ensureAndLoad: after retry, found', retried.length, 'workspaces');
-      return retried;
+      return await loadWorkspaces(userId);
     }
 
     return loaded;
