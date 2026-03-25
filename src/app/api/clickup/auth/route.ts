@@ -47,6 +47,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const authUrl = getClickUpAuthUrl(workspaceId);
-  return NextResponse.redirect(authUrl);
+  try {
+    const authUrl = getClickUpAuthUrl(workspaceId);
+    return NextResponse.redirect(authUrl);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          "ClickUp integration is not configured. Please set CLICKUP_CLIENT_ID and CLICKUP_REDIRECT_URI environment variables.",
+      },
+      { status: 500 }
+    );
+  }
 }

@@ -10,7 +10,7 @@ const CLICKUP_CLIENT_ID = process.env.CLICKUP_CLIENT_ID ?? "";
 const CLICKUP_CLIENT_SECRET = process.env.CLICKUP_CLIENT_SECRET ?? "";
 const CLICKUP_REDIRECT_URI =
   process.env.CLICKUP_REDIRECT_URI ??
-  "http://localhost:3000/api/clickup/callback";
+  `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/api/clickup/callback`;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -29,6 +29,15 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
  * the callback with the correct workspace.
  */
 export function getClickUpAuthUrl(workspaceId: string): string {
+  if (!CLICKUP_CLIENT_ID) {
+    throw new Error("CLICKUP_CLIENT_ID environment variable is not configured");
+  }
+  if (!CLICKUP_REDIRECT_URI) {
+    throw new Error(
+      "CLICKUP_REDIRECT_URI environment variable is not configured"
+    );
+  }
+
   const state = Buffer.from(
     JSON.stringify({ workspaceId, ts: Date.now() })
   ).toString("base64url");
