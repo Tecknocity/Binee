@@ -25,9 +25,13 @@ import { createClient } from '@supabase/supabase-js';
 // Anthropic client
 // ---------------------------------------------------------------------------
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+let _anthropic: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!_anthropic) {
+    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return _anthropic;
+}
 
 // ---------------------------------------------------------------------------
 // Supabase admin client
@@ -129,7 +133,7 @@ export async function handleChatMessage(
   } | null = null;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await anthropic.messages.create({
+    const response = await getAnthropicClient().messages.create({
       model: modelConfig.model,
       max_tokens: modelConfig.maxTokens,
       system: systemPrompt,
@@ -223,7 +227,7 @@ export async function handleChatMessage(
     // more response so it can tell the user about the pending confirmation,
     // then stop the loop — we don't want further tool calls until confirmed.
     if (hasWriteInterception && round < MAX_TOOL_ROUNDS - 1) {
-      const confirmResponse = await anthropic.messages.create({
+      const confirmResponse = await getAnthropicClient().messages.create({
         model: modelConfig.model,
         max_tokens: modelConfig.maxTokens,
         system: systemPrompt,

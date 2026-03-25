@@ -39,9 +39,13 @@ import { createClient } from '@supabase/supabase-js';
 // Anthropic client
 // ---------------------------------------------------------------------------
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+let _anthropic: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!_anthropic) {
+    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return _anthropic;
+}
 
 // ---------------------------------------------------------------------------
 // Supabase admin client (service role — bypasses RLS)
@@ -216,7 +220,7 @@ export async function handleChat(
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     toolRounds = round + 1;
 
-    const response = await anthropic.messages.create({
+    const response = await getAnthropicClient().messages.create({
       model: modelConfig.model,
       max_tokens: modelConfig.maxTokens,
       system: assembled.system,
@@ -306,7 +310,7 @@ export async function handleChat(
     // B-045: If a write operation was intercepted, let the model produce one
     // more response to inform the user, then stop the loop.
     if (hasWriteInterception && round < MAX_TOOL_ROUNDS - 1) {
-      const confirmResponse = await anthropic.messages.create({
+      const confirmResponse = await getAnthropicClient().messages.create({
         model: modelConfig.model,
         max_tokens: modelConfig.maxTokens,
         system: assembled.system,

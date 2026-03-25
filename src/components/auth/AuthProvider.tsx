@@ -63,8 +63,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Stable ref for supabase client — avoid recreating on every render.
   // Without this, every render produces a new reference which invalidates
   // all useCallback / useEffect dependency arrays and can cause infinite loops.
-  const supabaseRef = useRef(createBrowserClient());
-  const supabase = supabaseRef.current;
+  // Lazy initialization avoids calling createBrowserClient() during SSG/prerender.
+  // Lazy initialization avoids calling createBrowserClient() during SSG/prerender.
+  const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null);
+  if (!supabaseRef.current && typeof window !== 'undefined') {
+    supabaseRef.current = createBrowserClient();
+  }
+  // Non-null assertion is safe: all usages are inside useEffect/callbacks which
+  // only execute on the client where supabaseRef.current is guaranteed initialized.
+  const supabase = supabaseRef.current!;
 
   // Guard: ensure-owner is called at most once per browser session.
   // Uses sessionStorage so the guard persists across AuthProvider remounts
@@ -312,6 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const manualAuthInProgress = useRef(false);
 
   useEffect(() => {
+    if (!supabase) return;
     let cancelled = false;
 
     const initAuth = async () => {
