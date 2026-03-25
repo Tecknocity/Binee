@@ -66,16 +66,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabaseRef = useRef(createBrowserClient());
   const supabase = supabaseRef.current;
 
-  // Guard: ensure-owner is called at most once per session
-  const ensureOwnerDone = useRef(false);
+  // Guard: ensure-owner is called at most once per browser session.
+  // Uses sessionStorage so the guard persists across AuthProvider remounts
+  // (e.g. navigating from (auth) to (app) route groups which mount separate
+  // AuthProvider instances with fresh refs).
+  const ensureOwnerDone = useRef(
+    typeof window !== 'undefined' && sessionStorage.getItem('binee_ensure_owner_done') === '1',
+  );
   const ensureOwnerInFlight = useRef<Promise<boolean> | null>(null);
 
   // Guard: prevent initAuth and onAuthStateChange from racing
   const initAuthDone = useRef(false);
 
   /**
-   * Calls /api/workspace/ensure-owner exactly once per AuthProvider lifetime.
-   * Returns true if the call succeeded, false otherwise.
+   * Calls /api/workspace/ensure-owner exactly once per browser session.
+   * The guard persists in sessionStorage so it survives AuthProvider remounts
+   * when navigating between route groups (auth → app).
    */
   const callEnsureOwnerOnce = useCallback(async (): Promise<boolean> => {
     if (ensureOwnerDone.current) return true;
@@ -93,6 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (res.ok) {
           ensureOwnerDone.current = true;
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('binee_ensure_owner_done', '1');
+          }
           return true;
         }
         const body = await res.text().catch(() => '');
@@ -494,6 +503,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setWorkspaces([]);
     setMembership(null);
     setLoading(false);
+    ensureOwnerDone.current = false;
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('binee_ensure_owner_done');
+    }
 
     supabase.auth.signOut().catch(() => {});
 
