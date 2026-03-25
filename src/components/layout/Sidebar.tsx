@@ -20,7 +20,6 @@ import {
   Trash2,
   CreditCard,
   Plug,
-  Eye,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -355,45 +354,76 @@ export default function Sidebar() {
               </button>
 
               {userMenuOpen && createPortal(
-                <div ref={userMenuRef} className="fixed bottom-16 left-2 w-56 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
-                  <div className="px-3.5 py-2 border-b border-border/50">
-                    <p className="text-xs text-text-muted truncate">{user?.email || ''}</p>
+                <div ref={userMenuRef} className="fixed bottom-16 left-2 w-64 bg-navy-light border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                  {/* User info header */}
+                  <div className="px-4 pt-4 pb-3 border-b border-border/40">
+                    <div className="flex items-center gap-3">
+                      {user?.avatar_url ? (
+                        <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-accent/25 shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border-2 border-accent/25 flex items-center justify-center shrink-0">
+                          <span className="text-accent text-sm font-bold">{initials}</span>
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-text-primary truncate">{user?.display_name || 'User'}</p>
+                        <p className="text-xs text-text-muted truncate mt-0.5">{user?.email || ''}</p>
+                      </div>
+                    </div>
+
+                    <Link
+                      href="/settings?tab=billing"
+                      onClick={() => { setUserMenuOpen(false); }}
+                      className="mt-3 flex items-center justify-between w-full px-3 py-2 rounded-lg bg-accent/8 border border-accent/15 hover:bg-accent/12 transition-colors"
+                    >
+                      <span className="text-xs font-medium text-text-secondary">Credits</span>
+                      <span className="text-sm font-semibold text-accent font-mono">
+                        {workspace?.credit_balance?.toLocaleString() ?? '---'}
+                      </span>
+                    </Link>
                   </div>
-                  <Link
-                    href="/settings"
-                    onClick={() => { setUserMenuOpen(false); }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                  >
-                    <Settings className="w-4 h-4" />
-                    <span className="text-sm">Settings</span>
-                  </Link>
-                  <Link
-                    href="/settings?tab=billing"
-                    onClick={() => { setUserMenuOpen(false); }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span className="text-sm">Usage</span>
-                  </Link>
-                  <Link
-                    href="/settings?tab=integrations"
-                    onClick={() => { setUserMenuOpen(false); }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                  >
-                    <Plug className="w-4 h-4" />
-                    <span className="text-sm">Integrations</span>
-                  </Link>
-                  <div className="my-1 border-t border-border/50" />
-                  <button
-                    onClick={async () => {
-                      await signOut();
-                      setUserMenuOpen(false);
-                    }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span className="text-sm">Log out</span>
-                  </button>
+
+                  <div className="py-1.5">
+                    <Link
+                      href="/settings"
+                      onClick={() => { setUserMenuOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                    >
+                      <Settings className="w-4 h-4" />
+                      <span className="text-sm">Settings</span>
+                    </Link>
+                    <Link
+                      href="/settings?tab=billing"
+                      onClick={() => { setUserMenuOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      <span className="text-sm">View all plans</span>
+                    </Link>
+                    <Link
+                      href="/settings?tab=integrations"
+                      onClick={() => { setUserMenuOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                    >
+                      <Plug className="w-4 h-4" />
+                      <span className="text-sm">Integrations</span>
+                    </Link>
+                  </div>
+
+                  <div className="border-t border-border/40" />
+
+                  <div className="py-1.5">
+                    <button
+                      onClick={async () => {
+                        await signOut();
+                        setUserMenuOpen(false);
+                      }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span className="text-sm">Log out</span>
+                    </button>
+                  </div>
                 </div>,
                 document.body
               )}
@@ -542,68 +572,81 @@ export default function Sidebar() {
               </button>
 
               {userMenuOpen && (
-                <div className="absolute bottom-full left-3 right-3 mb-1.5 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
-                  {/* Email display */}
-                  <div className="px-3.5 py-2 border-b border-border/50">
-                    <p className="text-xs text-text-muted truncate">{user?.email || ''}</p>
+                <div className="absolute bottom-full left-3 right-3 mb-2 bg-navy-light border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                  {/* User info header */}
+                  <div className="px-4 pt-4 pb-3 border-b border-border/40">
+                    <div className="flex items-center gap-3">
+                      {user?.avatar_url ? (
+                        <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-accent/25 shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border-2 border-accent/25 flex items-center justify-center shrink-0">
+                          <span className="text-accent text-sm font-bold">{initials}</span>
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-text-primary truncate">{user?.display_name || 'User'}</p>
+                        <p className="text-xs text-text-muted truncate mt-0.5">{user?.email || ''}</p>
+                      </div>
+                    </div>
+
+                    {/* Credit balance pill */}
+                    <Link
+                      href="/settings?tab=billing"
+                      onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
+                      className="mt-3 flex items-center justify-between w-full px-3 py-2 rounded-lg bg-accent/8 border border-accent/15 hover:bg-accent/12 transition-colors"
+                    >
+                      <span className="text-xs font-medium text-text-secondary">Credits</span>
+                      <span className="text-sm font-semibold text-accent font-mono">
+                        {workspace?.credit_balance?.toLocaleString() ?? '---'}
+                      </span>
+                    </Link>
                   </div>
 
-                  {/* Settings */}
-                  <Link
-                    href="/settings"
-                    onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                  >
-                    <Settings className="w-4 h-4" />
-                    <span className="text-sm">Settings</span>
-                  </Link>
+                  {/* Menu items */}
+                  <div className="py-1.5">
+                    <Link
+                      href="/settings"
+                      onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                    >
+                      <Settings className="w-4 h-4" />
+                      <span className="text-sm">Settings</span>
+                    </Link>
 
-                  {/* Usage / Billing */}
-                  <Link
-                    href="/settings?tab=billing"
-                    onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span className="text-sm">Usage</span>
-                    <span className="ml-auto text-xs text-text-muted font-mono">
-                      {workspace?.credit_balance?.toLocaleString() ?? '---'} credits
-                    </span>
-                  </Link>
+                    <Link
+                      href="/settings?tab=billing"
+                      onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      <span className="text-sm">View all plans</span>
+                    </Link>
 
-                  {/* View all plans */}
-                  <Link
-                    href="/settings?tab=billing"
-                    onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    <span className="text-sm">View all plans</span>
-                  </Link>
+                    <Link
+                      href="/settings?tab=integrations"
+                      onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                    >
+                      <Plug className="w-4 h-4" />
+                      <span className="text-sm">Integrations</span>
+                    </Link>
+                  </div>
 
-                  {/* Integrations */}
-                  <Link
-                    href="/settings?tab=integrations"
-                    onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                  >
-                    <Plug className="w-4 h-4" />
-                    <span className="text-sm">Integrations</span>
-                  </Link>
-
-                  <div className="my-1 border-t border-border/50" />
+                  <div className="border-t border-border/40" />
 
                   {/* Sign out */}
-                  <button
-                    onClick={async () => {
-                      await signOut();
-                      setUserMenuOpen(false);
-                    }}
-                    className="flex items-center gap-2.5 w-full px-3.5 py-2 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span className="text-sm">Log out</span>
-                  </button>
+                  <div className="py-1.5">
+                    <button
+                      onClick={async () => {
+                        await signOut();
+                        setUserMenuOpen(false);
+                      }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span className="text-sm">Log out</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
