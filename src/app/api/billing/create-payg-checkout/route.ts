@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUserId } from '@/lib/api-auth';
 import { createPaygCheckout } from '@/lib/stripe';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { PAYGO_MIN_PURCHASE_CENTS, PAYGO_PRICE_PER_CREDIT_CENTS } from '@/billing/config';
+import { PLAN_TIERS } from '@/billing/config';
+
+// Valid PAYG amounts match the subscription tier credit amounts
+const VALID_PAYG_AMOUNTS = new Set(
+  Object.values(PLAN_TIERS).map((t) => t.credits)
+);
 
 export async function POST(req: NextRequest) {
   const userId = await getAuthenticatedUserId(req);
@@ -12,15 +17,9 @@ export async function POST(req: NextRequest) {
 
   const { credits } = await req.json();
 
-  if (!credits || typeof credits !== 'number' || credits < 1) {
-    return NextResponse.json({ error: 'credits must be a positive number' }, { status: 400 });
-  }
-
-  const totalCents = credits * PAYGO_PRICE_PER_CREDIT_CENTS;
-  if (totalCents < PAYGO_MIN_PURCHASE_CENTS) {
-    const minCredits = Math.ceil(PAYGO_MIN_PURCHASE_CENTS / PAYGO_PRICE_PER_CREDIT_CENTS);
+  if (!credits || typeof credits !== 'number' || !VALID_PAYG_AMOUNTS.has(credits)) {
     return NextResponse.json(
-      { error: `Minimum purchase is ${minCredits} credits ($${(PAYGO_MIN_PURCHASE_CENTS / 100).toFixed(2)})` },
+      { error: `Invalid credit amount. Valid options: ${[...VALID_PAYG_AMOUNTS].join(', ')}` },
       { status: 400 },
     );
   }
