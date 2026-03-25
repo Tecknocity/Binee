@@ -20,6 +20,8 @@ import {
   Trash2,
   CreditCard,
   Plug,
+  Coins,
+  AlertCircle,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
@@ -28,6 +30,7 @@ import { useConversations, type Conversation } from '@/hooks/useConversations';
 import { useSidebar } from '@/hooks/useSidebar';
 import { BineeLogo } from '@/components/BineeLogo';
 import { useTheme } from 'next-themes';
+import { WARNING_THRESHOLDS } from '@/billing/config';
 
 const navSections = [
   { href: '/chats', label: 'Chats', icon: MessageSquare },
@@ -35,6 +38,19 @@ const navSections = [
   { href: '/health', label: 'Health', icon: HeartPulse },
   { href: '/setup', label: 'Setup', icon: Wrench },
 ];
+
+function getCreditColor(balance: number) {
+  if (balance <= WARNING_THRESHOLDS.empty) {
+    return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
+  }
+  if (balance <= WARNING_THRESHOLDS.critical) {
+    return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
+  }
+  if (balance <= WARNING_THRESHOLDS.low) {
+    return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
+  }
+  return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' };
+}
 
 // ---------------------------------------------------------------------------
 // Search Dialog
@@ -353,80 +369,97 @@ export default function Sidebar() {
                 )}
               </button>
 
-              {userMenuOpen && createPortal(
-                <div ref={userMenuRef} className="fixed bottom-16 left-2 w-64 bg-navy-light border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
-                  {/* User info header */}
-                  <div className="px-4 pt-4 pb-3 border-b border-border/40">
-                    <div className="flex items-center gap-3">
-                      {user?.avatar_url ? (
-                        <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-accent/25 shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border-2 border-accent/25 flex items-center justify-center shrink-0">
-                          <span className="text-accent text-sm font-bold">{initials}</span>
+              {userMenuOpen && (() => {
+                const creditColor = getCreditColor(workspace?.credit_balance ?? 0);
+                return createPortal(
+                  <div ref={userMenuRef} className="fixed bottom-16 left-2 w-64 bg-navy-light border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                    {/* User info header */}
+                    <div className="px-4 pt-4 pb-3 border-b border-border/40">
+                      <div className="flex items-center gap-3">
+                        {user?.avatar_url ? (
+                          <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-accent/25 shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border-2 border-accent/25 flex items-center justify-center shrink-0">
+                            <span className="text-accent text-sm font-bold">{initials}</span>
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-text-primary truncate">{user?.display_name || 'User'}</p>
+                          <p className="text-[11px] text-text-muted truncate mt-0.5">{workspace?.name || 'Workspace'}</p>
+                          <p className="text-[11px] text-text-muted truncate">{user?.email || ''}</p>
                         </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-text-primary truncate">{user?.display_name || 'User'}</p>
-                        <p className="text-xs text-text-muted truncate mt-0.5">{user?.email || ''}</p>
                       </div>
+
+                      {/* Color-coded credit balance pill */}
+                      <Link
+                        href="/settings?tab=billing"
+                        onClick={() => { setUserMenuOpen(false); }}
+                        className={cn(
+                          'mt-3 flex items-center justify-between w-full px-3 py-2 rounded-lg border transition-colors hover:brightness-125',
+                          creditColor.bg,
+                          creditColor.border
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Coins className={cn('w-3.5 h-3.5', creditColor.text)} />
+                          <span className={cn('text-xs font-medium', creditColor.text)}>Credits</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className={cn('text-sm font-semibold font-mono', creditColor.text)}>
+                            {workspace?.credit_balance?.toLocaleString() ?? '---'}
+                          </span>
+                          {(workspace?.credit_balance ?? 0) <= WARNING_THRESHOLDS.empty && (
+                            <AlertCircle className="w-3.5 h-3.5 text-red-400" />
+                          )}
+                        </div>
+                      </Link>
                     </div>
 
-                    <Link
-                      href="/settings?tab=billing"
-                      onClick={() => { setUserMenuOpen(false); }}
-                      className="mt-3 flex items-center justify-between w-full px-3 py-2 rounded-lg bg-accent/8 border border-accent/15 hover:bg-accent/12 transition-colors"
-                    >
-                      <span className="text-xs font-medium text-text-secondary">Credits</span>
-                      <span className="text-sm font-semibold text-accent font-mono">
-                        {workspace?.credit_balance?.toLocaleString() ?? '---'}
-                      </span>
-                    </Link>
-                  </div>
+                    <div className="py-1.5">
+                      <Link
+                        href="/settings"
+                        onClick={() => { setUserMenuOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span className="text-sm">Settings</span>
+                      </Link>
+                      <Link
+                        href="/settings?tab=billing"
+                        onClick={() => { setUserMenuOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        <span className="text-sm">View all plans</span>
+                      </Link>
+                      <Link
+                        href="/settings?tab=integrations"
+                        onClick={() => { setUserMenuOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                      >
+                        <Plug className="w-4 h-4" />
+                        <span className="text-sm">Integrations</span>
+                      </Link>
+                    </div>
 
-                  <div className="py-1.5">
-                    <Link
-                      href="/settings"
-                      onClick={() => { setUserMenuOpen(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                    >
-                      <Settings className="w-4 h-4" />
-                      <span className="text-sm">Settings</span>
-                    </Link>
-                    <Link
-                      href="/settings?tab=billing"
-                      onClick={() => { setUserMenuOpen(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      <span className="text-sm">View all plans</span>
-                    </Link>
-                    <Link
-                      href="/settings?tab=integrations"
-                      onClick={() => { setUserMenuOpen(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                    >
-                      <Plug className="w-4 h-4" />
-                      <span className="text-sm">Integrations</span>
-                    </Link>
-                  </div>
+                    <div className="border-t border-border/40" />
 
-                  <div className="border-t border-border/40" />
-
-                  <div className="py-1.5">
-                    <button
-                      onClick={async () => {
-                        await signOut();
-                        setUserMenuOpen(false);
-                      }}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span className="text-sm">Log out</span>
-                    </button>
-                  </div>
-                </div>,
-                document.body
-              )}
+                    <div className="py-1.5">
+                      <button
+                        onClick={async () => {
+                          await signOut();
+                          setUserMenuOpen(false);
+                        }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span className="text-sm">Log out</span>
+                      </button>
+                    </div>
+                  </div>,
+                  document.body
+                );
+              })()}
             </div>
           </div>
         ) : (
@@ -571,84 +604,100 @@ export default function Sidebar() {
                 )} />
               </button>
 
-              {userMenuOpen && (
-                <div className="absolute bottom-full left-3 right-3 mb-2 bg-navy-light border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
-                  {/* User info header */}
-                  <div className="px-4 pt-4 pb-3 border-b border-border/40">
-                    <div className="flex items-center gap-3">
-                      {user?.avatar_url ? (
-                        <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-accent/25 shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border-2 border-accent/25 flex items-center justify-center shrink-0">
-                          <span className="text-accent text-sm font-bold">{initials}</span>
+              {userMenuOpen && (() => {
+                const creditColor = getCreditColor(workspace?.credit_balance ?? 0);
+                return (
+                  <div className="absolute bottom-full left-3 right-3 mb-2 bg-navy-light border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                    {/* User info header */}
+                    <div className="px-4 pt-4 pb-3 border-b border-border/40">
+                      <div className="flex items-center gap-3">
+                        {user?.avatar_url ? (
+                          <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-accent/25 shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 border-2 border-accent/25 flex items-center justify-center shrink-0">
+                            <span className="text-accent text-sm font-bold">{initials}</span>
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-text-primary truncate">{user?.display_name || 'User'}</p>
+                          <p className="text-[11px] text-text-muted truncate mt-0.5">{workspace?.name || 'Workspace'}</p>
+                          <p className="text-[11px] text-text-muted truncate">{user?.email || ''}</p>
                         </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-text-primary truncate">{user?.display_name || 'User'}</p>
-                        <p className="text-xs text-text-muted truncate mt-0.5">{user?.email || ''}</p>
                       </div>
+
+                      {/* Color-coded credit balance pill */}
+                      <Link
+                        href="/settings?tab=billing"
+                        onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
+                        className={cn(
+                          'mt-3 flex items-center justify-between w-full px-3 py-2 rounded-lg border transition-colors hover:brightness-125',
+                          creditColor.bg,
+                          creditColor.border
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Coins className={cn('w-3.5 h-3.5', creditColor.text)} />
+                          <span className={cn('text-xs font-medium', creditColor.text)}>Credits</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className={cn('text-sm font-semibold font-mono', creditColor.text)}>
+                            {workspace?.credit_balance?.toLocaleString() ?? '---'}
+                          </span>
+                          {(workspace?.credit_balance ?? 0) <= WARNING_THRESHOLDS.empty && (
+                            <AlertCircle className="w-3.5 h-3.5 text-red-400" />
+                          )}
+                        </div>
+                      </Link>
                     </div>
 
-                    {/* Credit balance pill */}
-                    <Link
-                      href="/settings?tab=billing"
-                      onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
-                      className="mt-3 flex items-center justify-between w-full px-3 py-2 rounded-lg bg-accent/8 border border-accent/15 hover:bg-accent/12 transition-colors"
-                    >
-                      <span className="text-xs font-medium text-text-secondary">Credits</span>
-                      <span className="text-sm font-semibold text-accent font-mono">
-                        {workspace?.credit_balance?.toLocaleString() ?? '---'}
-                      </span>
-                    </Link>
+                    {/* Menu items */}
+                    <div className="py-1.5">
+                      <Link
+                        href="/settings"
+                        onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span className="text-sm">Settings</span>
+                      </Link>
+
+                      <Link
+                        href="/settings?tab=billing"
+                        onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        <span className="text-sm">View all plans</span>
+                      </Link>
+
+                      <Link
+                        href="/settings?tab=integrations"
+                        onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                      >
+                        <Plug className="w-4 h-4" />
+                        <span className="text-sm">Integrations</span>
+                      </Link>
+                    </div>
+
+                    <div className="border-t border-border/40" />
+
+                    {/* Sign out */}
+                    <div className="py-1.5">
+                      <button
+                        onClick={async () => {
+                          await signOut();
+                          setUserMenuOpen(false);
+                        }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span className="text-sm">Log out</span>
+                      </button>
+                    </div>
                   </div>
-
-                  {/* Menu items */}
-                  <div className="py-1.5">
-                    <Link
-                      href="/settings"
-                      onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                    >
-                      <Settings className="w-4 h-4" />
-                      <span className="text-sm">Settings</span>
-                    </Link>
-
-                    <Link
-                      href="/settings?tab=billing"
-                      onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      <span className="text-sm">View all plans</span>
-                    </Link>
-
-                    <Link
-                      href="/settings?tab=integrations"
-                      onClick={() => { setUserMenuOpen(false); setMobileOpen(false); }}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                    >
-                      <Plug className="w-4 h-4" />
-                      <span className="text-sm">Integrations</span>
-                    </Link>
-                  </div>
-
-                  <div className="border-t border-border/40" />
-
-                  {/* Sign out */}
-                  <div className="py-1.5">
-                    <button
-                      onClick={async () => {
-                        await signOut();
-                        setUserMenuOpen(false);
-                      }}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-surface-hover transition-colors text-text-secondary hover:text-error"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span className="text-sm">Log out</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         )}
