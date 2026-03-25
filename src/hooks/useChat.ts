@@ -10,6 +10,22 @@ import {
 } from '@/lib/ai/action-preferences';
 
 // ---------------------------------------------------------------------------
+// Helper: generate a short title from the first user message
+// ---------------------------------------------------------------------------
+
+function generateTitleFromMessage(content: string): string {
+  // Strip leading/trailing whitespace
+  const trimmed = content.trim();
+  // Take first sentence or first 60 chars, whichever is shorter
+  const firstSentence = trimmed.split(/[.!?\n]/)[0]?.trim() || trimmed;
+  if (firstSentence.length <= 60) return firstSentence;
+  // Truncate at last word boundary before 60 chars
+  const truncated = firstSentence.substring(0, 60);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return (lastSpace > 20 ? truncated.substring(0, lastSpace) : truncated) + '…';
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -390,6 +406,25 @@ export function useChat(conversationId: string | null) {
         totalCredits.current += data.credits_consumed ?? 0;
         setMessages((prev) => [...prev, assistantMessage]);
 
+        // Update conversation title (on first message) and summary
+        if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
+          const isFirstMessage = messages.length === 0;
+          const updatePayload: Record<string, string> = {
+            summary: content.trim().substring(0, 200),
+            updated_at: new Date().toISOString(),
+          };
+          if (isFirstMessage) {
+            updatePayload.title = generateTitleFromMessage(content);
+          }
+          supabase
+            .from('conversations')
+            .update(updatePayload)
+            .eq('id', effectiveId)
+            .then(({ error: updateErr }) => {
+              if (updateErr) console.error('[useChat] Failed to update conversation:', updateErr.message);
+            });
+        }
+
         // B-045: Auto-approve if user has "Always Allow" for this operation type
         if (
           actionConfirmation &&
@@ -398,11 +433,12 @@ export function useChat(conversationId: string | null) {
           confirmActionRef.current(actionConfirmation.id, true);
         }
       } catch (err) {
+        const fallbackContent =
+          "Thanks for your message! I'm currently running in demo mode. In production, I'd connect to your ClickUp workspace to help with that request.";
         const fallbackMessage: ChatMessage = {
           id: `msg-${Date.now()}-resp`,
           role: 'assistant',
-          content:
-            "Thanks for your message! I'm currently running in demo mode. In production, I'd connect to your ClickUp workspace to help with that request.",
+          content: fallbackContent,
           timestamp: new Date(),
           creditsConsumed: 1,
         };
@@ -411,6 +447,44 @@ export function useChat(conversationId: string | null) {
         setError(
           err instanceof Error ? err.message : 'An unexpected error occurred',
         );
+
+        // Persist messages to DB even in demo/fallback mode so chat history is saved
+        if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
+          try {
+            // Save user message
+            await supabase.from('messages').insert({
+              workspace_id: workspaceId,
+              conversation_id: effectiveId,
+              role: 'user',
+              content: content.trim(),
+              credits_used: 0,
+            });
+            // Save assistant fallback message
+            await supabase.from('messages').insert({
+              workspace_id: workspaceId,
+              conversation_id: effectiveId,
+              role: 'assistant',
+              content: fallbackContent,
+              credits_used: 1,
+              metadata: { demo_mode: true },
+            });
+            // Auto-generate title from first message if this is a new conversation
+            const isFirstMessage = messages.length === 0;
+            const updatePayload: Record<string, string> = {
+              summary: content.trim().substring(0, 200),
+              updated_at: new Date().toISOString(),
+            };
+            if (isFirstMessage) {
+              updatePayload.title = generateTitleFromMessage(content);
+            }
+            await supabase
+              .from('conversations')
+              .update(updatePayload)
+              .eq('id', effectiveId);
+          } catch (saveErr) {
+            console.error('[useChat] Failed to persist demo messages:', saveErr);
+          }
+        }
       } finally {
         setIsLoading(false);
       }

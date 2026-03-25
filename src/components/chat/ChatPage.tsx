@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useConversations } from '@/hooks/useConversations';
+import { useSharedConversations } from '@/contexts/ConversationsContext';
 import { useChat } from '@/hooks/useChat';
 import type { DashboardChoiceData } from '@/hooks/useChat';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -13,6 +13,7 @@ import EmptyState from './EmptyState';
 import type { EmptyStateVariant } from './EmptyState';
 import WelcomeMessage from './WelcomeMessage';
 import WelcomeSuggestions from './WelcomeSuggestions';
+import ChatHeader from './ChatHeader';
 import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
 import UpgradePrompt from '@/components/credits/UpgradePrompt';
 import { Hexagon, Loader2 } from 'lucide-react';
@@ -258,8 +259,9 @@ export default function ChatPage() {
     conversations,
     activeConversationId,
     createConversation,
+    renameConversation,
     setActiveConversation,
-  } = useConversations();
+  } = useSharedConversations();
 
   // If we're in "new" mode, treat activeConversationId as null
   const effectiveConversationId = isNew ? null : activeConversationId;
@@ -350,6 +352,19 @@ export default function ChatPage() {
   const hasMessages = messages.length > 0;
   const firstName = user?.display_name?.split(' ')[0] || undefined;
 
+  // Get the active conversation's title for the header
+  const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const conversationTitle = activeConversation?.title || 'New conversation';
+
+  const handleRename = useCallback(
+    (newTitle: string) => {
+      if (activeConversationId) {
+        renameConversation(activeConversationId, newTitle);
+      }
+    },
+    [activeConversationId, renameConversation],
+  );
+
   // Determine which empty state variant to show
   const emptyStateVariant: EmptyStateVariant = isOutOfCredits
     ? 'no-credits'
@@ -376,6 +391,7 @@ export default function ChatPage() {
       <div className="flex-1 min-w-0 flex flex-col">
         {hasMessages ? (
           <div className="flex-1 min-h-0 flex flex-col">
+            <ChatHeader title={conversationTitle} onRename={handleRename} />
             <MessageThread
               messages={messages}
               isLoading={isLoading}
