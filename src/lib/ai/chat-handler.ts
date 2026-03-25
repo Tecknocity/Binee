@@ -32,6 +32,7 @@ import {
   checkSufficientCredits,
   deductCreditsForAIResponse,
 } from '@/lib/ai/billing';
+import { processAIUsage } from '@/billing/services/billing-service';
 import { createClient } from '@supabase/supabase-js';
 
 // ---------------------------------------------------------------------------
@@ -362,6 +363,7 @@ export async function handleChat(
   // -------------------------------------------------------------------------
   // Step 9: Deduct credits after successful AI response (B-049)
   // -------------------------------------------------------------------------
+  // Legacy workspace-scoped deduction (flat credit cost)
   await deductCreditsForAIResponse(supabase, {
     workspaceId: workspace_id,
     userId: user_id,
@@ -369,6 +371,20 @@ export async function handleChat(
     taskType: classification.taskType,
     modelId: routing.modelId,
     tokenUsage: assembled.tokenUsage,
+  });
+
+  // B-091: Token-based user-scoped deduction (exact token-to-credit conversion)
+  const billingResult = await processAIUsage({
+    userId: user_id,
+    actionType: classification.taskType as 'chat' | 'health_check' | 'setup' | 'dashboard' | 'briefing',
+    sessionId: conversation_id,
+    model: routing.model as 'haiku' | 'sonnet' | 'opus',
+    inputTokens: totalInputTokens,
+    outputTokens: totalOutputTokens,
+  }).catch((err) => {
+    // Log but don't block the response if billing fails
+    console.error('[chat-handler] B-091 billing failed:', err);
+    return null;
   });
 
   // -------------------------------------------------------------------------
@@ -397,6 +413,7 @@ export async function handleChat(
     tokens_input: totalInputTokens,
     tokens_output: totalOutputTokens,
     pending_action: pendingActionData,
+    _billing: billingResult ?? undefined,
     _orchestration: {
       classification: {
         taskType: classification.taskType,
