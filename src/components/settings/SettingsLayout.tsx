@@ -11,7 +11,7 @@ import AccountSettings from '@/components/settings/AccountSettings';
 import PrivacySettings from '@/components/settings/PrivacySettings';
 import TeamSettings from '@/components/settings/TeamSettings';
 import NotificationSettings from '@/components/settings/NotificationSettings';
-import BillingSettings from '@/components/settings/BillingSettings';
+import BillingPage from '@/components/settings/BillingPage';
 import IntegrationsSettingsPage from '@/components/settings/IntegrationsSettingsPage';
 import WorkspaceSettingsPage from '@/components/settings/WorkspaceSettingsPage';
 
@@ -138,7 +138,7 @@ export default function SettingsLayout() {
           {activeTab === 'notifications' && <NotificationSettings />}
           {activeTab === 'privacy' && <PrivacySettings />}
           {activeTab === 'team' && <TeamSettings />}
-          {activeTab === 'billing' && <BillingSettings />}
+          {activeTab === 'billing' && <BillingPage />}
           {activeTab === 'integrations' && <IntegrationsSettingsPage />}
         </div>
       </div>

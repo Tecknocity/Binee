@@ -12,7 +12,7 @@ interface PlanSelectorProps {
 
 type TierKey = keyof typeof PLAN_TIERS;
 
-const TIER_ORDER: TierKey[] = ['50', '100', '250', '500', '1000'];
+const TIER_ORDER: TierKey[] = ['100', '150', '250', '500', '750', '1000', '2000'];
 const RECOMMENDED_TIER: TierKey = '250';
 
 function formatCents(cents: number): string {
@@ -123,7 +123,7 @@ export default function PlanSelector({ subscription }: PlanSelectorProps) {
       </div>
 
       {/* Plan tier cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {TIER_ORDER.map((tierKey) => {
           const tier = PLAN_TIERS[tierKey];
           const isRecommended = tierKey === RECOMMENDED_TIER;

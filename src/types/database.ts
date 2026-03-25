@@ -392,7 +392,7 @@ export interface UserCreditAccount {
 export interface UserSubscription {
   id: string;
   user_id: string;
-  plan_tier: '50' | '100' | '250' | '500' | '1000';
+  plan_tier: '100' | '150' | '250' | '500' | '750' | '1000' | '2000';
   billing_period: 'monthly' | 'annual';
   status: 'active' | 'canceled' | 'past_due' | 'trialing';
   stripe_customer_id: string | null;

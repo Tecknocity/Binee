@@ -1,4 +1,4 @@
-export type PlanTier = '50' | '100' | '250' | '500' | '1000';
+export type PlanTier = '100' | '150' | '250' | '500' | '750' | '1000' | '2000';
 export type BillingPeriod = 'monthly' | 'annual';
 export type SubscriptionStatus = 'active' | 'cancelled' | 'past_due' | 'none';
 

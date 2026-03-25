@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   Coins,
-  ArrowLeft,
   ShieldAlert,
   Calendar,
   ExternalLink,
@@ -15,7 +14,6 @@ import {
   Download,
   Clock,
 } from 'lucide-react';
-import Link from 'next/link';
 import { cn, formatDate } from '@/lib/utils';
 import { useCreditBalance } from '@/billing/hooks/useCreditBalance';
 import { useBillingHistory } from '@/billing/hooks/useBillingHistory';
@@ -131,44 +129,19 @@ export default function BillingPage() {
   // Non-admin access denied
   if (!canManageBilling) {
     return (
-      <div className="max-w-5xl mx-auto">
-        <div className="mb-8">
-          <Link
-            href="/chat"
-            className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-4"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back
-          </Link>
-        </div>
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <ShieldAlert className="w-10 h-10 text-text-muted mb-3" />
-          <h2 className="text-lg font-medium text-text-primary mb-1">Admin access required</h2>
-          <p className="text-sm text-text-secondary max-w-sm">
-            Only workspace admins and owners can view billing and manage plans.
-            Contact your workspace admin for changes.
-          </p>
-        </div>
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <ShieldAlert className="w-10 h-10 text-text-muted mb-3" />
+        <h2 className="text-lg font-medium text-text-primary mb-1">Admin access required</h2>
+        <p className="text-sm text-text-secondary max-w-sm">
+          Only workspace admins and owners can view billing and manage plans.
+          Contact your workspace admin for changes.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <Link
-          href="/chat"
-          className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-4"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Back
-        </Link>
-        <h1 className="text-2xl font-semibold text-text-primary">Billing & Usage</h1>
-        <p className="text-text-secondary text-sm mt-1">
-          Manage your plan, purchase credits, and view usage history
-        </p>
-      </div>
+    <div className="space-y-8">
 
       {/* ═══════════════════════════════════════════════════════════
           Section 1: Current Plan Summary

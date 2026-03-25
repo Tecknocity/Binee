@@ -16,12 +16,12 @@ describe('handleDowngrade', () => {
   });
 
   it('sets pending_plan_change without changing current tier', async () => {
-    await handleDowngrade('user-123', '50');
+    await handleDowngrade('user-123', '100');
 
     expect(mockFrom).toHaveBeenCalledWith('user_subscriptions');
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        pending_plan_change: '50',
+        pending_plan_change: '100',
       }),
     );
     // Should NOT include plan_tier in the update
