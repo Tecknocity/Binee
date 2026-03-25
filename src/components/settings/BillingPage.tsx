@@ -5,61 +5,368 @@ import { usePermissions } from '@/hooks/usePermissions';
 import {
   Coins,
   ShieldAlert,
-  Calendar,
-  ExternalLink,
-  Plus,
+  Check,
   Loader2,
-  ShoppingCart,
+  X,
+  ExternalLink,
   FileText,
-  Download,
-  Clock,
+  CreditCard,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useCreditBalance } from '@/billing/hooks/useCreditBalance';
-import { useBillingHistory } from '@/billing/hooks/useBillingHistory';
 import { PLAN_TIERS, PAYGO_PRICE_PER_CREDIT_CENTS } from '@/billing/config';
-import type { UserSubscription, BillingPeriod, SubscriptionStatus } from '@/billing/types/subscriptions';
+import type { UserSubscription, BillingPeriod, SubscriptionStatus, PlanTier } from '@/billing/types/subscriptions';
 import PlanSelector from '@/components/billing/PlanSelector';
-import PurchaseCreditsModal from '@/components/billing/PurchaseCreditsModal';
 import WeeklyUsageSummary from '@/components/billing/WeeklyUsageSummary';
+import MemberUsageTable from '@/components/settings/MemberUsageTable';
 
-const PAYG_QUICK_AMOUNTS = [10, 25, 50, 100, 250, 500] as const;
+// ── Helpers ────────────────────────────────────────────────
 
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+function formatDollars(cents: number): string {
+  const val = cents / 100;
+  return val % 1 === 0 ? `$${val}` : `$${val.toFixed(2)}`;
 }
 
-function StatusBadge({ status }: { status: SubscriptionStatus }) {
-  const styles: Record<SubscriptionStatus, string> = {
-    active: 'bg-emerald-500/10 text-emerald-400',
-    cancelled: 'bg-red-500/10 text-red-400',
-    past_due: 'bg-warning/10 text-warning',
-    none: 'bg-surface border border-border text-text-muted',
+function daysUntil(dateStr: string): number {
+  const diff = new Date(dateStr).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
+// ── Manage Plan Modal ──────────────────────────────────────
+
+function ManagePlanModal({
+  open,
+  onClose,
+  subscription,
+}: {
+  open: boolean;
+  onClose: () => void;
+  subscription: UserSubscription | null;
+}) {
+  if (!open) return null;
+
+  const status = subscription?.status ?? 'none';
+  const planTier = subscription?.plan_tier;
+  const tierConfig = planTier ? PLAN_TIERS[planTier as keyof typeof PLAN_TIERS] : null;
+  const billingPeriod = subscription?.billing_period ?? 'monthly';
+  const renewalDate = subscription?.current_period_end
+    ? new Date(subscription.current_period_end).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+      })
+    : null;
+
+  const planLabel = tierConfig
+    ? `${tierConfig.credits} Credits / ${billingPeriod === 'annual' ? 'Annual' : 'Monthly'}`
+    : 'No active plan';
+
+  // Stripe portal links — placeholders for now
+  const handleEditBilling = () => {
+    // TODO: Connect to Stripe Customer Portal (billing info section)
+    window.open('#stripe-billing-info', '_blank');
   };
 
-  const labels: Record<SubscriptionStatus, string> = {
-    active: 'Active',
-    cancelled: 'Cancelled',
-    past_due: 'Past Due',
-    none: 'No Plan',
+  const handleInvoices = () => {
+    // TODO: Connect to Stripe Customer Portal (invoices section)
+    window.open('#stripe-invoices', '_blank');
   };
 
   return (
-    <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', styles[status])}>
-      {labels[status]}
-    </span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md mx-4 bg-surface border border-border rounded-xl shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Manage plan</h2>
+            <p className="text-sm text-text-secondary">Subscription & billing settings</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+          {/* Current plan row */}
+          <div className="flex items-center justify-between p-3 bg-navy-base rounded-lg border border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+                <Coins className="w-4 h-4 text-accent" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-text-primary">
+                  You&apos;re on {status !== 'none' ? planLabel : 'Pay-as-you-go'}
+                </p>
+                {renewalDate && status === 'active' && (
+                  <p className="text-xs text-text-muted">Renews {renewalDate}</p>
+                )}
+                {status === 'cancelled' && subscription?.current_period_end && (
+                  <p className="text-xs text-red-400">Ending {renewalDate}</p>
+                )}
+                {status === 'none' && (
+                  <p className="text-xs text-text-muted">No active subscription</p>
+                )}
+              </div>
+            </div>
+            {status === 'active' && (
+              <a
+                href="#plans"
+                onClick={onClose}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface border border-border text-text-secondary hover:text-text-primary hover:border-accent/30 transition-colors"
+              >
+                Change plan
+              </a>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={handleEditBilling}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              Edit billing information
+            </button>
+            <button
+              onClick={handleInvoices}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              Invoices & payments
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
+
+// ── Top Up Credits Modal ───────────────────────────────────
+
+function TopUpCreditsModal({
+  open,
+  onClose,
+  subscription,
+}: {
+  open: boolean;
+  onClose: () => void;
+  subscription: UserSubscription | null;
+}) {
+  const [mode, setMode] = useState<'upgrade' | 'topup'>('upgrade');
+  const [selectedPaygAmount, setSelectedPaygAmount] = useState(100);
+
+  if (!open) return null;
+
+  const currentTier = subscription?.plan_tier;
+  const currentTierConfig = currentTier ? PLAN_TIERS[currentTier as keyof typeof PLAN_TIERS] : null;
+  const billingPeriod = subscription?.billing_period ?? 'monthly';
+
+  // Find the next tier up for upgrade suggestion
+  const tierKeys = Object.keys(PLAN_TIERS) as PlanTier[];
+  const currentIndex = currentTier ? tierKeys.indexOf(currentTier) : -1;
+  const nextTier = currentIndex >= 0 && currentIndex < tierKeys.length - 1
+    ? tierKeys[currentIndex + 1]
+    : tierKeys[0];
+  const nextTierConfig = PLAN_TIERS[nextTier];
+  const nextTierMonthlyPrice = billingPeriod === 'annual'
+    ? nextTierConfig.annualMonthlyPrice
+    : nextTierConfig.monthlyPrice;
+
+  // Compute difference for "due today" (prorated placeholder)
+  const currentMonthly = currentTierConfig
+    ? (billingPeriod === 'annual' ? currentTierConfig.annualMonthlyPrice : currentTierConfig.monthlyPrice)
+    : 0;
+  const priceDifference = nextTierMonthlyPrice - currentMonthly;
+  const additionalCredits = nextTierConfig.credits - (currentTierConfig?.credits ?? 0);
+
+  // PAYG amounts
+  const PAYG_OPTIONS = [50, 100, 250, 500] as const;
+  const paygPrice = ((selectedPaygAmount * PAYGO_PRICE_PER_CREDIT_CENTS) / 100).toFixed(2);
+
+  // Annual savings for the upgrade suggestion
+  const annualSaving = nextTierConfig
+    ? (nextTierConfig.monthlyPrice - nextTierConfig.annualMonthlyPrice) * 12 / 100
+    : 0;
+
+  async function handleUpgrade() {
+    // TODO: Connect to Stripe checkout for upgrade
+    onClose();
+  }
+
+  async function handlePaygPurchase() {
+    try {
+      const res = await fetch('/api/billing/create-payg-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credits: selectedPaygAmount }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg mx-4 bg-surface border border-border rounded-xl shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Add more credits</h2>
+            <p className="text-sm text-text-secondary">Upgrade your plan for better value, or top up credits one time.</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+          {/* Option 1: Upgrade plan */}
+          <button
+            onClick={() => setMode('upgrade')}
+            className={cn(
+              'w-full text-left rounded-xl border p-4 transition-colors',
+              mode === 'upgrade'
+                ? 'border-accent/40 bg-accent/5'
+                : 'border-border hover:border-border/80'
+            )}
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Upgrade your plan</p>
+              </div>
+              <div className={cn(
+                'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
+                mode === 'upgrade' ? 'border-accent bg-accent' : 'border-border'
+              )}>
+                {mode === 'upgrade' && <div className="w-2 h-2 rounded-full bg-white" />}
+              </div>
+            </div>
+
+            <div className="space-y-1 text-xs text-text-secondary">
+              {currentTierConfig && (
+                <div className="flex justify-between">
+                  <span>Current plan</span>
+                  <span>{currentTierConfig.credits} credits/mo &middot; {formatDollars(currentMonthly)}/mo</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span>Upgrade to</span>
+                <span>{nextTierConfig.credits} credits/mo &middot; {formatDollars(nextTierMonthlyPrice)}/mo</span>
+              </div>
+            </div>
+
+            {mode === 'upgrade' && (
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xl font-bold text-text-primary">{formatDollars(priceDifference)}</span>
+                    <span className="text-xs text-text-muted ml-1.5">due today</span>
+                  </div>
+                  {billingPeriod === 'monthly' && annualSaving > 0 && (
+                    <span className="text-xs font-medium text-emerald-400">
+                      Subscribe & save {Math.round(((nextTierConfig.monthlyPrice - nextTierConfig.annualMonthlyPrice) / nextTierConfig.monthlyPrice) * 100)}%
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-text-muted mt-1">+{additionalCredits} additional credits</p>
+              </div>
+            )}
+          </button>
+
+          {/* Option 2: Top up credits */}
+          <button
+            onClick={() => setMode('topup')}
+            className={cn(
+              'w-full text-left rounded-xl border p-4 transition-colors',
+              mode === 'topup'
+                ? 'border-accent/40 bg-accent/5'
+                : 'border-border hover:border-border/80'
+            )}
+          >
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Top up credits</p>
+                <p className="text-xs text-text-secondary">Purchase credits on demand. Never expire.</p>
+              </div>
+              <div className={cn(
+                'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
+                mode === 'topup' ? 'border-accent bg-accent' : 'border-border'
+              )}>
+                {mode === 'topup' && <div className="w-2 h-2 rounded-full bg-white" />}
+              </div>
+            </div>
+
+            {mode === 'topup' && (
+              <div className="mt-2 pt-3 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
+                <div className="grid grid-cols-4 gap-2">
+                  {PAYG_OPTIONS.map((amount) => (
+                    <button
+                      key={amount}
+                      onClick={(e) => { e.stopPropagation(); setSelectedPaygAmount(amount); }}
+                      className={cn(
+                        'py-2 rounded-lg text-sm font-medium border transition-colors',
+                        selectedPaygAmount === amount
+                          ? 'bg-accent/10 border-accent/40 text-accent'
+                          : 'bg-surface border-border text-text-secondary hover:border-accent/30'
+                      )}
+                    >
+                      +{amount}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <span className="text-xs text-text-muted">
+                    {selectedPaygAmount} credits &times; ${(PAYGO_PRICE_PER_CREDIT_CENTS / 100).toFixed(2)}
+                  </span>
+                  <span className="text-sm font-bold text-text-primary font-mono">${paygPrice}</span>
+                </div>
+              </div>
+            )}
+          </button>
+
+          {/* Actions */}
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:bg-surface-hover transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={mode === 'upgrade' ? handleUpgrade : handlePaygPurchase}
+              className="px-4 py-2.5 rounded-lg text-sm font-medium bg-accent hover:bg-accent-hover text-white transition-colors"
+            >
+              {mode === 'upgrade' ? 'Upgrade plan' : `Buy ${selectedPaygAmount} credits`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main BillingPage Component ─────────────────────────────
 
 export default function BillingPage() {
   const { canManageBilling } = usePermissions();
   const { balance, subscriptionBalance, subscriptionPlanCredits, paygoBalance, loading: balanceLoading } = useCreditBalance();
-  const { transactions, invoices, loading: historyLoading, loadMore, hasMore } = useBillingHistory();
 
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [subLoading, setSubLoading] = useState(true);
-  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
-  const [portalLoading, setPortalLoading] = useState(false);
+  const [showManageModal, setShowManageModal] = useState(false);
+  const [showTopUpModal, setShowTopUpModal] = useState(false);
 
   // Fetch subscription data
   useEffect(() => {
@@ -84,47 +391,34 @@ export default function BillingPage() {
   const billingPeriod: BillingPeriod = subscription?.billing_period ?? 'monthly';
   const tierConfig = planTier ? PLAN_TIERS[planTier as keyof typeof PLAN_TIERS] : null;
 
-  // Subscription usage progress
-  const subscriptionUsed = subscriptionPlanCredits > 0
-    ? Math.max(subscriptionPlanCredits - subscriptionBalance, 0)
-    : 0;
-  const subscriptionUsagePercent = subscriptionPlanCredits > 0
-    ? Math.min((subscriptionUsed / subscriptionPlanCredits) * 100, 100)
-    : 0;
+  // Credit breakdown
+  const creditsRemaining = balance;
+  const subscriptionCreditsRemaining = subscriptionBalance;
+  const paygoCreditsRemaining = paygoBalance;
 
-  // Build plan display name
-  const planDisplayName = planTier && tierConfig
-    ? `${tierConfig.credits} Credits / ${billingPeriod === 'annual' ? 'Annual' : 'Monthly'}`
-    : 'No active plan';
+  // Progress bar
+  const totalPlanCredits = subscriptionPlanCredits || (tierConfig?.credits ?? 0);
+  const creditUsagePercent = totalPlanCredits > 0
+    ? Math.min(((totalPlanCredits - subscriptionCreditsRemaining) / totalPlanCredits) * 100, 100)
+    : (status === 'none' ? 0 : 100);
 
-  async function handleManageSubscription() {
-    setPortalLoading(true);
-    try {
-      const res = await fetch('/api/billing/create-portal', { method: 'POST' });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-    } catch {
-      // ignore
-    } finally {
-      setPortalLoading(false);
-    }
-  }
+  // Renewal info
+  const renewalDateStr = subscription?.current_period_end
+    ? new Date(subscription.current_period_end).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+      })
+    : null;
+  const daysToRenewal = subscription?.next_credit_allocation_date
+    ? daysUntil(subscription.next_credit_allocation_date)
+    : null;
 
-  async function handlePaygPurchase(credits: number) {
-    try {
-      const res = await fetch('/api/billing/create-payg-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credits }),
-      });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-    } catch {
-      // ignore
-    }
-  }
+  // Plan display
+  const planLabel = tierConfig
+    ? `${tierConfig.credits} Credits`
+    : 'Pay-as-you-go';
+  const planPeriodLabel = tierConfig
+    ? billingPeriod === 'annual' ? 'Annual' : 'Monthly'
+    : null;
 
   // Non-admin access denied
   if (!canManageBilling) {
@@ -141,350 +435,152 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="space-y-8">
-
-      {/* ═══════════════════════════════════════════════════════════
-          Section 1: Current Plan Summary
-          ═══════════════════════════════════════════════════════════ */}
-      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm text-text-muted mb-1">Current Plan</p>
-              <div className="flex items-center gap-2">
-                <p className="text-xl font-bold text-text-primary">{planDisplayName}</p>
-                <StatusBadge status={status} />
-              </div>
-              {status === 'cancelled' && subscription?.current_period_end && (
-                <p className="text-sm text-red-400 mt-0.5">
-                  Ending {formatDate(subscription.current_period_end)}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-4 text-sm">
-              {subscription?.current_period_end && status === 'active' && (
-                <div className="flex items-center gap-1.5 text-text-secondary">
-                  <Calendar className="w-4 h-4" />
-                  Next renewal: {formatDate(subscription.current_period_end)}
-                </div>
-              )}
-              <div className="flex items-center gap-1.5 text-text-secondary">
-                <Coins className="w-4 h-4" />
-                <span className="font-mono font-medium text-text-primary">{balance}</span> credits remaining
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 shrink-0">
-            <a
-              href="#plans"
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-accent hover:bg-accent-hover text-white transition-colors"
-            >
-              Change Plan
-            </a>
-            {subscription && status !== 'none' && (
-              <button
-                onClick={handleManageSubscription}
-                disabled={portalLoading}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors flex items-center gap-1.5"
-              >
-                {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-                Manage Subscription
-              </button>
-            )}
-            {status === 'cancelled' && (
-              <a
-                href="#plans"
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500 hover:bg-emerald-600 text-white transition-colors"
-              >
-                Resubscribe
-              </a>
-            )}
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Page title */}
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Plans & credits</h2>
+        <p className="text-sm text-text-secondary">Manage your subscription plan and credit balance.</p>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════
-          Section 2: Credit Balance Breakdown
+          Top Row: Plan Summary (left) + Credits Remaining (right)
           ═══════════════════════════════════════════════════════════ */}
-      <div className="bg-surface border border-border rounded-xl p-6 mb-8">
-        <h2 className="text-base font-medium text-text-primary mb-4 flex items-center gap-2">
-          <Coins className="w-4 h-4 text-accent" />
-          Credit Balance
-        </h2>
-
-        {balanceLoading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Combined balance */}
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-accent font-mono">{balance}</span>
-              <span className="text-text-secondary">credits</span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left: Current Plan */}
+        <div className="bg-surface border border-border rounded-xl p-6">
+          {subLoading ? (
+            <div className="flex items-center justify-center h-[140px]">
+              <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
             </div>
-
-            {/* Pool breakdown */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="bg-navy-base rounded-lg p-3 border border-border">
-                <p className="text-xs text-text-muted mb-0.5">Subscription Pool</p>
-                <p className="text-lg font-bold text-text-primary font-mono">{subscriptionBalance}</p>
-                {subscription?.next_credit_allocation_date && (
-                  <p className="text-xs text-text-muted mt-0.5">
-                    Resets {formatDate(subscription.next_credit_allocation_date)}
-                  </p>
+          ) : (
+            <>
+              <div className="mb-4">
+                <p className="text-sm text-text-primary font-medium">
+                  You&apos;re on {status !== 'none' ? `${planLabel} plan` : 'Pay-as-you-go'}
+                </p>
+                {renewalDateStr && status === 'active' && (
+                  <p className="text-xs text-text-muted mt-0.5">Renews {renewalDateStr}</p>
+                )}
+                {status === 'cancelled' && subscription?.current_period_end && (
+                  <p className="text-xs text-red-400 mt-0.5">Ending {renewalDateStr}</p>
+                )}
+                {status === 'none' && (
+                  <p className="text-xs text-text-muted mt-0.5">Subscribe for better per-credit rates</p>
                 )}
               </div>
-              <div className="bg-navy-base rounded-lg p-3 border border-border">
-                <p className="text-xs text-text-muted mb-0.5">PAYG Pool</p>
-                <p className="text-lg font-bold text-text-primary font-mono">{paygoBalance}</p>
-                <p className="text-xs text-text-muted mt-0.5">Never expires</p>
-              </div>
-            </div>
 
-            {/* Subscription progress bar */}
-            {subscriptionPlanCredits > 0 && (
-              <div>
-                <div className="flex items-center justify-between text-xs text-text-muted mb-1">
-                  <span>Subscription credits used this cycle</span>
-                  <span>{subscriptionUsed}/{subscriptionPlanCredits}</span>
+              {tierConfig && (
+                <div className="space-y-1.5 mb-4">
+                  <div className="flex items-center gap-2 text-sm text-text-secondary">
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    {tierConfig.credits} monthly credits
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-text-secondary">
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    Shared across all workspace members
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-text-secondary">
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    On-demand credit top-ups
+                  </div>
                 </div>
-                <div className="h-2 bg-border/50 rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-all',
-                      subscriptionUsagePercent > 80 ? 'bg-error' : subscriptionUsagePercent > 50 ? 'bg-warning' : 'bg-accent'
-                    )}
-                    style={{ width: `${subscriptionUsagePercent}%` }}
-                  />
+              )}
+
+              {!tierConfig && (
+                <div className="space-y-1.5 mb-4">
+                  <div className="flex items-center gap-2 text-sm text-text-secondary">
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    {paygoCreditsRemaining} credits available
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-text-secondary">
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    Credits never expire
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              )}
 
-      {/* ═══════════════════════════════════════════════════════════
-          Section 3: PAYG Top-Up
-          ═══════════════════════════════════════════════════════════ */}
-      <div className="bg-surface border border-border rounded-xl p-6 mb-8" id="topup">
-        <h2 className="text-base font-medium text-text-primary mb-4 flex items-center gap-2">
-          <ShoppingCart className="w-4 h-4 text-accent" />
-          Buy More Credits
-        </h2>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-          {PAYG_QUICK_AMOUNTS.map((amount) => {
-            const price = ((amount * PAYGO_PRICE_PER_CREDIT_CENTS) / 100).toFixed(2);
-            return (
-              <button
-                key={amount}
-                onClick={() => handlePaygPurchase(amount)}
-                className="bg-navy-base border border-border rounded-lg p-3 text-center hover:border-accent/40 transition-colors group"
-              >
-                <p className="text-lg font-bold text-text-primary font-mono group-hover:text-accent transition-colors">
-                  {amount}
-                </p>
-                <p className="text-xs text-text-muted">credits</p>
-                <p className="text-sm font-medium text-accent mt-1">${price}</p>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowPurchaseModal(true)}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
-          >
-            Custom Amount
-          </button>
-          <p className="text-xs text-text-muted">
-            Top-up credits never expire. Subscribe for better per-credit rates.
-          </p>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════
-          Section 4: Weekly Usage Summaries
-          ═══════════════════════════════════════════════════════════ */}
-      <div className="mb-8">
-        <WeeklyUsageSummary />
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════
-          Section 5: Credit Addition Log
-          ═══════════════════════════════════════════════════════════ */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden mb-8">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Plus className="w-4 h-4 text-accent" />
-            <h3 className="text-base font-medium text-text-primary">Credit Addition Log</h3>
-          </div>
-        </div>
-
-        {historyLoading ? (
-          <div className="flex items-center justify-center h-32">
-            <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
-          </div>
-        ) : transactions.length === 0 ? (
-          <div className="p-8 text-center">
-            <Clock className="w-8 h-8 text-text-muted mx-auto mb-2" />
-            <p className="text-text-muted text-sm">No transactions yet</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-border text-text-muted">
-                    <th className="text-left px-4 py-3 font-medium">Date</th>
-                    <th className="text-left px-4 py-3 font-medium">Type</th>
-                    <th className="text-right px-4 py-3 font-medium">Credits</th>
-                    <th className="text-left px-4 py-3 font-medium">Pool</th>
-                    <th className="text-right px-4 py-3 font-medium">Amount Paid</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((tx) => (
-                    <tr key={tx.id} className="border-b border-border/50 last:border-0">
-                      <td className="px-4 py-3 text-text-muted whitespace-nowrap">
-                        {formatDate(tx.created_at)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={cn(
-                            'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-                            tx.type === 'signup_bonus' && 'bg-warning/10 text-warning',
-                            tx.type === 'subscription_renewal' && 'bg-accent/10 text-accent',
-                            tx.type === 'subscription_upgrade' && 'bg-emerald-500/10 text-emerald-400',
-                            tx.type === 'paygo_purchase' && 'bg-success/10 text-success',
-                            tx.type === 'setup_purchase' && 'bg-blue-500/10 text-blue-400'
-                          )}
-                        >
-                          {tx.type.replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono font-medium text-success">
-                        +{tx.credits_added}
-                      </td>
-                      <td className="px-4 py-3 text-text-secondary capitalize">
-                        {tx.pool}
-                      </td>
-                      <td className="px-4 py-3 text-right text-text-secondary font-mono">
-                        {tx.amount_paid_cents > 0 ? formatCents(tx.amount_paid_cents) : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {hasMore && (
-              <div className="px-6 py-3 border-t border-border">
+              <div className="flex gap-2">
                 <button
-                  onClick={loadMore}
-                  className="text-sm text-accent hover:text-accent-hover transition-colors"
+                  onClick={() => setShowManageModal(true)}
+                  className="px-3.5 py-2 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
                 >
-                  Load more
+                  Manage
+                </button>
+                <button
+                  onClick={() => setShowTopUpModal(true)}
+                  className="px-3.5 py-2 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
+                >
+                  Top up credits
                 </button>
               </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════
-          Section 6: Invoice History
-          ═══════════════════════════════════════════════════════════ */}
-      <div className="bg-surface border border-border rounded-xl overflow-hidden mb-8">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-text-muted" />
-            <h3 className="text-base font-medium text-text-primary">Invoices</h3>
-          </div>
+            </>
+          )}
         </div>
 
-        {historyLoading ? (
-          <div className="flex items-center justify-center h-32">
-            <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
-          </div>
-        ) : invoices.length === 0 ? (
-          <div className="p-8 text-center">
-            <FileText className="w-8 h-8 text-text-muted mx-auto mb-2" />
-            <p className="text-text-muted text-sm">No invoices yet</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[500px]">
-              <thead>
-                <tr className="border-b border-border text-text-muted">
-                  <th className="text-left px-4 py-3 font-medium">Date</th>
-                  <th className="text-left px-4 py-3 font-medium">Description</th>
-                  <th className="text-right px-4 py-3 font-medium">Amount</th>
-                  <th className="text-left px-4 py-3 font-medium">Status</th>
-                  <th className="text-right px-4 py-3 font-medium">PDF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((inv) => (
-                  <tr key={inv.id} className="border-b border-border/50 last:border-0">
-                    <td className="px-4 py-3 text-text-muted whitespace-nowrap">
-                      {new Date(inv.created * 1000).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </td>
-                    <td className="px-4 py-3 text-text-primary">
-                      {inv.number ?? `Invoice ${inv.id.slice(-8)}`}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono font-medium text-text-primary">
-                      {formatCents(inv.amountPaid)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-                          inv.status === 'paid' && 'bg-emerald-500/10 text-emerald-400',
-                          inv.status === 'open' && 'bg-warning/10 text-warning',
-                          inv.status === 'void' && 'bg-surface text-text-muted',
-                          inv.status === 'uncollectible' && 'bg-error/10 text-error'
-                        )}
-                      >
-                        {inv.status ?? 'unknown'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {inv.invoicePdfUrl ? (
-                        <a
-                          href={inv.invoicePdfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-accent hover:text-accent-hover text-xs transition-colors"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          PDF
-                        </a>
-                      ) : (
-                        <span className="text-text-muted text-xs">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {/* Right: Credits Remaining */}
+        <div className="bg-surface border border-border rounded-xl p-6">
+          {balanceLoading ? (
+            <div className="flex items-center justify-center h-[140px]">
+              <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* Header with total */}
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium text-accent">Credits remaining</p>
+                <p className="text-2xl font-bold text-text-primary font-mono">{creditsRemaining}</p>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-2 bg-border/50 rounded-full overflow-hidden mb-5">
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-all',
+                    creditUsagePercent > 80 ? 'bg-red-500' : creditUsagePercent > 50 ? 'bg-yellow-500' : 'bg-accent'
+                  )}
+                  style={{ width: `${100 - creditUsagePercent}%` }}
+                />
+              </div>
+
+              {/* Breakdown rows */}
+              <div className="space-y-3">
+                {/* Subscription credits */}
+                {totalPlanCredits > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">Monthly credits</p>
+                      <p className="text-xs text-text-muted">
+                        {daysToRenewal !== null
+                          ? `Resets to ${totalPlanCredits} in ${daysToRenewal} days`
+                          : `${totalPlanCredits} per cycle`}
+                      </p>
+                    </div>
+                    <p className="text-base font-bold text-text-primary font-mono">
+                      {subscriptionCreditsRemaining}
+                    </p>
+                  </div>
+                )}
+
+                {/* Extra / PAYG credits */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">Extra credits</p>
+                    <p className="text-xs text-text-muted">Never expire</p>
+                  </div>
+                  <p className="text-base font-bold text-text-primary font-mono">
+                    {paygoCreditsRemaining}
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════
-          Plan Selector
+          Plan Cards: Monthly Subscription + Pay-as-you-go
           ═══════════════════════════════════════════════════════════ */}
-      <div className="mb-8">
-        <h2 className="text-lg font-medium text-text-primary mb-4">Choose a Plan</h2>
+      <div className="mb-2">
         {subLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
@@ -494,10 +590,26 @@ export default function BillingPage() {
         )}
       </div>
 
-      {/* Purchase Credits Modal */}
-      <PurchaseCreditsModal
-        open={showPurchaseModal}
-        onClose={() => setShowPurchaseModal(false)}
+      {/* ═══════════════════════════════════════════════════════════
+          Weekly Usage
+          ═══════════════════════════════════════════════════════════ */}
+      <WeeklyUsageSummary />
+
+      {/* ═══════════════════════════════════════════════════════════
+          Usage Per Member
+          ═══════════════════════════════════════════════════════════ */}
+      <MemberUsageTable />
+
+      {/* ── Modals ── */}
+      <ManagePlanModal
+        open={showManageModal}
+        onClose={() => setShowManageModal(false)}
+        subscription={subscription}
+      />
+      <TopUpCreditsModal
+        open={showTopUpModal}
+        onClose={() => setShowTopUpModal(false)}
+        subscription={subscription}
       />
     </div>
   );
