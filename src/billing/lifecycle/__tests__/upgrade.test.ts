@@ -49,9 +49,9 @@ describe('handleUpgrade', () => {
   });
 
   it('logs an upgrade transaction with the credit difference', async () => {
-    await handleUpgrade('user-123', '50', '500');
+    await handleUpgrade('user-123', '100', '500');
 
-    const diff = PLAN_TIERS['500'].credits - PLAN_TIERS['50'].credits;
+    const diff = PLAN_TIERS['500'].credits - PLAN_TIERS['100'].credits;
     expect(mockInsert).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'subscription_upgrade',

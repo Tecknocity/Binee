@@ -17,11 +17,13 @@ export const ANTHROPIC_RATES = {
 
 // ---- Subscription Tiers ----
 export const PLAN_TIERS = {
-  '50':   { credits: 50,   monthlyPrice: 600,   annualMonthlyPrice: 500 },   // cents
-  '100':  { credits: 100,  monthlyPrice: 1200,  annualMonthlyPrice: 1000 },
+  '100':  { credits: 100,  monthlyPrice: 1200,  annualMonthlyPrice: 1000 },  // cents
+  '150':  { credits: 150,  monthlyPrice: 1800,  annualMonthlyPrice: 1500 },
   '250':  { credits: 250,  monthlyPrice: 3000,  annualMonthlyPrice: 2500 },
   '500':  { credits: 500,  monthlyPrice: 6000,  annualMonthlyPrice: 5000 },
+  '750':  { credits: 750,  monthlyPrice: 9000,  annualMonthlyPrice: 7500 },
   '1000': { credits: 1000, monthlyPrice: 12000, annualMonthlyPrice: 10000 },
+  '2000': { credits: 2000, monthlyPrice: 24000, annualMonthlyPrice: 20000 },
 } as const;
 
 // ---- Free Tier ----
@@ -37,8 +39,8 @@ export const PAYGO_MIN_PURCHASE_CENTS = 100;     // $1 minimum
 
 // ---- Warning Thresholds ----
 export const WARNING_THRESHOLDS = {
-  low: 10,       // ≤10 credits: "You have X credits remaining"
-  critical: 3,   // ≤3 credits: "You're almost out of credits"
+  low: 50,       // ≤50 credits: "You have X credits remaining"
+  critical: 20,  // ≤20 credits: "You're almost out of credits"
   empty: 0,      // 0 credits: "You've used all your credits"
 } as const;
 

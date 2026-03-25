@@ -21,18 +21,22 @@ export const stripe = new Proxy({} as Stripe, {
 function getPriceMap(): Record<string, Record<string, string>> {
   return {
     monthly: {
-      '50':   process.env.STRIPE_PRICE_MO_50!,
       '100':  process.env.STRIPE_PRICE_MO_100!,
+      '150':  process.env.STRIPE_PRICE_MO_150!,
       '250':  process.env.STRIPE_PRICE_MO_250!,
       '500':  process.env.STRIPE_PRICE_MO_500!,
+      '750':  process.env.STRIPE_PRICE_MO_750!,
       '1000': process.env.STRIPE_PRICE_MO_1000!,
+      '2000': process.env.STRIPE_PRICE_MO_2000!,
     },
     annual: {
-      '50':   process.env.STRIPE_PRICE_YR_50!,
       '100':  process.env.STRIPE_PRICE_YR_100!,
+      '150':  process.env.STRIPE_PRICE_YR_150!,
       '250':  process.env.STRIPE_PRICE_YR_250!,
       '500':  process.env.STRIPE_PRICE_YR_500!,
+      '750':  process.env.STRIPE_PRICE_YR_750!,
       '1000': process.env.STRIPE_PRICE_YR_1000!,
+      '2000': process.env.STRIPE_PRICE_YR_2000!,
     },
   };
 }

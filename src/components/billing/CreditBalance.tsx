@@ -11,9 +11,9 @@ import { cn } from '@/lib/utils';
  *
  * Shows a single combined number (Math.floor(subscription + paygo)).
  * Color-coded by warning thresholds:
- *   - Normal (>10): green
- *   - Low (≤10): yellow
- *   - Critical (≤3): red
+ *   - Normal (>50): green
+ *   - Low (≤50): yellow
+ *   - Critical (≤20): red
  *   - Empty (0): red with "!" icon
  */
 export default function CreditBalance() {
