@@ -15,26 +15,43 @@ export interface ClickUpConnectionStatus {
 
 // ---------------------------------------------------------------------------
 // Hook — shared ClickUp connection status checker
+//
+// Uses workspace object for instant status (no network call), then
+// optionally refreshes from the API in the background.
 // ---------------------------------------------------------------------------
 
 export function useClickUpStatus(): ClickUpConnectionStatus & {
   refetch: () => Promise<void>;
 } {
-  const { workspace_id, workspace } = useWorkspace();
+  const { workspace_id, workspace, loading: workspaceLoading } = useWorkspace();
+
+  // Derive status synchronously from workspace object (instant, no API call).
+  // This eliminates the network round-trip that was blocking page rendering.
+  const connected = !!workspace?.clickup_team_id;
+  const teamName = workspace?.clickup_team_name ?? null;
+
   const [status, setStatus] = useState<ClickUpConnectionStatus>({
-    connected: false,
-    teamName: null,
-    loading: true,
+    connected,
+    teamName,
+    loading: workspaceLoading,
   });
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- useCallback deps intentionally include workspace object fields for fallback
-  const fetchStatus = useCallback(async () => {
+  // Update status synchronously whenever workspace data changes
+  useEffect(() => {
+    setStatus({
+      connected: !!workspace?.clickup_team_id,
+      teamName: workspace?.clickup_team_name ?? null,
+      loading: workspaceLoading,
+    });
+  }, [workspace?.clickup_team_id, workspace?.clickup_team_name, workspaceLoading]);
+
+  // Explicit refetch via API (for manual refresh scenarios)
+  const refetch = useCallback(async () => {
     if (!workspace_id) {
       setStatus({ connected: false, teamName: null, loading: false });
       return;
     }
 
-    setStatus((prev) => ({ ...prev, loading: true }));
     try {
       const res = await fetch(`/api/clickup/status?workspace_id=${encodeURIComponent(workspace_id)}`);
       if (res.ok) {
@@ -44,28 +61,11 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
           teamName: data.team_name ?? null,
           loading: false,
         });
-      } else {
-        // Fallback: check workspace object directly
-        setStatus({
-          connected: !!workspace?.clickup_team_id,
-          teamName: workspace?.clickup_team_name ?? null,
-          loading: false,
-        });
       }
     } catch {
-      // Fallback: check workspace object directly
-      setStatus({
-        connected: !!workspace?.clickup_team_id,
-        teamName: workspace?.clickup_team_name ?? null,
-        loading: false,
-      });
+      // Keep current status on error
     }
-  }, [workspace_id, workspace?.clickup_team_id, workspace?.clickup_team_name]);
+  }, [workspace_id]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchStatus is an async data fetch that sets state on completion
-    fetchStatus();
-  }, [fetchStatus]);
-
-  return { ...status, refetch: fetchStatus };
+  return { ...status, refetch };
 }
