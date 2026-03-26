@@ -386,3 +386,57 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
     },
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Task-type-based tool filtering — only send relevant tools to reduce
+// token overhead (~30-40% fewer tool-definition tokens per call).
+// ---------------------------------------------------------------------------
+
+const TOOL_NAMES_BY_TASK: Record<string, string[]> = {
+  simple_lookup: [
+    'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
+    'get_team_activity', 'get_time_tracking_summary',
+  ],
+  complex_query: [
+    'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
+    'get_team_activity', 'get_time_tracking_summary', 'get_workspace_health',
+  ],
+  action_request: [
+    'lookup_tasks', 'update_task', 'create_task', 'assign_task', 'move_task',
+    'get_overdue_tasks',
+  ],
+  setup_request: [
+    'lookup_tasks', 'create_task', 'get_workspace_summary',
+    'get_workspace_health',
+  ],
+  health_check: [
+    'get_workspace_health', 'get_overdue_tasks', 'lookup_tasks',
+    'get_workspace_summary',
+  ],
+  dashboard_request: [
+    'create_dashboard_widget', 'update_dashboard_widget',
+    'delete_dashboard_widget', 'list_dashboards', 'list_dashboard_widgets',
+    'lookup_tasks', 'get_workspace_summary',
+  ],
+  analysis_audit: [
+    'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
+    'get_workspace_health', 'get_team_activity', 'get_time_tracking_summary',
+  ],
+  strategy: [
+    'get_workspace_summary', 'get_workspace_health', 'lookup_tasks',
+    'get_team_activity',
+  ],
+  troubleshooting: [
+    'lookup_tasks', 'get_workspace_summary', 'get_workspace_health',
+  ],
+};
+
+/**
+ * Return only the tools relevant to the given task type.
+ * Falls back to the full BINEE_TOOLS array for unknown task types.
+ */
+export function getToolsForTask(taskType: string): typeof BINEE_TOOLS {
+  const names = TOOL_NAMES_BY_TASK[taskType];
+  if (!names) return BINEE_TOOLS;
+  return BINEE_TOOLS.filter((t) => names.includes(t.name));
+}

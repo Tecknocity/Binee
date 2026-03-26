@@ -10,7 +10,7 @@ import { getModelForTask, routeToModel } from '@/lib/ai/router';
 import { loadSystemPrompt } from '@/lib/ai/prompts/system-prompt';
 import { assemblePrompt } from '@/lib/ai/prompt-assembler';
 import { buildContext } from '@/lib/ai/context';
-import { BINEE_TOOLS } from '@/lib/ai/tools';
+import { getToolsForTask } from '@/lib/ai/tools';
 import { executeTool } from '@/lib/ai/tool-executor';
 import {
   isWriteOperation,
@@ -225,7 +225,7 @@ export async function handleChat(
   // Step 7: Call Claude API with tool use loop
   // -------------------------------------------------------------------------
   console.log('[handleChat] Step 6: calling Claude API');
-  const toolsForApi = clickUpConnected ? BINEE_TOOLS : [];
+  const toolsForApi = clickUpConnected ? getToolsForTask(classification.taskType) : [];
   const allToolCalls: ToolCallResult[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;

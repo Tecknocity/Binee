@@ -204,33 +204,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * infinite recursion bug in workspace_members self-referencing policies).
    */
   const loadWorkspaces = useCallback(async (userId: string): Promise<Workspace[]> => {
-    // --- Attempt 1: Direct Supabase query (fast path) ---
-    // Try with status filter; if status column doesn't exist, retry without it
-    let memberRows: { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string }[] | null = null;
-    let memberErr: { message: string } | null = null;
+    // --- Run direct query and API fallback in parallel ---
+    // The direct Supabase query is fast when RLS works. The API fallback
+    // bypasses RLS entirely. By racing them we avoid the sequential waterfall
+    // of "try direct → wait for failure → then try API".
 
-    const firstAttempt = await supabase
-      .from('workspace_members')
-      .select('workspace_id, role, email, display_name, avatar_url, status')
-      .eq('user_id', userId)
-      .in('status', ['active', 'pending']);
+    type MemberRow = { workspace_id: string; role: string; email: string; display_name: string | null; avatar_url: string | null; status?: string };
 
-    if (firstAttempt.error) {
-      // Status column may not exist — retry without it
-      const fallback = await supabase
+    const directQueryPromise = (async (): Promise<{ members: MemberRow[] | null; error: boolean }> => {
+      const firstAttempt = await supabase
         .from('workspace_members')
-        .select('workspace_id, role, email, display_name, avatar_url')
-        .eq('user_id', userId);
-      memberRows = fallback.data;
-      memberErr = fallback.error;
-    } else {
-      memberRows = firstAttempt.data;
-      memberErr = firstAttempt.error;
-    }
+        .select('workspace_id, role, email, display_name, avatar_url, status')
+        .eq('user_id', userId)
+        .in('status', ['active', 'pending']);
 
-    // If the direct query succeeded and returned data, fetch workspaces
-    if (!memberErr && memberRows && memberRows.length > 0) {
-      const workspaceIds = [...new Set(memberRows.map((m) => m.workspace_id))];
+      if (firstAttempt.error) {
+        // Status column may not exist — retry without it
+        const fallback = await supabase
+          .from('workspace_members')
+          .select('workspace_id, role, email, display_name, avatar_url')
+          .eq('user_id', userId);
+        return { members: fallback.data, error: !!fallback.error };
+      }
+      return { members: firstAttempt.data, error: false };
+    })();
+
+    const apiPromise = loadWorkspacesViaAPI();
+
+    // Wait for both to complete
+    const [directResult, apiResult] = await Promise.all([directQueryPromise, apiPromise]);
+
+    // Prefer direct query result if it succeeded with data
+    if (!directResult.error && directResult.members && directResult.members.length > 0) {
+      const workspaceIds = [...new Set(directResult.members.map((m) => m.workspace_id))];
       const { data: ws, error: wsErr } = await supabase
         .from('workspaces')
         .select('*')
@@ -238,19 +244,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!wsErr && ws && ws.length > 0) {
         const fetchedWorkspaces = ws as Workspace[];
-        applyWorkspaceData(userId, fetchedWorkspaces, memberRows);
+        applyWorkspaceData(userId, fetchedWorkspaces, directResult.members);
         return fetchedWorkspaces;
       }
     }
 
-    // --- Attempt 2: Server API fallback (bypasses RLS) ---
-    if (memberErr) {
-      console.warn('loadWorkspaces: direct query failed, falling back to API', memberErr.message);
-    } else {
-      console.warn('loadWorkspaces: direct query returned empty, falling back to API');
-    }
-
-    const apiResult = await loadWorkspacesViaAPI();
+    // Fall back to API result
     if (apiResult.workspaces.length > 0) {
       applyWorkspaceData(userId, apiResult.workspaces, apiResult.members);
       return apiResult.workspaces;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleChat } from '@/lib/ai/chat-handler';
 import { createServerClient } from '@/lib/supabase/server';
+import { rateLimit } from '@/lib/rate-limit';
 import type { ChatRequest } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,15 @@ export async function POST(request: NextRequest) {
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
     if (authError || !authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Rate limit: 10 chat requests per minute per user
+    const rl = rateLimit(`chat:${authUser.id}`, 10, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait a moment before sending another message.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(rl.resetMs / 1000)) } },
+      );
     }
 
     const body = await request.json();
