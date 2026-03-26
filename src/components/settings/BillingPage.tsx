@@ -43,6 +43,9 @@ function ManagePlanModal({
   onClose: () => void;
   subscription: UserSubscription | null;
 }) {
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+
   if (!open) return null;
 
   const status = subscription?.status ?? 'none';
@@ -59,16 +62,21 @@ function ManagePlanModal({
     ? `${tierConfig.credits} Credits / ${billingPeriod === 'annual' ? 'Annual' : 'Monthly'}`
     : 'No active plan';
 
-  // Stripe portal links — placeholders for now
-  const handleEditBilling = () => {
-    // TODO: Connect to Stripe Customer Portal (billing info section)
-    window.open('#stripe-billing-info', '_blank');
-  };
+  const hasSubscription = status === 'active' || status === 'past_due';
 
-  const handleInvoices = () => {
-    // TODO: Connect to Stripe Customer Portal (invoices section)
-    window.open('#stripe-invoices', '_blank');
-  };
+  async function openStripePortal() {
+    setPortalLoading(true);
+    try {
+      const res = await fetch('/api/billing/create-portal', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch {
+      // ignore
+    } finally {
+      setPortalLoading(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -81,7 +89,7 @@ function ManagePlanModal({
             <p className="text-sm text-text-secondary">Subscription & billing settings</p>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { onClose(); setCancelConfirm(false); }}
             className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
           >
             <X className="w-5 h-5" />
@@ -122,23 +130,73 @@ function ManagePlanModal({
             )}
           </div>
 
-          {/* Actions */}
+          {/* Stripe Portal actions */}
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={handleEditBilling}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
+              onClick={openStripePortal}
+              disabled={!hasSubscription || portalLoading}
+              className={cn(
+                'flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border transition-colors',
+                hasSubscription
+                  ? 'text-text-primary hover:border-accent/30'
+                  : 'text-text-muted cursor-not-allowed'
+              )}
             >
-              <CreditCard className="w-4 h-4" />
-              Edit billing information
+              {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+              Edit billing info
             </button>
             <button
-              onClick={handleInvoices}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
+              onClick={openStripePortal}
+              disabled={!hasSubscription || portalLoading}
+              className={cn(
+                'flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border transition-colors',
+                hasSubscription
+                  ? 'text-text-primary hover:border-accent/30'
+                  : 'text-text-muted cursor-not-allowed'
+              )}
             >
-              <FileText className="w-4 h-4" />
+              {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
               Invoices & payments
             </button>
           </div>
+
+          {/* Cancel subscription */}
+          {hasSubscription && (
+            <div className="pt-2 border-t border-border">
+              {!cancelConfirm ? (
+                <button
+                  onClick={() => setCancelConfirm(true)}
+                  className="w-full py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 bg-surface border border-border hover:border-red-500/30 transition-colors"
+                >
+                  Cancel subscription
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <p className="text-sm text-red-400">
+                      Are you sure? Your subscription will remain active until {renewalDate || 'the end of your billing period'}. After that, your monthly credits will stop and only extra credits will remain.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setCancelConfirm(false)}
+                      className="py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:bg-surface-hover transition-colors"
+                    >
+                      Keep subscription
+                    </button>
+                    <button
+                      onClick={openStripePortal}
+                      disabled={portalLoading}
+                      className="py-2.5 rounded-lg text-sm font-medium bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center justify-center gap-2"
+                    >
+                      {portalLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Confirm cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
