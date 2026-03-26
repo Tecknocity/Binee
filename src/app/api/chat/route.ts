@@ -3,6 +3,11 @@ import { handleChat } from '@/lib/ai/chat-handler';
 import type { ChatRequest } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
+// Vercel serverless function config — AI calls need more time than the 10s default
+// ---------------------------------------------------------------------------
+export const maxDuration = 60;
+
+// ---------------------------------------------------------------------------
 // POST /api/chat
 // ---------------------------------------------------------------------------
 
