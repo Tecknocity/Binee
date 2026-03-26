@@ -15,6 +15,7 @@ import {
 import { cn, formatDate } from '@/lib/utils';
 import { PLAN_TIERS, PAYGO_PRICE_PER_CREDIT_CENTS } from '@/billing/config';
 import type { UserSubscription, BillingPeriod, SubscriptionStatus, PlanTier } from '@/billing/types/subscriptions';
+import { fetchBillingSummary } from '@/billing/hooks/billing-cache';
 import PlanSelector from '@/components/billing/PlanSelector';
 import WeeklyUsageSummary from '@/components/billing/WeeklyUsageSummary';
 import MemberUsageTable from '@/components/settings/MemberUsageTable';
@@ -362,37 +363,26 @@ export default function BillingPage() {
   const { canManageBilling } = usePermissions();
 
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const [subLoading, setSubLoading] = useState(true);
   const [balance, setBalance] = useState(0);
   const [subscriptionBalance, setSubscriptionBalance] = useState(0);
   const [subscriptionPlanCredits, setSubscriptionPlanCredits] = useState(0);
   const [paygoBalance, setPaygoBalance] = useState(0);
-  const [balanceLoading, setBalanceLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [showManageModal, setShowManageModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
 
-  // Fetch subscription and credits in parallel
+  // Single fetch for both subscription + credits via combined endpoint with cache
   useEffect(() => {
-    const fetchSubscription = fetch('/api/billing/subscription')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (data) setSubscription(data.subscription); })
-      .catch(() => {})
-      .finally(() => setSubLoading(false));
-
-    const fetchCredits = fetch('/api/billing/credits')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) {
-          setBalance(data.displayBalance ?? 0);
-          setSubscriptionBalance(data.subscription ?? 0);
-          setSubscriptionPlanCredits(data.subscriptionPlanCredits ?? 0);
-          setPaygoBalance(data.paygo ?? 0);
-        }
+    fetchBillingSummary()
+      .then((summary) => {
+        setSubscription(summary.subscription);
+        setBalance(summary.credits.displayBalance ?? 0);
+        setSubscriptionBalance(summary.credits.subscription ?? 0);
+        setSubscriptionPlanCredits(summary.credits.subscriptionPlanCredits ?? 0);
+        setPaygoBalance(summary.credits.paygo ?? 0);
       })
       .catch(() => {})
-      .finally(() => setBalanceLoading(false));
-
-    Promise.all([fetchSubscription, fetchCredits]);
+      .finally(() => setLoading(false));
   }, []);
 
   const status: SubscriptionStatus = subscription?.status ?? 'none';
@@ -457,7 +447,7 @@ export default function BillingPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Left: Current Plan */}
         <div className="bg-surface border border-border rounded-xl p-6">
-          {subLoading ? (
+          {loading ? (
             <div className="flex items-center justify-center h-[140px]">
               <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
             </div>
@@ -528,7 +518,7 @@ export default function BillingPage() {
 
         {/* Right: Credits Remaining */}
         <div className="bg-surface border border-border rounded-xl p-6">
-          {balanceLoading ? (
+          {loading ? (
             <div className="flex items-center justify-center h-[140px]">
               <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
             </div>
@@ -590,7 +580,7 @@ export default function BillingPage() {
           Plan Cards: Monthly Subscription + Pay-as-you-go
           ═══════════════════════════════════════════════════════════ */}
       <div className="mb-2">
-        {subLoading ? (
+        {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
           </div>
