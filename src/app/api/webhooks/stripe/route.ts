@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
       // ============================================
       // RECURRING PAYMENT (monthly charge or annual renewal)
       // ============================================
-      case 'invoice.paid': {
+      case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
 
         // Skip the first invoice (already handled by checkout.session.completed)
