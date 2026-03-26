@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { PLAN_TIERS } from '@/billing/config';
 
 // Valid PAYG amounts match the subscription tier credit amounts
-const VALID_PAYG_AMOUNTS = new Set(
+const VALID_PAYG_AMOUNTS: Set<number> = new Set(
   Object.values(PLAN_TIERS).map((t) => t.credits)
 );
 
