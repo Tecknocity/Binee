@@ -17,8 +17,8 @@ export const stripe = new Proxy({} as Stripe, {
   },
 });
 
-// Price ID lookup map
-function getPriceMap(): Record<string, Record<string, string>> {
+// Subscription price ID lookup (7 tiers × 2 billing periods = 14 prices)
+function getSubscriptionPriceMap(): Record<string, Record<string, string>> {
   return {
     monthly: {
       '100':  process.env.STRIPE_PRICE_MO_100!,
@@ -41,9 +41,28 @@ function getPriceMap(): Record<string, Record<string, string>> {
   };
 }
 
+// PAYG one-time price ID lookup (7 packages)
+function getPaygPriceMap(): Record<string, string> {
+  return {
+    '100':  process.env.STRIPE_PRICE_PAYG_100!,
+    '150':  process.env.STRIPE_PRICE_PAYG_150!,
+    '250':  process.env.STRIPE_PRICE_PAYG_250!,
+    '500':  process.env.STRIPE_PRICE_PAYG_500!,
+    '750':  process.env.STRIPE_PRICE_PAYG_750!,
+    '1000': process.env.STRIPE_PRICE_PAYG_1000!,
+    '2000': process.env.STRIPE_PRICE_PAYG_2000!,
+  };
+}
+
 export function getStripePriceId(tier: string, period: string): string {
-  const priceId = getPriceMap()[period]?.[tier];
+  const priceId = getSubscriptionPriceMap()[period]?.[tier];
   if (!priceId) throw new Error(`No price for tier ${tier} / period ${period}`);
+  return priceId;
+}
+
+export function getPaygPriceId(credits: string): string {
+  const priceId = getPaygPriceMap()[credits];
+  if (!priceId) throw new Error(`No PAYG price for ${credits} credits`);
   return priceId;
 }
 
@@ -72,28 +91,18 @@ export async function createSubscriptionCheckout(
   });
 }
 
-// PAYG checkout
+// PAYG checkout (one-time credit package purchase)
 export async function createPaygCheckout(
   userId: string,
   creditAmount: number,
   customerEmail?: string
 ) {
-  const PAYGO_PRICE_PER_CREDIT_CENTS = 14;
+  const priceId = getPaygPriceId(creditAmount.toString());
 
   return getStripe().checkout.sessions.create({
     mode: 'payment',
     payment_method_types: ['card'],
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: `${creditAmount} Binee Credits`,
-          description: 'One-time credit purchase. Credits never expire.',
-        },
-        unit_amount: PAYGO_PRICE_PER_CREDIT_CENTS,
-      },
-      quantity: creditAmount,
-    }],
+    line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing&credits=purchased`,
     cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing`,
     customer_email: customerEmail,
