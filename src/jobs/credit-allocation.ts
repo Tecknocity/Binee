@@ -1,6 +1,7 @@
-import { allocateMonthlyCredits } from '@/billing/lifecycle/renewal';
 import { processExpiredSubscription } from '@/billing/lifecycle/cancellation';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { PLAN_TIERS, CREDIT_ALLOCATION_INTERVAL_DAYS } from '@/billing/config';
+import type { PlanTier } from '@/billing/types/subscriptions';
 
 /**
  * Daily Credit Allocation Cron Job
@@ -56,9 +57,45 @@ export async function processDailyCreditAllocations() {
         // Still within paid period — give them their credits
       }
 
-      // All checks passed — allocate monthly credits
-      await allocateMonthlyCredits(sub.user_id, sub.plan_tier);
-      console.log(`Allocated ${sub.plan_tier} credits to annual user ${sub.user_id}`);
+      // All checks passed — allocate monthly credits to WORKSPACE pool
+      const tierConfig = PLAN_TIERS[sub.plan_tier as PlanTier];
+      if (!tierConfig) {
+        console.error(`Unknown plan tier ${sub.plan_tier} for user ${sub.user_id}`);
+        results.errors++;
+        continue;
+      }
+
+      // Find workspace owned by this user
+      const { data: ws } = await supabaseAdmin
+        .from('workspaces')
+        .select('id')
+        .eq('owner_id', sub.user_id)
+        .limit(1)
+        .single();
+
+      if (ws) {
+        await supabaseAdmin.rpc('add_credits', {
+          p_workspace_id: ws.id,
+          p_user_id: sub.user_id,
+          p_amount: tierConfig.credits,
+          p_type: 'subscription',
+          p_description: `Annual plan monthly drip: ${tierConfig.credits} credits`,
+          p_metadata: {},
+        });
+      }
+
+      // Advance next allocation date
+      const nextAllocation = new Date();
+      nextAllocation.setDate(nextAllocation.getDate() + CREDIT_ALLOCATION_INTERVAL_DAYS);
+      await supabaseAdmin
+        .from('user_subscriptions')
+        .update({
+          next_credit_allocation_date: nextAllocation.toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', sub.user_id);
+
+      console.log(`Allocated ${tierConfig.credits} credits to workspace for annual user ${sub.user_id}`);
       results.allocated++;
     } catch (err) {
       console.error(`Failed to allocate credits for ${sub.user_id}:`, err);
