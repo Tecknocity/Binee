@@ -68,18 +68,23 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[POST /api/chat] Error:', error);
 
-    const message =
+    const errorMessage =
       error instanceof Error ? error.message : 'An unexpected error occurred';
 
-    // Don't expose internal errors in production
+    // Provide actionable messages for known configuration issues
+    const isConfigError =
+      errorMessage.includes('ANTHROPIC_API_KEY') ||
+      errorMessage.includes('SUPABASE') ||
+      errorMessage.includes('environment variable');
+
     const isProduction = process.env.NODE_ENV === 'production';
-    const safeMessage = isProduction
+    const safeMessage = isProduction && !isConfigError
       ? 'An error occurred while processing your request. Please try again.'
-      : message;
+      : errorMessage;
 
     return NextResponse.json(
       { error: safeMessage },
-      { status: 500 },
+      { status: isConfigError ? 503 : 500 },
     );
   }
 }

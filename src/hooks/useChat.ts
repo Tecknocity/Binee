@@ -361,7 +361,10 @@ export function useChat(conversationId: string | null) {
         });
 
         if (!res.ok) {
-          throw new Error('Failed to get response');
+          const errorBody = await res.json().catch(() => null);
+          const errorMsg =
+            errorBody?.error || `Chat request failed (${res.status})`;
+          throw new Error(errorMsg);
         }
 
         const data = await res.json();
@@ -433,22 +436,24 @@ export function useChat(conversationId: string | null) {
           confirmActionRef.current(actionConfirmation.id, true);
         }
       } catch (err) {
+        console.error('[useChat] Chat API error:', err);
+
+        const errorDetail =
+          err instanceof Error ? err.message : 'An unexpected error occurred';
         const fallbackContent =
-          "Thanks for your message! I'm currently running in demo mode. In production, I'd connect to your ClickUp workspace to help with that request.";
+          "I'm sorry, I wasn't able to process your message right now. " +
+          'Please try again in a moment. If the issue persists, check that your workspace is properly configured.';
         const fallbackMessage: ChatMessage = {
           id: `msg-${Date.now()}-resp`,
           role: 'assistant',
           content: fallbackContent,
           timestamp: new Date(),
-          creditsConsumed: 1,
+          creditsConsumed: 0,
         };
-        totalCredits.current += 1;
         setMessages((prev) => [...prev, fallbackMessage]);
-        setError(
-          err instanceof Error ? err.message : 'An unexpected error occurred',
-        );
+        setError(errorDetail);
 
-        // Persist messages to DB even in demo/fallback mode so chat history is saved
+        // Persist messages to DB even on error so chat history is saved
         if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
           try {
             // Save user message
@@ -459,14 +464,14 @@ export function useChat(conversationId: string | null) {
               content: content.trim(),
               credits_used: 0,
             });
-            // Save assistant fallback message
+            // Save assistant error message
             await supabase.from('messages').insert({
               workspace_id: workspaceId,
               conversation_id: effectiveId,
               role: 'assistant',
               content: fallbackContent,
-              credits_used: 1,
-              metadata: { demo_mode: true },
+              credits_used: 0,
+              metadata: { error: true, error_detail: errorDetail },
             });
             // Auto-generate title from first message if this is a new conversation
             const isFirstMessage = messages.length === 0;
@@ -482,7 +487,7 @@ export function useChat(conversationId: string | null) {
               .update(updatePayload)
               .eq('id', effectiveId);
           } catch (saveErr) {
-            console.error('[useChat] Failed to persist demo messages:', saveErr);
+            console.error('[useChat] Failed to persist error messages:', saveErr);
           }
         }
       } finally {
