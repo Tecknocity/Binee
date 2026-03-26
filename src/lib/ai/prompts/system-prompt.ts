@@ -149,7 +149,7 @@ function buildComputedData(
   context: BineeContext,
   dashboardContext?: { dashboardId: string; dashboardName: string },
 ): string {
-  const { workspace, businessState, workspaceSummary, recentActivity } = context;
+  const { workspace, businessState } = context;
   const clickUpConnected = workspace.clickup_connected;
 
   const parts: string[] = [];
@@ -157,19 +157,13 @@ function buildComputedData(
   parts.push('## COMPUTED DATA');
 
   // Business State Document (structured JSON for LLM context — B-041)
+  // This is the single source of workspace state — it contains task counts,
+  // status breakdowns, member data, and recent activity in structured form.
   if (businessState && businessState.tasks.total > 0) {
     parts.push(
       `### Business State Document\n\`\`\`json\n${JSON.stringify(businessState, null, 0)}\n\`\`\``,
     );
   }
-
-  // Workspace summary (legacy text fallback)
-  parts.push(`### Workspace Summary\n${workspaceSummary || 'No workspace data available yet.'}`);
-
-  // Recent activity
-  parts.push(
-    `### Recent Activity (last 24h)\n${recentActivity || 'No recent activity recorded.'}`,
-  );
 
   // Available actions (tool list)
   parts.push(`### Available Actions\n${buildAvailableActions(clickUpConnected)}`);

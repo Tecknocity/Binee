@@ -35,7 +35,12 @@ export async function GET(req: NextRequest) {
 
   let credits;
   if (!memberResult.data) {
-    credits = { displayBalance: 0 };
+    credits = {
+      displayBalance: 0,
+      subscription: 0,
+      subscriptionPlanCredits: 0,
+      paygo: 0,
+    };
   } else {
     const { data: workspace } = await supabaseAdmin
       .from('workspaces')
@@ -43,8 +48,14 @@ export async function GET(req: NextRequest) {
       .eq('id', memberResult.data.workspace_id)
       .single();
 
+    const balance = workspace?.credit_balance ?? 0;
     credits = {
-      displayBalance: workspace?.credit_balance ?? 0,
+      displayBalance: balance,
+      // Workspace-scoped billing: single pool, no subscription/paygo split.
+      // These fields are kept for backward compatibility with frontend components.
+      subscription: 0,
+      subscriptionPlanCredits: 0,
+      paygo: 0,
     };
   }
 
