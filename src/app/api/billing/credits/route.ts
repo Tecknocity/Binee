@@ -33,7 +33,8 @@ export async function GET(req: NextRequest) {
     .eq('id', member.workspace_id)
     .single();
 
-  return NextResponse.json({
-    displayBalance: workspace?.credit_balance ?? 0,
-  });
+  return NextResponse.json(
+    { displayBalance: workspace?.credit_balance ?? 0 },
+    { headers: { 'Cache-Control': 'private, max-age=30' } },
+  );
 }

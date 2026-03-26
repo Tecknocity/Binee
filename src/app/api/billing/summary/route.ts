@@ -48,8 +48,8 @@ export async function GET(req: NextRequest) {
     };
   }
 
-  return NextResponse.json({
-    credits,
-    subscription: subscription ?? null,
-  });
+  return NextResponse.json(
+    { credits, subscription: subscription ?? null },
+    { headers: { 'Cache-Control': 'private, max-age=30' } },
+  );
 }

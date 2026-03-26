@@ -54,12 +54,13 @@ export async function buildContext(
 ): Promise<BineeContext> {
   const supabase = getSupabaseAdmin();
 
+  // NOTE: buildWorkspaceSummary and buildRecentActivity were removed —
+  // they duplicated data already in businessState (structured JSON).
+  // This saves ~400 tokens per call and 2 fewer DB queries.
   const [
     workspaceResult,
     memberResult,
     businessState,
-    workspaceSummary,
-    recentActivity,
     conversationHistory,
   ] = await Promise.all([
     supabase
@@ -74,8 +75,6 @@ export async function buildContext(
       .eq('user_id', userId)
       .single(),
     buildBusinessStateDocument(workspaceId),
-    buildWorkspaceSummary(workspaceId),
-    buildRecentActivity(workspaceId),
     fetchConversationHistory(conversationId),
   ]);
 
@@ -106,8 +105,8 @@ export async function buildContext(
       last_sync_at: workspace.last_sync_at,
     },
     businessState,
-    workspaceSummary,
-    recentActivity,
+    workspaceSummary: '',
+    recentActivity: '',
     conversationHistory,
   };
 
@@ -555,21 +554,50 @@ async function fetchConversationHistory(
 ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
   const supabase = getSupabaseAdmin();
 
-  const { data: messages, error } = await supabase
-    .from('messages')
-    .select('role, content')
-    .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
-    .limit(10);
+  // Fetch conversation summary + last 6 messages (instead of last 10).
+  // If the conversation has a stored summary, prepend it as context
+  // so the model understands earlier discussion without resending full history.
+  const [convResult, messagesResult] = await Promise.all([
+    supabase
+      .from('conversations')
+      .select('summary')
+      .eq('id', conversationId)
+      .single(),
+    supabase
+      .from('messages')
+      .select('role, content')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(6),
+  ]);
 
-  if (error || !messages) {
-    return [];
+  const messages = messagesResult.data ?? [];
+  // Messages came in reverse order (newest first), flip back
+  const chronological = messages.reverse();
+
+  const history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+  // If there's a stored summary and we have messages, inject it as context
+  const summary = convResult.data?.summary;
+  if (summary && chronological.length > 0) {
+    history.push({
+      role: 'user' as const,
+      content: `[Previous conversation summary: ${summary}]`,
+    });
+    history.push({
+      role: 'assistant' as const,
+      content: 'Understood, I have the context from our earlier discussion.',
+    });
   }
 
-  return messages.map((m) => ({
-    role: m.role as 'user' | 'assistant',
-    content: m.content as string,
-  }));
+  for (const m of chronological) {
+    history.push({
+      role: m.role as 'user' | 'assistant',
+      content: m.content as string,
+    });
+  }
+
+  return history;
 }
 
 // ---------------------------------------------------------------------------

@@ -18,5 +18,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ subscription: null });
   }
 
-  return NextResponse.json({ subscription });
+  return NextResponse.json(
+    { subscription },
+    { headers: { 'Cache-Control': 'private, max-age=300' } },
+  );
 }

@@ -96,12 +96,10 @@ export function useConversations() {
           event: 'INSERT',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace.id}`,
+          filter: `workspace_id=eq.${workspace.id},user_id=eq.${user.id}`,
         },
         (payload) => {
           const row = payload.new as { id: string; user_id: string; title: string | null; summary: string | null; updated_at: string; created_at: string };
-          // Only add conversations belonging to this user
-          if (row.user_id !== user.id) return;
           setConversations((prev) => {
             // Avoid duplicates (optimistic insert may already exist)
             if (prev.some((c) => c.id === row.id)) return prev;
@@ -115,11 +113,10 @@ export function useConversations() {
           event: 'UPDATE',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace.id}`,
+          filter: `workspace_id=eq.${workspace.id},user_id=eq.${user.id}`,
         },
         (payload) => {
           const row = payload.new as { id: string; user_id: string; title: string | null; summary: string | null; updated_at: string; created_at: string };
-          if (row.user_id !== user.id) return;
           setConversations((prev) => {
             const updated = prev.map((c) => (c.id === row.id ? mapRow(row) : c));
             // Re-sort by updated_at desc
@@ -133,7 +130,7 @@ export function useConversations() {
           event: 'DELETE',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace.id}`,
+          filter: `workspace_id=eq.${workspace.id},user_id=eq.${user.id}`,
         },
         (payload) => {
           const row = payload.old as { id: string };

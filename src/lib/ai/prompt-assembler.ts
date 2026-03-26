@@ -207,7 +207,7 @@ function buildContextSection(
   dashboardContext: { dashboardId: string; dashboardName: string } | undefined,
   budget: number,
 ): string {
-  const { user, workspace, businessState, workspaceSummary, recentActivity } = context;
+  const { user, workspace, businessState } = context;
 
   const parts: string[] = [];
 
@@ -225,7 +225,9 @@ function buildContextSection(
 - ${workspace.name} | ClickUp: ${workspace.clickup_connected ? 'Connected' : 'Not connected'} | Plan: ${workspace.clickup_plan_tier ?? 'Unknown'} | Credits: ${workspace.credit_balance}
 - ${syncFreshness}`);
 
-  // Business state document (structured JSON)
+  // Business state document (structured JSON) — this is the single source
+  // of workspace state. The legacy text-format workspaceSummary and
+  // recentActivity sections were removed as they duplicated this data.
   if (businessState && businessState.tasks.total > 0) {
     const stateJson = JSON.stringify(businessState, null, 0);
     const stateTokens = estimateTokens(stateJson);
@@ -234,24 +236,6 @@ function buildContextSection(
 
     if (currentTokens + stateTokens + headerTokens <= budget) {
       parts.push(`### Business State Document\n\`\`\`json\n${stateJson}\n\`\`\``);
-    }
-  }
-
-  // Workspace summary
-  if (workspaceSummary) {
-    const currentTokens = parts.reduce((sum, p) => sum + estimateTokens(p), 0);
-    const summaryTokens = estimateTokens(workspaceSummary);
-    if (currentTokens + summaryTokens + 10 <= budget) {
-      parts.push(`### Workspace Summary\n${workspaceSummary}`);
-    }
-  }
-
-  // Recent activity
-  if (recentActivity) {
-    const currentTokens = parts.reduce((sum, p) => sum + estimateTokens(p), 0);
-    const activityTokens = estimateTokens(recentActivity);
-    if (currentTokens + activityTokens + 10 <= budget) {
-      parts.push(`### Recent Activity (last 24h)\n${recentActivity}`);
     }
   }
 

@@ -50,6 +50,42 @@ export async function GET(request: Request) {
     errors.push(`webhook_events: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 
+  // Prune old messages (keep last 90 days — conversations remain intact)
+  try {
+    const { count } = await supabase
+      .from('messages')
+      .delete({ count: 'exact' })
+      .lt('created_at', cutoff);
+
+    results.messages_deleted = count ?? 0;
+  } catch (error) {
+    errors.push(`messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  // Prune old credit_transactions (keep last 90 days)
+  try {
+    const { count } = await supabase
+      .from('credit_transactions')
+      .delete({ count: 'exact' })
+      .lt('created_at', cutoff);
+
+    results.credit_transactions_deleted = count ?? 0;
+  } catch (error) {
+    errors.push(`credit_transactions: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  // Prune old credit_usage analytics (keep last 90 days)
+  try {
+    const { count } = await supabase
+      .from('credit_usage')
+      .delete({ count: 'exact' })
+      .lt('created_at', cutoff);
+
+    results.credit_usage_deleted = count ?? 0;
+  } catch (error) {
+    errors.push(`credit_usage: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
   return NextResponse.json({
     cutoff,
     retention_days: RETENTION_DAYS,
