@@ -710,7 +710,7 @@ export default function IntegrationsSettingsPage() {
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
-  const { status: clickUpStatus, loading: clickUpLoading, refetch: refetchClickUp } = useClickUpStatus(workspace_id);
+  const { status: clickUpStatus, loading: clickUpLoading, refetch: refetchClickUp } = useClickUpStatus(workspace_id ?? undefined);
 
   const handleSync = async (id: string) => {
     if (!workspace?.id || id !== 'clickup') return;
