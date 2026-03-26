@@ -30,10 +30,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const [result, metrics] = await Promise.all([
-      runHealthCheck(workspace_id),
-      computeWorkspaceMetrics(workspace_id),
-    ]);
+    // Compute metrics once, then pass to runHealthCheck to avoid duplicate RPC call
+    const metrics = await computeWorkspaceMetrics(workspace_id);
+    const result = await runHealthCheck(workspace_id, metrics);
 
     return NextResponse.json({ result, metrics });
   } catch (error) {

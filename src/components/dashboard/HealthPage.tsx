@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import {
   RefreshCw,
   Clock,
@@ -19,7 +20,7 @@ import {
   Area,
   AreaChart,
 } from 'recharts';
-import { useHealth } from '@/hooks/useHealth';
+import { useHealthContext } from '@/contexts/HealthContext';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import HealthScoreCircle from './HealthScoreCircle';
 import IssueCard from './IssueCard';
@@ -62,8 +63,21 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 
 export default function HealthPage() {
   const { workspace_id } = useWorkspace();
-  const { healthResult, metrics, historicalScores, weeklySnapshots, scoreDelta, isLoading, error, lastCheckAt, runCheck } =
-    useHealth(workspace_id ?? undefined);
+  const { healthResult, metrics, historicalScores, weeklySnapshots, scoreDelta, isLoading, error, lastCheckAt, hasLoaded, runCheck } =
+    useHealthContext();
+
+  // Auto-run health check only on first load (not on every navigation)
+  const hasTriggered = React.useRef(false);
+  React.useEffect(() => {
+    if (workspace_id && !hasLoaded && !hasTriggered.current) {
+      hasTriggered.current = true;
+      runCheck(workspace_id);
+    }
+  }, [workspace_id, hasLoaded, runCheck]);
+
+  const handleRunCheck = React.useCallback(() => {
+    if (workspace_id) runCheck(workspace_id);
+  }, [workspace_id, runCheck]);
 
   const severityOrder: Record<string, number> = { critical: 0, warning: 1, info: 2 };
   const sortedIssues = healthResult?.issues
@@ -87,7 +101,7 @@ export default function HealthPage() {
         <AlertTriangle className="w-6 h-6 text-error" />
         <p className="text-sm text-text-muted">{error}</p>
         <button
-          onClick={runCheck}
+          onClick={handleRunCheck}
           className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
@@ -119,7 +133,7 @@ export default function HealthPage() {
             </span>
           )}
           <button
-            onClick={runCheck}
+            onClick={handleRunCheck}
             disabled={isLoading}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors disabled:opacity-50"
           >

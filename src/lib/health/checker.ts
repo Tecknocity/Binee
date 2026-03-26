@@ -122,8 +122,8 @@ function computeTaskHygieneScore(metrics: WorkspaceMetrics): { score: number; is
   return { score, issues };
 }
 
-export async function runHealthCheck(workspaceId: string, previousScore?: number): Promise<HealthCheckResult> {
-  const metrics = await computeWorkspaceMetrics(workspaceId);
+export async function runHealthCheck(workspaceId: string, precomputedMetrics?: WorkspaceMetrics): Promise<HealthCheckResult> {
+  const metrics = precomputedMetrics ?? await computeWorkspaceMetrics(workspaceId);
 
   const overdue = computeOverdueScore(metrics);
   const unassigned = computeUnassignedScore(metrics);

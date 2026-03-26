@@ -6,7 +6,6 @@ import type { ChatMessage, DashboardChoiceData } from '@/hooks/useChat';
 import ToolCallIndicator from './ToolCallIndicator';
 import ActionConfirmation from './ActionConfirmation';
 import DashboardChoiceButtons from './DashboardChoiceButtons';
-import CreditBadge from './MessageCreditBadge';
 
 interface AssistantMessageProps {
   message: ChatMessage;
@@ -285,12 +284,11 @@ export default function AssistantMessage({
           />
         )}
 
-        {/* Footer: timestamp + credits */}
+        {/* Footer: timestamp */}
         <div className="flex items-center gap-2 px-1">
           <p className="text-xs text-text-muted">
             {formatTimestamp(message.timestamp)}
           </p>
-          <CreditBadge creditsConsumed={message.creditsConsumed} />
         </div>
       </div>
     </div>

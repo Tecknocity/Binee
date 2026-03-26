@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { Plus, LayoutDashboard, Sparkles, Save } from 'lucide-react';
-import { useDashboard } from '@/hooks/useDashboard';
+import { useDashboardContext } from '@/contexts/DashboardContext';
 import DashboardSelector from './DashboardSelector';
 import AddWidgetDialog from './AddWidgetDialog';
 import DashboardChatPanel from './DashboardChatPanel';
@@ -24,7 +24,7 @@ export default function DashboardPage() {
     addWidget,
     removeWidget,
     refreshDashboards,
-  } = useDashboard();
+  } = useDashboardContext();
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
