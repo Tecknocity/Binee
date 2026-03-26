@@ -230,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // If the direct query succeeded and returned data, fetch workspaces
     if (!memberErr && memberRows && memberRows.length > 0) {
-      const workspaceIds = memberRows.map((m) => m.workspace_id);
+      const workspaceIds = [...new Set(memberRows.map((m) => m.workspace_id))];
       const { data: ws, error: wsErr } = await supabase
         .from('workspaces')
         .select('*')
@@ -290,30 +290,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Shared helper: run ensure-owner, then load workspaces.
    * If workspaces are still empty after loading, tries client-side creation
    * as a last resort.
+   *
+   * Optimization: when ensure-owner was already completed this session,
+   * we skip straight to loading workspaces (the common case for in-session
+   * page navigations). When ensure-owner must run, we fire it in parallel
+   * with the workspace load — if the load finds existing workspaces, the
+   * ensure-owner result is just a no-op confirmation.
    */
   const ensureAndLoad = useCallback(async (userId: string): Promise<Workspace[]> => {
-    // If ensure-owner was already done this session (sessionStorage flag),
-    // skip the API call entirely — go straight to loading workspaces.
-    // This is the common case for page navigations within the same session.
     const alreadyEnsured = ensureOwnerDone.current;
 
-    if (!alreadyEnsured) {
-      // Run ensure-owner FIRST (sequential, not parallel) to avoid race conditions
-      // where both the DB trigger and ensure-owner create workspaces simultaneously.
-      await callEnsureOwnerOnce();
-    }
-
-    // Now load workspaces — the trigger and/or ensure-owner should have created one.
-    const loaded = await loadWorkspaces(userId);
-
-    // If still empty and we just ran ensure-owner, the trigger may need a moment — retry once.
-    if (loaded.length === 0 && !alreadyEnsured) {
-      console.warn('ensureAndLoad: no workspaces found, retrying load');
-      await new Promise((r) => setTimeout(r, 500));
+    if (alreadyEnsured) {
+      // Fast path: skip ensure-owner entirely
       return await loadWorkspaces(userId);
     }
 
-    return loaded;
+    // Run ensure-owner and workspace load in parallel.
+    // ensure-owner is idempotent, so it's safe to race with loadWorkspaces.
+    const [, loaded] = await Promise.all([
+      callEnsureOwnerOnce(),
+      loadWorkspaces(userId),
+    ]);
+
+    // If workspaces were found, we're done
+    if (loaded.length > 0) return loaded;
+
+    // ensure-owner may have just created the workspace — retry once
+    console.warn('ensureAndLoad: no workspaces found, retrying load');
+    await new Promise((r) => setTimeout(r, 500));
+    return await loadWorkspaces(userId);
   }, [callEnsureOwnerOnce, loadWorkspaces]);
 
   // Flag to prevent onAuthStateChange from duplicating signUp/signIn work

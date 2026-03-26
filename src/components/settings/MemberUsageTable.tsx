@@ -25,29 +25,33 @@ export default function MemberUsageTable() {
     const supabase = createBrowserClient();
 
     async function fetchMemberUsage() {
-      // Get workspace members
-      const { data: memberData } = await supabase
-        .from('workspace_members')
-        .select('user_id, display_name, email, avatar_url')
-        .eq('workspace_id', workspace!.id)
-        .eq('status', 'active');
-
-      if (!memberData?.length) {
-        setLoading(false);
-        return;
-      }
-
       // Get credit transactions for current billing period
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
 
-      const { data: txData } = await supabase
-        .from('credit_transactions')
-        .select('user_id, amount')
-        .eq('workspace_id', workspace!.id)
-        .eq('type', 'deduction')
-        .gte('created_at', startOfMonth.toISOString());
+      // Fetch members and transactions in parallel
+      const [membersResult, txResult] = await Promise.all([
+        supabase
+          .from('workspace_members')
+          .select('user_id, display_name, email, avatar_url')
+          .eq('workspace_id', workspace!.id)
+          .eq('status', 'active'),
+        supabase
+          .from('credit_transactions')
+          .select('user_id, amount')
+          .eq('workspace_id', workspace!.id)
+          .eq('type', 'deduction')
+          .gte('created_at', startOfMonth.toISOString()),
+      ]);
+
+      const memberData = membersResult.data;
+      const txData = txResult.data;
+
+      if (!memberData?.length) {
+        setLoading(false);
+        return;
+      }
 
       // Aggregate usage per member
       const usageMap = new Map<string, number>();

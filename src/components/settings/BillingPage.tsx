@@ -13,9 +13,9 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
-import { useCreditBalance } from '@/billing/hooks/useCreditBalance';
 import { PLAN_TIERS, PAYGO_PRICE_PER_CREDIT_CENTS } from '@/billing/config';
 import type { UserSubscription, BillingPeriod, SubscriptionStatus, PlanTier } from '@/billing/types/subscriptions';
+import { fetchBillingSummary } from '@/billing/hooks/billing-cache';
 import PlanSelector from '@/components/billing/PlanSelector';
 import WeeklyUsageSummary from '@/components/billing/WeeklyUsageSummary';
 import MemberUsageTable from '@/components/settings/MemberUsageTable';
@@ -361,29 +361,28 @@ function TopUpCreditsModal({
 
 export default function BillingPage() {
   const { canManageBilling } = usePermissions();
-  const { balance, subscriptionBalance, subscriptionPlanCredits, paygoBalance, loading: balanceLoading } = useCreditBalance();
 
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const [subLoading, setSubLoading] = useState(true);
+  const [balance, setBalance] = useState(0);
+  const [subscriptionBalance, setSubscriptionBalance] = useState(0);
+  const [subscriptionPlanCredits, setSubscriptionPlanCredits] = useState(0);
+  const [paygoBalance, setPaygoBalance] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [showManageModal, setShowManageModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
 
-  // Fetch subscription data
+  // Single fetch for both subscription + credits via combined endpoint with cache
   useEffect(() => {
-    async function fetchSubscription() {
-      try {
-        const res = await fetch('/api/billing/subscription');
-        if (res.ok) {
-          const data = await res.json();
-          setSubscription(data.subscription);
-        }
-      } catch {
-        // ignore
-      } finally {
-        setSubLoading(false);
-      }
-    }
-    fetchSubscription();
+    fetchBillingSummary()
+      .then((summary) => {
+        setSubscription(summary.subscription);
+        setBalance(summary.credits.displayBalance ?? 0);
+        setSubscriptionBalance(summary.credits.subscription ?? 0);
+        setSubscriptionPlanCredits(summary.credits.subscriptionPlanCredits ?? 0);
+        setPaygoBalance(summary.credits.paygo ?? 0);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const status: SubscriptionStatus = subscription?.status ?? 'none';
@@ -448,7 +447,7 @@ export default function BillingPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Left: Current Plan */}
         <div className="bg-surface border border-border rounded-xl p-6">
-          {subLoading ? (
+          {loading ? (
             <div className="flex items-center justify-center h-[140px]">
               <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
             </div>
@@ -519,7 +518,7 @@ export default function BillingPage() {
 
         {/* Right: Credits Remaining */}
         <div className="bg-surface border border-border rounded-xl p-6">
-          {balanceLoading ? (
+          {loading ? (
             <div className="flex items-center justify-center h-[140px]">
               <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
             </div>
@@ -581,7 +580,7 @@ export default function BillingPage() {
           Plan Cards: Monthly Subscription + Pay-as-you-go
           ═══════════════════════════════════════════════════════════ */}
       <div className="mb-2">
-        {subLoading ? (
+        {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
           </div>
