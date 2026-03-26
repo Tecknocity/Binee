@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { CheckCircle, AlertCircle, Clock, RefreshCw, Loader2, Plug, ExternalLink } from 'lucide-react';
+import { CheckCircle, AlertCircle, Clock, RefreshCw, Loader2, Plug, ExternalLink, AlertTriangle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type IntegrationStatus = 'connected' | 'not_connected' | 'coming_soon';
@@ -455,23 +455,278 @@ function StatusBadge({ status }: { status: IntegrationStatus }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// ClickUp Connection Status
+// ---------------------------------------------------------------------------
+
+interface ClickUpStatus {
+  connected: boolean;
+  teamName: string | null;
+  lastSyncedAt: string | null;
+  syncStatus: 'idle' | 'syncing' | 'complete' | 'error';
+  syncError: string | null;
+  planTier: string | null;
+  rateLimitRemaining: number | null;
+  rateLimitTotal: number | null;
+  webhookHealthy: boolean | null;
+}
+
+const PLAN_LABELS: Record<string, string> = {
+  free: 'Free',
+  unlimited: 'Unlimited',
+  business: 'Business',
+  business_plus: 'Business Plus',
+  enterprise: 'Enterprise',
+};
+
+function formatRelativeTime(dateString: string): string {
+  const now = new Date();
+  const then = new Date(dateString);
+  const diffMs = now.getTime() - then.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return then.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function useClickUpStatus(workspaceId: string | undefined) {
+  const [status, setStatus] = useState<ClickUpStatus>({
+    connected: false,
+    teamName: null,
+    lastSyncedAt: null,
+    syncStatus: 'idle',
+    syncError: null,
+    planTier: null,
+    rateLimitRemaining: null,
+    rateLimitTotal: null,
+    webhookHealthy: null,
+  });
+  const [loading, setLoading] = useState(true);
+
+  const fetchStatus = useCallback(async () => {
+    if (!workspaceId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/clickup/status?workspace_id=${encodeURIComponent(workspaceId)}`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setStatus({
+          connected: data.connected ?? false,
+          teamName: data.team_name ?? null,
+          lastSyncedAt: data.last_synced_at ?? null,
+          syncStatus: data.sync_status ?? 'idle',
+          syncError: data.sync_error ?? null,
+          planTier: data.plan_tier ?? null,
+          rateLimitRemaining: data.rate_limit_remaining ?? null,
+          rateLimitTotal: data.rate_limit_total ?? null,
+          webhookHealthy: data.webhook_healthy ?? null,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch ClickUp status:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  return { status, loading, refetch: fetchStatus };
+}
+
+function ClickUpStatusBar({ status }: { status: ClickUpStatus }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+      <StatusStat
+        label="Team"
+        value={status.teamName ?? 'Unknown'}
+      />
+      <StatDivider />
+      <StatusStat
+        label="Last synced"
+        value={status.lastSyncedAt ? formatRelativeTime(status.lastSyncedAt) : 'Never'}
+      />
+      <StatDivider />
+      <StatusStat
+        label="Plan"
+        value={status.planTier ? PLAN_LABELS[status.planTier] ?? status.planTier : 'Unknown'}
+      />
+      <StatDivider />
+      <StatusStat
+        label="Sync"
+        value={
+          status.syncStatus === 'syncing'
+            ? 'Syncing...'
+            : status.syncStatus === 'complete'
+              ? 'Up to date'
+              : status.syncStatus === 'error'
+                ? 'Error'
+                : 'Idle'
+        }
+        valueClassName={cn(
+          status.syncStatus === 'complete' && 'text-success',
+          status.syncStatus === 'syncing' && 'text-warning',
+          status.syncStatus === 'error' && 'text-error',
+        )}
+      />
+      <StatDivider />
+      <StatusStat
+        label="Webhook"
+        value={
+          status.webhookHealthy === true
+            ? 'Healthy'
+            : status.webhookHealthy === false
+              ? 'Unhealthy'
+              : 'Unknown'
+        }
+        valueClassName={cn(
+          status.webhookHealthy === true && 'text-success',
+          status.webhookHealthy === false && 'text-error',
+        )}
+      />
+    </div>
+  );
+}
+
+function StatusStat({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <span className="flex items-center gap-1.5 text-xs">
+      <span className="text-text-muted">{label}:</span>
+      <span className={cn('font-medium text-text-primary', valueClassName)}>
+        {value}
+      </span>
+    </span>
+  );
+}
+
+function StatDivider() {
+  return <span className="hidden sm:inline text-border">|</span>;
+}
+
+// ---------------------------------------------------------------------------
+// Disconnect Modal
+// ---------------------------------------------------------------------------
+
+function DisconnectModal({
+  onConfirm,
+  onCancel,
+  disconnecting,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+  disconnecting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
+      <div className="relative w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl">
+        <button
+          onClick={onCancel}
+          className="absolute right-4 top-4 rounded-lg p-1 text-text-muted hover:bg-surface-hover hover:text-text-primary transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-error/10">
+            <AlertTriangle className="h-5 w-5 text-error" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-text-primary">
+              Disconnect ClickUp
+            </h3>
+            <p className="text-xs text-text-muted">
+              This action cannot be undone automatically
+            </p>
+          </div>
+        </div>
+        <p className="mb-6 text-sm text-text-secondary">
+          Are you sure you want to disconnect ClickUp? This will remove all
+          cached data, webhooks, and sync history. You can reconnect at any
+          time.
+        </p>
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={onCancel}
+            disabled={disconnecting}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={disconnecting}
+            className={cn(
+              'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
+              'bg-error text-white hover:bg-red-600',
+              'disabled:cursor-not-allowed disabled:opacity-50',
+            )}
+          >
+            {disconnecting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <AlertTriangle className="h-4 w-4" />
+            )}
+            {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Page
+// ---------------------------------------------------------------------------
+
 export default function IntegrationsSettingsPage() {
   const { workspace, refreshWorkspace } = useAuth();
-  const { membership } = useWorkspace();
+  const { workspace_id, membership } = useWorkspace();
   const isAdmin = membership?.role === 'owner' || membership?.role === 'admin';
   const integrations = useIntegrations();
   const [syncing, setSyncing] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+
+  const { status: clickUpStatus, loading: clickUpLoading, refetch: refetchClickUp } = useClickUpStatus(workspace_id);
 
   const handleSync = async (id: string) => {
     if (!workspace?.id || id !== 'clickup') return;
     setSyncing(id);
     try {
-      await fetch('/api/clickup/sync', {
+      const res = await fetch('/api/clickup/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ workspace_id: workspace.id }),
       });
+      if (res.ok) {
+        const pollInterval = setInterval(async () => {
+          await refetchClickUp();
+        }, 3000);
+        setTimeout(() => clearInterval(pollInterval), 300000);
+      }
     } catch (err) {
       console.error('Sync failed:', err);
     } finally {
@@ -481,7 +736,6 @@ export default function IntegrationsSettingsPage() {
 
   const handleDisconnect = async (id: string) => {
     if (!workspace?.id || id !== 'clickup') return;
-    if (!confirm('Are you sure you want to disconnect ClickUp? This will remove all cached data.')) return;
     setDisconnecting(id);
     try {
       const res = await fetch('/api/clickup/disconnect', {
@@ -491,11 +745,19 @@ export default function IntegrationsSettingsPage() {
       });
       if (res.ok) {
         await refreshWorkspace();
+        await refetchClickUp();
+        setShowDisconnectModal(false);
       }
     } catch (err) {
       console.error('Disconnect failed:', err);
     } finally {
       setDisconnecting(null);
+    }
+  };
+
+  const handleConnect = (id: string) => {
+    if (id === 'clickup' && workspace?.id) {
+      window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace.id)}`;
     }
   };
 
@@ -517,89 +779,126 @@ export default function IntegrationsSettingsPage() {
             <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">
               {category}
             </h3>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-              {items.map((integration) => (
-                <div
-                  key={integration.id}
-                  className={cn(
-                    'flex items-start gap-4 p-4 border rounded-xl transition-colors',
-                    integration.status === 'connected'
-                      ? 'bg-surface border-accent/20'
-                      : integration.status === 'not_connected'
-                        ? 'bg-surface border-border hover:border-accent/30'
-                        : 'bg-surface/50 border-border/50'
-                  )}
-                >
-                  {/* Logo */}
+            <div className="space-y-2">
+              {items.map((integration) => {
+                const isConnected = integration.status === 'connected';
+                const isNotConnected = integration.status === 'not_connected';
+                const isComingSoon = integration.status === 'coming_soon';
+                const isClickUp = integration.id === 'clickup';
+                const isSyncing = syncing === integration.id || (isClickUp && clickUpStatus.syncStatus === 'syncing');
+
+                return (
                   <div
-                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: `${integration.color}15`, border: `1px solid ${integration.color}25` }}
+                    key={integration.id}
+                    className={cn(
+                      'border rounded-xl transition-colors p-4',
+                      isConnected
+                        ? 'bg-surface border-accent/20'
+                        : isNotConnected
+                          ? 'bg-surface border-border hover:border-accent/30'
+                          : 'bg-surface/50 border-border/50',
+                    )}
                   >
-                    {integration.logo}
-                  </div>
+                    {/* Row: logo + info + actions */}
+                    <div className="flex items-center gap-4">
+                      {/* Logo */}
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                        style={{
+                          backgroundColor: `${integration.color}15`,
+                          border: `1px solid ${integration.color}25`,
+                        }}
+                      >
+                        {integration.logo}
+                      </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-sm font-medium text-text-primary">{integration.name}</h4>
-                      <StatusBadge status={integration.status} />
+                      {/* Name + badge + description */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-medium text-text-primary">
+                            {integration.name}
+                          </h4>
+                          <StatusBadge status={integration.status} />
+                        </div>
+                        {!isConnected && (
+                          <p className="text-xs text-text-secondary mt-0.5 truncate">
+                            {integration.description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Actions — right side */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isConnected && isAdmin && (
+                          <>
+                            <button
+                              onClick={() => handleSync(integration.id)}
+                              disabled={isSyncing}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-navy-base border border-border rounded-lg text-xs text-text-primary hover:bg-surface-hover transition-colors disabled:opacity-50"
+                            >
+                              {isSyncing ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="w-3.5 h-3.5" />
+                              )}
+                              {isSyncing ? 'Syncing...' : 'Re-sync'}
+                            </button>
+                            <button
+                              onClick={() => setShowDisconnectModal(true)}
+                              disabled={disconnecting === integration.id}
+                              className="flex items-center gap-1.5 px-3 py-1.5 border border-error/30 rounded-lg text-xs text-error hover:bg-error/10 transition-colors disabled:opacity-50"
+                            >
+                              {disconnecting === integration.id && (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              )}
+                              Disconnect
+                            </button>
+                          </>
+                        )}
+                        {isNotConnected && isAdmin && (
+                          <button
+                            onClick={() => handleConnect(integration.id)}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
+                            style={{ backgroundColor: integration.color }}
+                          >
+                            <Plug className="w-3.5 h-3.5" />
+                            Connect
+                            <ExternalLink className="w-3 h-3 ml-0.5" />
+                          </button>
+                        )}
+                        {isNotConnected && !isAdmin && (
+                          <span className="text-xs text-text-muted">
+                            Admin required
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-text-secondary leading-relaxed">
-                      {integration.description}
-                    </p>
 
-                    {/* Actions for connected/connectable integrations — owner/admin only */}
-                    {integration.status === 'connected' && isAdmin && (
-                      <div className="flex items-center gap-3 mt-3">
-                        <button
-                          onClick={() => handleSync(integration.id)}
-                          disabled={syncing === integration.id}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-navy-base border border-border rounded-lg text-xs text-text-primary hover:bg-surface-hover transition-colors disabled:opacity-50"
-                        >
-                          {syncing === integration.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <RefreshCw className="w-3.5 h-3.5" />
-                          )}
-                          Sync now
-                        </button>
-                        <button
-                          onClick={() => handleDisconnect(integration.id)}
-                          disabled={disconnecting === integration.id}
-                          className="flex items-center gap-1.5 px-3 py-1.5 border border-error/30 rounded-lg text-xs text-error hover:bg-error/10 transition-colors disabled:opacity-50"
-                        >
-                          {disconnecting === integration.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : null}
-                          {disconnecting === integration.id ? 'Disconnecting...' : 'Disconnect'}
-                        </button>
+                    {/* Connected status details — inline stats */}
+                    {isConnected && isClickUp && !clickUpLoading && clickUpStatus.connected && (
+                      <div className="ml-14">
+                        <ClickUpStatusBar status={clickUpStatus} />
+
+                        {/* Sync error */}
+                        {clickUpStatus.syncError && (
+                          <div className="mt-2 rounded-lg border border-error/20 bg-error/10 px-3 py-1.5 text-xs text-error">
+                            {clickUpStatus.syncError}
+                          </div>
+                        )}
                       </div>
                     )}
-                    {integration.status === 'not_connected' && isAdmin && (
-                      <div className="mt-3">
-                        <button
-                          onClick={() => {
-                            if (integration.id === 'clickup' && workspace?.id) {
-                              window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace.id)}`;
-                            }
-                          }}
-                          className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white rounded-lg transition-colors"
-                          style={{ backgroundColor: integration.color }}
-                        >
-                          <Plug className="w-3.5 h-3.5" />
-                          Connect
-                          <ExternalLink className="w-3 h-3 ml-0.5" />
-                        </button>
+
+                    {/* Loading state for connected integration status */}
+                    {isConnected && isClickUp && clickUpLoading && (
+                      <div className="ml-14 mt-2 flex items-center gap-2">
+                        <div className="h-3 w-48 animate-pulse rounded bg-navy-light" />
+                        <div className="h-3 w-32 animate-pulse rounded bg-navy-light" />
+                        <div className="h-3 w-24 animate-pulse rounded bg-navy-light" />
                       </div>
-                    )}
-                    {integration.status === 'not_connected' && !isAdmin && (
-                      <p className="text-xs text-text-muted mt-2">
-                        Ask a workspace owner or admin to connect this integration.
-                      </p>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );
@@ -611,6 +910,15 @@ export default function IntegrationsSettingsPage() {
           Want a specific integration? Let us know and we&apos;ll prioritize it.
         </p>
       </div>
+
+      {/* Disconnect modal */}
+      {showDisconnectModal && (
+        <DisconnectModal
+          onConfirm={() => handleDisconnect('clickup')}
+          onCancel={() => setShowDisconnectModal(false)}
+          disconnecting={disconnecting === 'clickup'}
+        />
+      )}
     </div>
   );
 }
