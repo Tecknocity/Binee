@@ -78,6 +78,7 @@ export async function createSubscriptionCheckout(
   return getStripe().checkout.sessions.create({
     mode: 'subscription',
     payment_method_types: ['card'],
+    allow_promotion_codes: true,
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing`,
@@ -102,6 +103,7 @@ export async function createPaygCheckout(
   return getStripe().checkout.sessions.create({
     mode: 'payment',
     payment_method_types: ['card'],
+    allow_promotion_codes: true,
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing&credits=purchased`,
     cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=billing`,
