@@ -384,11 +384,9 @@ export default function ChatPage() {
     workspace?.clickup_connected &&
     conversations.length === 0;
 
-  // B-083: Show suggestion cards when the only message is the auto-generated welcome
-  const isWelcomeConversation =
-    messages.length === 1 &&
-    messages[0].role === 'assistant' &&
-    !isLoading;
+  // B-083: Welcome suggestions should only appear on the welcome/empty screen,
+  // never inside an active chat conversation (the opener already provides context).
+  const isWelcomeConversation = false;
 
   return (
     <div className="flex h-full overflow-hidden bg-navy-base">
