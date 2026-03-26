@@ -349,6 +349,9 @@ export function useChat(conversationId: string | null) {
       setError(null);
 
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 65_000); // 65s — slightly above Vercel's 60s max
+
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -358,7 +361,10 @@ export function useChat(conversationId: string | null) {
             conversation_id: effectiveId,
             message: content.trim(),
           }),
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (!res.ok) {
           const errorBody = await res.json().catch(() => null);
@@ -438,8 +444,13 @@ export function useChat(conversationId: string | null) {
       } catch (err) {
         console.error('[useChat] Chat API error:', err);
 
-        const errorDetail =
-          err instanceof Error ? err.message : 'An unexpected error occurred';
+        const isTimeout =
+          err instanceof DOMException && err.name === 'AbortError';
+        const errorDetail = isTimeout
+          ? 'The request timed out. Please try again with a simpler question.'
+          : err instanceof Error
+            ? err.message
+            : 'An unexpected error occurred';
         const fallbackContent =
           "I'm sorry, I wasn't able to process your message right now. " +
           'Please try again in a moment. If the issue persists, check that your workspace is properly configured.';

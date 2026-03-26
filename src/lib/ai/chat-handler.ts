@@ -39,6 +39,9 @@ import { createClient } from '@supabase/supabase-js';
 // Anthropic client
 // ---------------------------------------------------------------------------
 
+/** Timeout for each Anthropic API call (45s — leaves headroom for Vercel's 60s limit) */
+const ANTHROPIC_TIMEOUT_MS = 45_000;
+
 let _anthropic: Anthropic | null = null;
 function getAnthropicClient(): Anthropic {
   if (!_anthropic) {
@@ -48,7 +51,10 @@ function getAnthropicClient(): Anthropic {
         'ANTHROPIC_API_KEY is not configured. Please add it to your environment variables.',
       );
     }
-    _anthropic = new Anthropic({ apiKey });
+    _anthropic = new Anthropic({
+      apiKey,
+      timeout: ANTHROPIC_TIMEOUT_MS,
+    });
   }
   return _anthropic;
 }
