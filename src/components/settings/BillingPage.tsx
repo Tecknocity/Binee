@@ -13,7 +13,6 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
-import { useCreditBalance } from '@/billing/hooks/useCreditBalance';
 import { PLAN_TIERS, PAYGO_PRICE_PER_CREDIT_CENTS } from '@/billing/config';
 import type { UserSubscription, BillingPeriod, SubscriptionStatus, PlanTier } from '@/billing/types/subscriptions';
 import PlanSelector from '@/components/billing/PlanSelector';
@@ -361,29 +360,39 @@ function TopUpCreditsModal({
 
 export default function BillingPage() {
   const { canManageBilling } = usePermissions();
-  const { balance, subscriptionBalance, subscriptionPlanCredits, paygoBalance, loading: balanceLoading } = useCreditBalance();
 
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [subLoading, setSubLoading] = useState(true);
+  const [balance, setBalance] = useState(0);
+  const [subscriptionBalance, setSubscriptionBalance] = useState(0);
+  const [subscriptionPlanCredits, setSubscriptionPlanCredits] = useState(0);
+  const [paygoBalance, setPaygoBalance] = useState(0);
+  const [balanceLoading, setBalanceLoading] = useState(true);
   const [showManageModal, setShowManageModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
 
-  // Fetch subscription data
+  // Fetch subscription and credits in parallel
   useEffect(() => {
-    async function fetchSubscription() {
-      try {
-        const res = await fetch('/api/billing/subscription');
-        if (res.ok) {
-          const data = await res.json();
-          setSubscription(data.subscription);
+    const fetchSubscription = fetch('/api/billing/subscription')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data) setSubscription(data.subscription); })
+      .catch(() => {})
+      .finally(() => setSubLoading(false));
+
+    const fetchCredits = fetch('/api/billing/credits')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setBalance(data.displayBalance ?? 0);
+          setSubscriptionBalance(data.subscription ?? 0);
+          setSubscriptionPlanCredits(data.subscriptionPlanCredits ?? 0);
+          setPaygoBalance(data.paygo ?? 0);
         }
-      } catch {
-        // ignore
-      } finally {
-        setSubLoading(false);
-      }
-    }
-    fetchSubscription();
+      })
+      .catch(() => {})
+      .finally(() => setBalanceLoading(false));
+
+    Promise.all([fetchSubscription, fetchCredits]);
   }, []);
 
   const status: SubscriptionStatus = subscription?.status ?? 'none';
