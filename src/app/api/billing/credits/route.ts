@@ -24,7 +24,12 @@ export async function GET(req: NextRequest) {
     .single();
 
   if (!member) {
-    return NextResponse.json({ displayBalance: 0 });
+    return NextResponse.json({
+      displayBalance: 0,
+      subscription: 0,
+      subscriptionPlanCredits: 0,
+      paygo: 0,
+    });
   }
 
   const { data: workspace } = await supabaseAdmin
@@ -33,8 +38,15 @@ export async function GET(req: NextRequest) {
     .eq('id', member.workspace_id)
     .single();
 
+  const balance = workspace?.credit_balance ?? 0;
+
   return NextResponse.json(
-    { displayBalance: workspace?.credit_balance ?? 0 },
+    {
+      displayBalance: balance,
+      subscription: 0,
+      subscriptionPlanCredits: 0,
+      paygo: 0,
+    },
     { headers: { 'Cache-Control': 'private, max-age=30' } },
   );
 }
