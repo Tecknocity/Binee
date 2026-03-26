@@ -218,6 +218,9 @@ export function useChat(conversationId: string | null) {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // Ref to allow auto-approve to call confirmAction before it's defined in the hook
   const confirmActionRef = useRef<(actionId: string, confirmed: boolean) => void>(() => {});
+  // Guard: when sendMessage is in-flight, prevent loadConversation from wiping
+  // the optimistic messages (race condition when a new conversation is created)
+  const sendingRef = useRef(false);
 
   // -------------------------------------------------------------------------
   // Load messages from database
@@ -232,6 +235,10 @@ export function useChat(conversationId: string | null) {
         totalCredits.current = 0;
         return;
       }
+
+      // If a message is currently being sent (e.g. right after conversation
+      // creation), skip reloading to avoid wiping the optimistic user message.
+      if (sendingRef.current) return;
 
       setIsLoadingHistory(true);
       try {
@@ -336,6 +343,9 @@ export function useChat(conversationId: string | null) {
 
       const workspaceId = workspace?.id ?? '';
       const userId = user?.id ?? '';
+
+      // Prevent loadConversation from wiping our optimistic message
+      sendingRef.current = true;
 
       const userMessage: ChatMessage = {
         id: `msg-${Date.now()}`,
@@ -502,6 +512,7 @@ export function useChat(conversationId: string | null) {
           }
         }
       } finally {
+        sendingRef.current = false;
         setIsLoading(false);
       }
     },
