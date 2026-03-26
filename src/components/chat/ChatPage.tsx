@@ -270,6 +270,7 @@ export default function ChatPage() {
   const {
     messages,
     isLoading,
+    isLoadingHistory,
     sendMessage,
     confirmAction,
     alwaysAllowAction,
@@ -354,7 +355,7 @@ export default function ChatPage() {
     return <WorkspaceSetupError wsError={wsError} user={user} />;
   }
 
-  const hasMessages = messages.length > 0 || pendingFirstMessage !== null;
+  const hasMessages = messages.length > 0 || pendingFirstMessage !== null || (effectiveConversationId !== null && isLoadingHistory);
   const firstName = user?.display_name?.split(' ')[0] || undefined;
 
   // Get the active conversation's title for the header
@@ -409,6 +410,7 @@ export default function ChatPage() {
                   : messages
               }
               isLoading={isLoading || pendingFirstMessage !== null}
+              isLoadingHistory={isLoadingHistory}
               onConfirmAction={handleConfirmAction}
               onCancelAction={handleCancelAction}
               onAlwaysAllowAction={handleAlwaysAllowAction}
