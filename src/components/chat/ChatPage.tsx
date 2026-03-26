@@ -252,6 +252,7 @@ export default function ChatPage() {
   const router = useRouter();
   const isNew = searchParams.get('new') === '1';
   const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [pendingFirstMessage, setPendingFirstMessage] = useState<string | null>(null);
   const isOutOfCredits = credit_balance <= 0;
 
   // All hooks must be called before any early return (React rules of hooks)
@@ -301,7 +302,11 @@ export default function ChatPage() {
       }
 
       if (!activeConversationId) {
+        // Show the user's message in the chat view immediately,
+        // before the conversation is created in the database.
+        setPendingFirstMessage(content.trim());
         const newId = await createConversation();
+        setPendingFirstMessage(null);
         sendMessage(content, newId);
       } else {
         sendMessage(content);
@@ -349,7 +354,7 @@ export default function ChatPage() {
     return <WorkspaceSetupError wsError={wsError} user={user} />;
   }
 
-  const hasMessages = messages.length > 0;
+  const hasMessages = messages.length > 0 || pendingFirstMessage !== null;
   const firstName = user?.display_name?.split(' ')[0] || undefined;
 
   // Get the active conversation's title for the header
@@ -393,8 +398,19 @@ export default function ChatPage() {
           <div className="flex-1 min-h-0 flex flex-col">
             <ChatHeader title={conversationTitle} onRename={handleRename} />
             <MessageThread
-              messages={messages}
-              isLoading={isLoading}
+              messages={
+                pendingFirstMessage && messages.length === 0
+                  ? [
+                      {
+                        id: 'pending-first-msg',
+                        role: 'user' as const,
+                        content: pendingFirstMessage,
+                        timestamp: new Date(),
+                      },
+                    ]
+                  : messages
+              }
+              isLoading={isLoading || pendingFirstMessage !== null}
               onConfirmAction={handleConfirmAction}
               onCancelAction={handleCancelAction}
               onAlwaysAllowAction={handleAlwaysAllowAction}
@@ -409,7 +425,7 @@ export default function ChatPage() {
             ) : (
               <ChatInput
                 onSend={handleSend}
-                disabled={isLoading}
+                disabled={isLoading || pendingFirstMessage !== null}
               />
             )}
           </div>
