@@ -15,7 +15,7 @@ import type { Dashboard, DashboardWidget } from '@/types/database';
 // cached_tasks / cached_lists / cached_team_members simultaneously.
 // ---------------------------------------------------------------------------
 
-const CACHE_TTL = 30_000; // 30 seconds
+const CACHE_TTL = 5 * 60_000; // 5 minutes — data persists across navigation via DashboardContext
 
 interface CacheEntry<T> {
   data: T;

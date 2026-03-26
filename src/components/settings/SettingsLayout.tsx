@@ -51,11 +51,12 @@ export default function SettingsLayout() {
 
   // Sync tab from URL when navigating back to settings with a different ?tab=
   useEffect(() => {
-    if (tabParam && validTabs.has(tabParam) && tabParam !== activeTab) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync URL param to local state
+    if (tabParam && validTabs.has(tabParam)) {
       setActiveTab(tabParam as TabId);
     }
-  }, [tabParam, activeTab]);
+    // Only react to URL changes — exclude activeTab to avoid circular updates
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam]);
 
   // After ClickUp OAuth success, refresh workspace data so UI reflects connected state
   useEffect(() => {
@@ -68,9 +69,24 @@ export default function SettingsLayout() {
   }, [successParam, refreshWorkspace, router]);
 
   const handleTabChange = (id: TabId) => {
+    // Update local state immediately for snappy UI, then sync URL
     setActiveTab(id);
     router.replace(`/settings?tab=${id}`, { scroll: false });
   };
+
+  // Memoize active content to prevent unmount/remount on re-renders
+  const activeContent = (() => {
+    switch (activeTab) {
+      case 'general': return <GeneralSettings />;
+      case 'account': return <AccountSettings />;
+      case 'workspace': return <WorkspaceSettingsPage />;
+      case 'notifications': return <NotificationSettings />;
+      case 'privacy': return <PrivacySettings />;
+      case 'team': return <TeamSettings />;
+      case 'billing': return <BillingPage />;
+      case 'integrations': return <IntegrationsSettingsPage />;
+    }
+  })();
 
   return (
     <div className="w-full">
@@ -132,14 +148,7 @@ export default function SettingsLayout() {
 
         {/* Content — fills remaining space */}
         <div className="flex-1 min-w-0">
-          {activeTab === 'general' && <GeneralSettings />}
-          {activeTab === 'account' && <AccountSettings />}
-          {activeTab === 'workspace' && <WorkspaceSettingsPage />}
-          {activeTab === 'notifications' && <NotificationSettings />}
-          {activeTab === 'privacy' && <PrivacySettings />}
-          {activeTab === 'team' && <TeamSettings />}
-          {activeTab === 'billing' && <BillingPage />}
-          {activeTab === 'integrations' && <IntegrationsSettingsPage />}
+          {activeContent}
         </div>
       </div>
     </div>

@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import type { WeeklySnapshot, ScoreDelta } from '@/hooks/useHealth';
+import type { WeeklySnapshot, ScoreDelta } from '@/contexts/HealthContext';
 
 function TrendTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) {
   if (!active || !payload?.length) return null;

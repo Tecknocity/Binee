@@ -7,6 +7,8 @@ import AppLayout from '@/components/layout/AppLayout';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { ConversationsProvider } from '@/contexts/ConversationsContext';
+import { HealthProvider } from '@/contexts/HealthContext';
+import { DashboardProvider } from '@/contexts/DashboardContext';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -32,10 +34,14 @@ export default function AppRouteLayout({ children }: { children: React.ReactNode
       <WorkspaceProvider>
         <SidebarProvider>
           <ConversationsProvider>
-            <Suspense fallback={<AppLoadingFallback />}>
-              <OnboardingFlow />
-              <AppLayout>{children}</AppLayout>
-            </Suspense>
+            <HealthProvider>
+              <DashboardProvider>
+                <Suspense fallback={<AppLoadingFallback />}>
+                  <OnboardingFlow />
+                  <AppLayout>{children}</AppLayout>
+                </Suspense>
+              </DashboardProvider>
+            </HealthProvider>
           </ConversationsProvider>
         </SidebarProvider>
       </WorkspaceProvider>
