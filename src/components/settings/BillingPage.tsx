@@ -329,19 +329,19 @@ function TopUpCreditsModal({
           <div
             onClick={() => setMode('upgrade')}
             className={cn(
-              'rounded-xl border p-5 cursor-pointer transition-colors',
+              'rounded-xl border p-5 cursor-pointer transition-all',
               mode === 'upgrade'
-                ? 'border-accent/40 bg-accent/5'
-                : 'border-border hover:border-border/80'
+                ? 'border-accent bg-accent/5'
+                : 'border-border bg-surface hover:border-text-muted/30'
             )}
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-base font-semibold text-text-primary">Upgrade your plan</p>
               <div className={cn(
-                'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0',
-                mode === 'upgrade' ? 'border-accent bg-accent' : 'border-border'
+                'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+                mode === 'upgrade' ? 'border-accent bg-accent' : 'border-[#3A3A4A]'
               )}>
-                {mode === 'upgrade' && <div className="w-2 h-2 rounded-full bg-white" />}
+                {mode === 'upgrade' && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
               </div>
             </div>
 
@@ -403,19 +403,19 @@ function TopUpCreditsModal({
           <div
             onClick={() => setMode('topup')}
             className={cn(
-              'rounded-xl border p-5 cursor-pointer transition-colors',
+              'rounded-xl border p-5 cursor-pointer transition-all',
               mode === 'topup'
-                ? 'border-accent/40 bg-accent/5'
-                : 'border-border hover:border-border/80'
+                ? 'border-accent bg-accent/5'
+                : 'border-border bg-surface hover:border-text-muted/30'
             )}
           >
             <div className="flex items-center justify-between mb-1">
               <p className="text-base font-semibold text-text-primary">Top up credits</p>
               <div className={cn(
-                'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0',
-                mode === 'topup' ? 'border-accent bg-accent' : 'border-border'
+                'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+                mode === 'topup' ? 'border-accent bg-accent' : 'border-[#3A3A4A]'
               )}>
-                {mode === 'topup' && <div className="w-2 h-2 rounded-full bg-white" />}
+                {mode === 'topup' && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
               </div>
             </div>
             <p className="text-sm text-text-secondary">Purchase credits on demand. Never expire.</p>
