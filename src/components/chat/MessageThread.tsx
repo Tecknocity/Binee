@@ -8,6 +8,7 @@ import ChatMessage from './ChatMessage';
 interface MessageThreadProps {
   messages: ChatMessageType[];
   isLoading: boolean;
+  isLoadingHistory?: boolean;
   onConfirmAction: (id: string) => void;
   onCancelAction: (id: string) => void;
   onAlwaysAllowAction?: (id: string, toolName: string) => void;
@@ -17,6 +18,7 @@ interface MessageThreadProps {
 export default function MessageThread({
   messages,
   isLoading,
+  isLoadingHistory,
   onConfirmAction,
   onCancelAction,
   onAlwaysAllowAction,
@@ -29,6 +31,17 @@ export default function MessageThread({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  if (isLoadingHistory) {
+    return (
+      <div className="flex-1 overflow-y-auto px-4 py-6 flex items-center justify-center">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-4 h-4 text-accent animate-spin" />
+          <span className="text-sm text-text-secondary">Loading conversation...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
