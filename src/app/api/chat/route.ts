@@ -76,19 +76,21 @@ export async function POST(request: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : 'An unexpected error occurred';
 
-    // Provide actionable messages for known configuration issues
+    // Classify error for appropriate status code
     const isConfigError =
       errorMessage.includes('ANTHROPIC_API_KEY') ||
       errorMessage.includes('SUPABASE') ||
       errorMessage.includes('environment variable');
 
-    const isProduction = process.env.NODE_ENV === 'production';
-    const safeMessage = isProduction && !isConfigError
-      ? 'An error occurred while processing your request. Please try again.'
-      : errorMessage;
+    // Always surface the error category so users can report issues.
+    // Strip only truly internal details (stack traces, raw SQL).
+    const safeMessage = errorMessage
+      .replace(/at\s+\S+\s+\(.*?\)/g, '')   // strip stack frames
+      .replace(/SELECT.*?FROM/gi, '[query]') // strip raw SQL
+      .trim();
 
     return NextResponse.json(
-      { error: safeMessage },
+      { error: safeMessage || 'An unexpected error occurred' },
       { status: isConfigError ? 503 : 500 },
     );
   }

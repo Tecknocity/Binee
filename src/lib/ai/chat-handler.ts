@@ -145,6 +145,7 @@ export async function handleChat(
   // -------------------------------------------------------------------------
   // Step 1-2: Classify the message (B-037)
   // -------------------------------------------------------------------------
+  console.log('[handleChat] Step 1: classifying message');
   const classification = classifyMessage(message);
 
   // -------------------------------------------------------------------------
@@ -152,12 +153,20 @@ export async function handleChat(
   // -------------------------------------------------------------------------
   const routing = getModelForTask(classification.taskType);
   const modelConfig = routeToModel(classification.taskType);
+  console.log(`[handleChat] Step 2: routed to ${modelConfig.model} for task "${classification.taskType}"`);
 
   // -------------------------------------------------------------------------
   // Step 3b: Calculate credit cost and check balance before proceeding (B-049)
   // -------------------------------------------------------------------------
   const creditCost = calculateCreditCost(classification.taskType, routing.modelId);
-  const supabase = getSupabaseAdmin();
+  let supabase: ReturnType<typeof getSupabaseAdmin>;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch (e) {
+    throw new Error(`Supabase config error: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  console.log('[handleChat] Step 3: checking credits');
   const { data: workspace, error: wsError } = await supabase
     .from('workspaces')
     .select('credit_balance')
@@ -165,7 +174,7 @@ export async function handleChat(
     .single();
 
   if (wsError || !workspace) {
-    throw new Error(`Workspace not found: ${wsError?.message ?? 'unknown error'}`);
+    throw new Error(`Workspace not found (id: ${workspace_id}): ${wsError?.message ?? 'no data returned'}`);
   }
 
   const insufficientCredits = checkSufficientCredits(workspace.credit_balance, creditCost);
@@ -183,34 +192,40 @@ export async function handleChat(
   // -------------------------------------------------------------------------
   // Step 4-5: Build workspace context (B-041) + fetch brain modules (B-KB)
   // -------------------------------------------------------------------------
-  const context = await buildContext(workspace_id, user_id, conversation_id, classification.taskType);
+  console.log('[handleChat] Step 4: building context');
+  let context: Awaited<ReturnType<typeof buildContext>>;
+  try {
+    context = await buildContext(workspace_id, user_id, conversation_id, classification.taskType);
+  } catch (e) {
+    throw new Error(`Context build failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const clickUpConnected = context.workspace.clickup_connected;
 
   // -------------------------------------------------------------------------
   // Step 6: Assemble prompt with token budgeting (B-042)
-  //
-  // loadSystemPrompt builds the base system prompt (identity, business state,
-  // computed data, conversation awareness) from the KB.
-  //
-  // assemblePrompt layers on token-budgeted brain modules, shared KB summary,
-  // and fitted conversation history — producing the final system + messages
-  // ready for the Claude API.
   // -------------------------------------------------------------------------
-  const baseSystemPrompt = await loadSystemPrompt(context, {
-    taskType: classification.taskType,
-  });
+  console.log('[handleChat] Step 5: assembling prompt');
+  let assembled: Awaited<ReturnType<typeof assemblePrompt>>;
+  try {
+    const baseSystemPrompt = await loadSystemPrompt(context, {
+      taskType: classification.taskType,
+    });
 
-  const assembled = await assemblePrompt(
-    baseSystemPrompt,
-    context,
-    context.conversationHistory,
-    classification.taskType,
-    { currentMessage: message },
-  );
+    assembled = await assemblePrompt(
+      baseSystemPrompt,
+      context,
+      context.conversationHistory,
+      classification.taskType,
+      { currentMessage: message },
+    );
+  } catch (e) {
+    throw new Error(`Prompt assembly failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   // -------------------------------------------------------------------------
   // Step 7: Call Claude API with tool use loop
   // -------------------------------------------------------------------------
+  console.log('[handleChat] Step 6: calling Claude API');
   const toolsForApi = clickUpConnected ? BINEE_TOOLS : [];
   const allToolCalls: ToolCallResult[] = [];
   let totalInputTokens = 0;
@@ -232,13 +247,20 @@ export async function handleChat(
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     toolRounds = round + 1;
 
-    const response = await getAnthropicClient().messages.create({
-      model: modelConfig.model,
-      max_tokens: modelConfig.maxTokens,
-      system: assembled.system,
-      ...(toolsForApi.length > 0 ? { tools: toolsForApi } : {}),
-      messages: apiMessages,
-    });
+    let response: Anthropic.Message;
+    try {
+      response = await getAnthropicClient().messages.create({
+        model: modelConfig.model,
+        max_tokens: modelConfig.maxTokens,
+        system: assembled.system,
+        ...(toolsForApi.length > 0 ? { tools: toolsForApi } : {}),
+        messages: apiMessages,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`Anthropic API error (round ${round + 1}): ${msg}`);
+    }
+    console.log(`[handleChat] Claude responded (round ${round + 1}, ${response.usage.output_tokens} tokens)`);
 
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;
