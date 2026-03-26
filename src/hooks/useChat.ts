@@ -462,8 +462,7 @@ export function useChat(conversationId: string | null) {
             ? err.message
             : 'An unexpected error occurred';
         const fallbackContent =
-          "I'm sorry, I wasn't able to process your message right now. " +
-          'Please try again in a moment. If the issue persists, check that your workspace is properly configured.';
+          `Something went wrong: ${errorDetail}`;
         const fallbackMessage: ChatMessage = {
           id: `msg-${Date.now()}-resp`,
           role: 'assistant',
