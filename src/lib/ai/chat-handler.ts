@@ -42,7 +42,13 @@ import { createClient } from '@supabase/supabase-js';
 let _anthropic: Anthropic | null = null;
 function getAnthropicClient(): Anthropic {
   if (!_anthropic) {
-    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        'ANTHROPIC_API_KEY is not configured. Please add it to your environment variables.',
+      );
+    }
+    _anthropic = new Anthropic({ apiKey });
   }
   return _anthropic;
 }
