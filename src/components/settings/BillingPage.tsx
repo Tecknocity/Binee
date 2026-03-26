@@ -43,6 +43,9 @@ function ManagePlanModal({
   onClose: () => void;
   subscription: UserSubscription | null;
 }) {
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+
   if (!open) return null;
 
   const status = subscription?.status ?? 'none';
@@ -59,16 +62,21 @@ function ManagePlanModal({
     ? `${tierConfig.credits} Credits / ${billingPeriod === 'annual' ? 'Annual' : 'Monthly'}`
     : 'No active plan';
 
-  // Stripe portal links — placeholders for now
-  const handleEditBilling = () => {
-    // TODO: Connect to Stripe Customer Portal (billing info section)
-    window.open('#stripe-billing-info', '_blank');
-  };
+  const hasSubscription = status === 'active' || status === 'past_due';
 
-  const handleInvoices = () => {
-    // TODO: Connect to Stripe Customer Portal (invoices section)
-    window.open('#stripe-invoices', '_blank');
-  };
+  async function openStripePortal() {
+    setPortalLoading(true);
+    try {
+      const res = await fetch('/api/billing/create-portal', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch {
+      // ignore
+    } finally {
+      setPortalLoading(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -81,7 +89,7 @@ function ManagePlanModal({
             <p className="text-sm text-text-secondary">Subscription & billing settings</p>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { onClose(); setCancelConfirm(false); }}
             className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
           >
             <X className="w-5 h-5" />
@@ -122,23 +130,73 @@ function ManagePlanModal({
             )}
           </div>
 
-          {/* Actions */}
+          {/* Stripe Portal actions */}
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={handleEditBilling}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
+              onClick={openStripePortal}
+              disabled={!hasSubscription || portalLoading}
+              className={cn(
+                'flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border transition-colors',
+                hasSubscription
+                  ? 'text-text-primary hover:border-accent/30'
+                  : 'text-text-muted cursor-not-allowed'
+              )}
             >
-              <CreditCard className="w-4 h-4" />
-              Edit billing information
+              {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+              Edit billing info
             </button>
             <button
-              onClick={handleInvoices}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:border-accent/30 transition-colors"
+              onClick={openStripePortal}
+              disabled={!hasSubscription || portalLoading}
+              className={cn(
+                'flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border transition-colors',
+                hasSubscription
+                  ? 'text-text-primary hover:border-accent/30'
+                  : 'text-text-muted cursor-not-allowed'
+              )}
             >
-              <FileText className="w-4 h-4" />
+              {portalLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
               Invoices & payments
             </button>
           </div>
+
+          {/* Cancel subscription */}
+          {hasSubscription && (
+            <div className="pt-2 border-t border-border">
+              {!cancelConfirm ? (
+                <button
+                  onClick={() => setCancelConfirm(true)}
+                  className="w-full py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 bg-surface border border-border hover:border-red-500/30 transition-colors"
+                >
+                  Cancel subscription
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <p className="text-sm text-red-400">
+                      Are you sure? Your subscription will remain active until {renewalDate || 'the end of your billing period'}. After that, your monthly credits will stop and only extra credits will remain.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setCancelConfirm(false)}
+                      className="py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:bg-surface-hover transition-colors"
+                    >
+                      Keep subscription
+                    </button>
+                    <button
+                      onClick={openStripePortal}
+                      disabled={portalLoading}
+                      className="py-2.5 rounded-lg text-sm font-medium bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center justify-center gap-2"
+                    >
+                      {portalLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Confirm cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -146,6 +204,16 @@ function ManagePlanModal({
 }
 
 // ── Top Up Credits Modal ───────────────────────────────────
+
+const TIER_KEYS = Object.keys(PLAN_TIERS) as PlanTier[];
+
+const SELECT_ARROW_STYLE = {
+  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+  backgroundPosition: 'right 0.75rem center',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: '1.25em 1.25em',
+  paddingRight: '2.5rem',
+} as const;
 
 function TopUpCreditsModal({
   open,
@@ -157,58 +225,79 @@ function TopUpCreditsModal({
   subscription: UserSubscription | null;
 }) {
   const [mode, setMode] = useState<'upgrade' | 'topup'>('upgrade');
-  const [selectedPaygAmount, setSelectedPaygAmount] = useState(100);
+  const [loading, setLoading] = useState(false);
+
+  const currentTier = subscription?.plan_tier as PlanTier | undefined;
+  const currentTierConfig = currentTier ? PLAN_TIERS[currentTier] : null;
+  const billingPeriod = subscription?.billing_period ?? 'monthly';
+  const isSubscribed = subscription?.status === 'active' && !!currentTier;
+
+  // Upgrade: find next tier up, allow dropdown to pick any higher tier
+  const currentIndex = currentTier ? TIER_KEYS.indexOf(currentTier) : -1;
+  const upgradeTiers = isSubscribed
+    ? TIER_KEYS.filter((_, i) => i > currentIndex)
+    : TIER_KEYS;
+  const [selectedUpgradeTier, setSelectedUpgradeTier] = useState<PlanTier>(
+    upgradeTiers[0] || TIER_KEYS[0]
+  );
+
+  // PAYG: use the same tier amounts as subscription
+  const [selectedPaygTier, setSelectedPaygTier] = useState<PlanTier>('250');
 
   if (!open) return null;
 
-  const currentTier = subscription?.plan_tier;
-  const currentTierConfig = currentTier ? PLAN_TIERS[currentTier as keyof typeof PLAN_TIERS] : null;
-  const billingPeriod = subscription?.billing_period ?? 'monthly';
-
-  // Find the next tier up for upgrade suggestion
-  const tierKeys = Object.keys(PLAN_TIERS) as PlanTier[];
-  const currentIndex = currentTier ? tierKeys.indexOf(currentTier) : -1;
-  const nextTier = currentIndex >= 0 && currentIndex < tierKeys.length - 1
-    ? tierKeys[currentIndex + 1]
-    : tierKeys[0];
-  const nextTierConfig = PLAN_TIERS[nextTier];
-  const nextTierMonthlyPrice = billingPeriod === 'annual'
-    ? nextTierConfig.annualMonthlyPrice
-    : nextTierConfig.monthlyPrice;
-
-  // Compute difference for "due today" (prorated placeholder)
+  const upgradeTierConfig = PLAN_TIERS[selectedUpgradeTier];
   const currentMonthly = currentTierConfig
     ? (billingPeriod === 'annual' ? currentTierConfig.annualMonthlyPrice : currentTierConfig.monthlyPrice)
     : 0;
-  const priceDifference = nextTierMonthlyPrice - currentMonthly;
-  const additionalCredits = nextTierConfig.credits - (currentTierConfig?.credits ?? 0);
+  const upgradeMonthly = billingPeriod === 'annual'
+    ? upgradeTierConfig.annualMonthlyPrice
+    : upgradeTierConfig.monthlyPrice;
+  const priceDifference = upgradeMonthly - currentMonthly;
+  const additionalCredits = upgradeTierConfig.credits - (currentTierConfig?.credits ?? 0);
 
-  // PAYG amounts
-  const PAYG_OPTIONS = [50, 100, 250, 500] as const;
-  const paygPrice = ((selectedPaygAmount * PAYGO_PRICE_PER_CREDIT_CENTS) / 100).toFixed(2);
+  // Annual savings in dollars for upgrade tier
+  const annualSavingDollars = Math.round(
+    (upgradeTierConfig.monthlyPrice - upgradeTierConfig.annualMonthlyPrice) * 12 / 100
+  );
 
-  // Annual savings for the upgrade suggestion
-  const annualSaving = nextTierConfig
-    ? (nextTierConfig.monthlyPrice - nextTierConfig.annualMonthlyPrice) * 12 / 100
-    : 0;
+  // PAYG pricing
+  const paygCredits = PLAN_TIERS[selectedPaygTier].credits;
+  const paygPriceCents = paygCredits * PAYGO_PRICE_PER_CREDIT_CENTS;
 
   async function handleUpgrade() {
-    // TODO: Connect to Stripe checkout for upgrade
-    onClose();
-  }
-
-  async function handlePaygPurchase() {
+    setLoading(true);
     try {
-      const res = await fetch('/api/billing/create-payg-checkout', {
+      const res = await fetch('/api/billing/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credits: selectedPaygAmount }),
+        body: JSON.stringify({ tier: selectedUpgradeTier, billingPeriod }),
       });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       if (data.url) window.location.href = data.url;
     } catch {
       // ignore
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handlePaygPurchase() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/billing/create-payg-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credits: paygCredits }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -217,138 +306,161 @@ function TopUpCreditsModal({
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg mx-4 bg-surface border border-border rounded-xl shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">Add more credits</h2>
-            <p className="text-sm text-text-secondary">Upgrade your plan for better value, or top up credits one time.</p>
+        <div className="px-6 pt-6 pb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-text-primary">Add more credits</h2>
+              <p className="text-sm text-text-secondary mt-1">
+                Upgrade your plan for better value, or top up credits one time.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors -mt-1 -mr-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 space-y-4">
-          {/* Option 1: Upgrade plan */}
-          <button
+        <div className="px-6 pb-6 space-y-3">
+          {/* ── Option 1: Upgrade plan ── */}
+          <div
             onClick={() => setMode('upgrade')}
             className={cn(
-              'w-full text-left rounded-xl border p-4 transition-colors',
+              'rounded-xl border p-5 cursor-pointer transition-colors',
               mode === 'upgrade'
                 ? 'border-accent/40 bg-accent/5'
                 : 'border-border hover:border-border/80'
             )}
           >
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-sm font-semibold text-text-primary">Upgrade your plan</p>
-              </div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-base font-semibold text-text-primary">Upgrade your plan</p>
               <div className={cn(
-                'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
+                'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0',
                 mode === 'upgrade' ? 'border-accent bg-accent' : 'border-border'
               )}>
                 {mode === 'upgrade' && <div className="w-2 h-2 rounded-full bg-white" />}
               </div>
             </div>
 
-            <div className="space-y-1 text-xs text-text-secondary">
+            {/* Plan info rows */}
+            <div className="space-y-1.5 text-sm">
               {currentTierConfig && (
-                <div className="flex justify-between">
+                <div className="flex justify-between text-text-secondary">
                   <span>Current plan</span>
                   <span>{currentTierConfig.credits} credits/mo &middot; {formatDollars(currentMonthly)}/mo</span>
                 </div>
               )}
-              <div className="flex justify-between">
+              <div className="flex justify-between text-text-primary">
                 <span>Upgrade to</span>
-                <span>{nextTierConfig.credits} credits/mo &middot; {formatDollars(nextTierMonthlyPrice)}/mo</span>
+                <span>{upgradeTierConfig.credits} credits/mo &middot; {formatDollars(upgradeMonthly)}/mo</span>
               </div>
             </div>
 
+            {/* Expanded content */}
             {mode === 'upgrade' && (
-              <div className="mt-3 pt-3 border-t border-border/50">
+              <div className="mt-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+                {/* Price summary */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-xl font-bold text-text-primary">{formatDollars(priceDifference)}</span>
-                    <span className="text-xs text-text-muted ml-1.5">due today</span>
+                    <span className="text-2xl font-bold text-text-primary">{formatDollars(priceDifference)}</span>
+                    <span className="text-sm text-text-muted ml-2">due today</span>
                   </div>
-                  {billingPeriod === 'monthly' && annualSaving > 0 && (
-                    <span className="text-xs font-medium text-emerald-400">
-                      Subscribe & save {Math.round(((nextTierConfig.monthlyPrice - nextTierConfig.annualMonthlyPrice) / nextTierConfig.monthlyPrice) * 100)}%
+                  {billingPeriod === 'monthly' && annualSavingDollars > 0 && (
+                    <span className="text-sm font-medium text-accent">
+                      Save ${annualSavingDollars}/yr with annual
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-text-muted mt-1">+{additionalCredits} additional credits</p>
+
+                {/* Tier selector */}
+                <select
+                  value={selectedUpgradeTier}
+                  onChange={(e) => setSelectedUpgradeTier(e.target.value as PlanTier)}
+                  className="w-full px-3 py-2.5 rounded-lg bg-navy-base border border-border text-text-primary text-sm focus:border-accent/50 focus:outline-none transition-colors appearance-none cursor-pointer"
+                  style={SELECT_ARROW_STYLE}
+                >
+                  {upgradeTiers.length === 0 && (
+                    <option disabled>You&apos;re on the highest plan</option>
+                  )}
+                  {upgradeTiers.map((tier) => {
+                    const tc = PLAN_TIERS[tier];
+                    const addCredits = tc.credits - (currentTierConfig?.credits ?? 0);
+                    return (
+                      <option key={tier} value={tier}>
+                        +{addCredits} additional credits
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             )}
-          </button>
+          </div>
 
-          {/* Option 2: Top up credits */}
-          <button
+          {/* ── Option 2: Top up credits ── */}
+          <div
             onClick={() => setMode('topup')}
             className={cn(
-              'w-full text-left rounded-xl border p-4 transition-colors',
+              'rounded-xl border p-5 cursor-pointer transition-colors',
               mode === 'topup'
                 ? 'border-accent/40 bg-accent/5'
                 : 'border-border hover:border-border/80'
             )}
           >
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <p className="text-sm font-semibold text-text-primary">Top up credits</p>
-                <p className="text-xs text-text-secondary">Purchase credits on demand. Never expire.</p>
-              </div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-base font-semibold text-text-primary">Top up credits</p>
               <div className={cn(
-                'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
+                'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0',
                 mode === 'topup' ? 'border-accent bg-accent' : 'border-border'
               )}>
                 {mode === 'topup' && <div className="w-2 h-2 rounded-full bg-white" />}
               </div>
             </div>
+            <p className="text-sm text-text-secondary">Purchase credits on demand. Never expire.</p>
 
+            {/* Expanded content */}
             {mode === 'topup' && (
-              <div className="mt-2 pt-3 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
-                <div className="grid grid-cols-4 gap-2">
-                  {PAYG_OPTIONS.map((amount) => (
-                    <button
-                      key={amount}
-                      onClick={(e) => { e.stopPropagation(); setSelectedPaygAmount(amount); }}
-                      className={cn(
-                        'py-2 rounded-lg text-sm font-medium border transition-colors',
-                        selectedPaygAmount === amount
-                          ? 'bg-accent/10 border-accent/40 text-accent'
-                          : 'bg-surface border-border text-text-secondary hover:border-accent/30'
-                      )}
-                    >
-                      +{amount}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <span className="text-xs text-text-muted">
-                    {selectedPaygAmount} credits &times; ${(PAYGO_PRICE_PER_CREDIT_CENTS / 100).toFixed(2)}
-                  </span>
-                  <span className="text-sm font-bold text-text-primary font-mono">${paygPrice}</span>
-                </div>
+              <div className="mt-4" onClick={(e) => e.stopPropagation()}>
+                <select
+                  value={selectedPaygTier}
+                  onChange={(e) => setSelectedPaygTier(e.target.value as PlanTier)}
+                  className="w-full px-3 py-2.5 rounded-lg bg-navy-base border border-border text-text-primary text-sm focus:border-accent/50 focus:outline-none transition-colors appearance-none cursor-pointer"
+                  style={SELECT_ARROW_STYLE}
+                >
+                  {TIER_KEYS.map((tier) => {
+                    const tc = PLAN_TIERS[tier];
+                    const price = ((tc.credits * PAYGO_PRICE_PER_CREDIT_CENTS) / 100).toFixed(2);
+                    return (
+                      <option key={tier} value={tier}>
+                        +{tc.credits} credits &nbsp;&nbsp;&nbsp; ${price}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             )}
-          </button>
+          </div>
 
-          {/* Actions */}
-          <div className="grid grid-cols-2 gap-3 pt-2">
+          {/* ── Footer actions ── */}
+          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
             <button
               onClick={onClose}
-              className="px-4 py-2.5 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:bg-surface-hover transition-colors"
+              className="py-3 rounded-lg text-sm font-medium bg-surface border border-border text-text-primary hover:bg-surface-hover transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={mode === 'upgrade' ? handleUpgrade : handlePaygPurchase}
-              className="px-4 py-2.5 rounded-lg text-sm font-medium bg-accent hover:bg-accent-hover text-white transition-colors"
+              disabled={loading || (mode === 'upgrade' && upgradeTiers.length === 0)}
+              className={cn(
+                'py-3 rounded-lg text-sm font-medium bg-accent hover:bg-accent-hover text-white transition-colors flex items-center justify-center gap-2',
+                loading && 'opacity-70 cursor-not-allowed'
+              )}
             >
-              {mode === 'upgrade' ? 'Upgrade plan' : `Buy ${selectedPaygAmount} credits`}
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {mode === 'upgrade' ? 'Upgrade plan' : `Buy credits`}
             </button>
           </div>
         </div>
