@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUserId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getDisplayBalance, getBalanceBreakdown } from '@/billing/engine/balance-calculator';
 
 /**
  * GET /api/billing/summary
  *
- * Combined endpoint returning both credit balance and subscription data
- * in a single request. This avoids duplicate auth overhead and halves
- * the number of round-trips compared to calling /credits + /subscription
- * separately.
+ * Combined endpoint returning workspace credit balance and subscription data.
+ * Credits are workspace-scoped — all team members see the same balance.
+ * Subscription metadata is still per-user (the owner's subscription).
  */
 export async function GET(req: NextRequest) {
   const userId = await getAuthenticatedUserId(req);
@@ -17,12 +15,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Fetch credit account and subscription in parallel
-  const [accountResult, subscriptionResult] = await Promise.all([
+  // Fetch workspace balance and subscription in parallel
+  const [memberResult, subscriptionResult] = await Promise.all([
     supabaseAdmin
-      .from('user_credit_accounts')
-      .select('subscription_balance, subscription_plan_credits, paygo_balance')
+      .from('workspace_members')
+      .select('workspace_id')
       .eq('user_id', userId)
+      .in('status', ['active', 'pending'])
+      .limit(1)
       .single(),
     supabaseAdmin
       .from('user_subscriptions')
@@ -31,29 +31,25 @@ export async function GET(req: NextRequest) {
       .single(),
   ]);
 
-  const account = accountResult.data;
   const subscription = subscriptionResult.error ? null : subscriptionResult.data;
 
   let credits;
-  if (!account) {
-    credits = {
-      displayBalance: 0,
-      subscription: 0,
-      subscriptionPlanCredits: 0,
-      paygo: 0,
-    };
+  if (!memberResult.data) {
+    credits = { displayBalance: 0 };
   } else {
-    const breakdown = getBalanceBreakdown(account);
+    const { data: workspace } = await supabaseAdmin
+      .from('workspaces')
+      .select('credit_balance')
+      .eq('id', memberResult.data.workspace_id)
+      .single();
+
     credits = {
-      displayBalance: getDisplayBalance(account),
-      subscription: breakdown.subscriptionCredits,
-      subscriptionPlanCredits: account.subscription_plan_credits,
-      paygo: breakdown.paygoCredits,
+      displayBalance: workspace?.credit_balance ?? 0,
     };
   }
 
-  return NextResponse.json({
-    credits,
-    subscription: subscription ?? null,
-  });
+  return NextResponse.json(
+    { credits, subscription: subscription ?? null },
+    { headers: { 'Cache-Control': 'private, max-age=30' } },
+  );
 }

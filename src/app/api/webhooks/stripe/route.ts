@@ -1,13 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import Stripe from 'stripe';
-import { allocateMonthlyCredits } from '@/billing/lifecycle/renewal';
 import { processExpiredSubscription } from '@/billing/lifecycle/cancellation';
 import { handlePaymentFailure } from '@/billing/lifecycle/payment-failure';
-import { handleSetupPurchase } from '@/billing/lifecycle/setup-purchase';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { CREDIT_ALLOCATION_INTERVAL_DAYS } from '@/billing/config';
+import { PLAN_TIERS, CREDIT_ALLOCATION_INTERVAL_DAYS } from '@/billing/config';
 import type { PlanTier } from '@/billing/types/subscriptions';
+
+// ---------------------------------------------------------------------------
+// Helper: add credits to the workspace owned by a given user
+// ---------------------------------------------------------------------------
+async function addCreditsToWorkspace(userId: string, credits: number, description: string) {
+  // Find workspace owned by this user
+  const { data: ws } = await supabaseAdmin
+    .from('workspaces')
+    .select('id')
+    .eq('owner_id', userId)
+    .limit(1)
+    .single();
+
+  if (!ws) {
+    console.error(`[stripe-webhook] No workspace found for owner ${userId}`);
+    return;
+  }
+
+  // Atomic credit addition via RPC
+  await supabaseAdmin.rpc('add_credits', {
+    p_workspace_id: ws.id,
+    p_user_id: userId,
+    p_amount: credits,
+    p_type: 'subscription',
+    p_description: description,
+    p_metadata: {},
+  });
+}
 
 // B-093: Full Stripe webhook handler (replaces old B-020 stub)
 export const dynamic = 'force-dynamic';
@@ -44,7 +70,7 @@ export async function POST(req: NextRequest) {
             ? new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString()
             : null;
 
-          // Create/update subscription record
+          // Create/update subscription record (keep for plan metadata)
           await supabaseAdmin
             .from('user_subscriptions')
             .update({
@@ -55,7 +81,7 @@ export async function POST(req: NextRequest) {
               current_period_end: billingPeriod === 'annual'
                 ? annualEndDate
                 : nextAllocation.toISOString(),
-              next_credit_allocation_date: now.toISOString(), // Allocate now
+              next_credit_allocation_date: now.toISOString(),
               annual_end_date: annualEndDate,
               stripe_customer_id: session.customer as string,
               payment_provider_id: session.subscription as string,
@@ -65,19 +91,33 @@ export async function POST(req: NextRequest) {
             })
             .eq('user_id', userId);
 
-          // Grant first month's credits immediately
-          await allocateMonthlyCredits(userId!, tier as PlanTier);
+          // Grant first month's credits to WORKSPACE pool
+          const tierConfig = PLAN_TIERS[tier as PlanTier];
+          if (tierConfig) {
+            await addCreditsToWorkspace(
+              userId!,
+              tierConfig.credits,
+              `Subscription activated: ${tierConfig.credits} credits (${tier} plan)`,
+            );
+          }
 
         } else if (type === 'paygo' && credits) {
-          // PAYG one-time purchase
+          // PAYG one-time purchase — add to workspace pool
           const creditCount = parseInt(credits);
-          await supabaseAdmin.rpc('add_paygo_credits', {
-            p_user_id: userId,
-            p_credits: creditCount,
-          });
+          await addCreditsToWorkspace(
+            userId!,
+            creditCount,
+            `PAYG purchase: ${creditCount} credits`,
+          );
 
         } else if (type === 'setup') {
-          await handleSetupPurchase(userId!);
+          // Setup fee — add setup credits to workspace pool
+          const { SETUP_CREDITS } = await import('@/billing/config');
+          await addCreditsToWorkspace(
+            userId!,
+            SETUP_CREDITS,
+            `Workspace setup purchase: ${SETUP_CREDITS} credits`,
+          );
         }
         break;
       }
@@ -103,8 +143,15 @@ export async function POST(req: NextRequest) {
         if (!sub) break;
 
         if (sub.billing_period === 'monthly') {
-          // ---- MONTHLY: Grant credits on every invoice ----
-          await allocateMonthlyCredits(sub.user_id, sub.plan_tier as PlanTier);
+          // ---- MONTHLY: Grant credits to workspace on every invoice ----
+          const tierConfig = PLAN_TIERS[sub.plan_tier as PlanTier];
+          if (tierConfig) {
+            await addCreditsToWorkspace(
+              sub.user_id,
+              tierConfig.credits,
+              `Monthly renewal: ${tierConfig.credits} credits (${sub.plan_tier} plan)`,
+            );
+          }
 
         } else if (sub.billing_period === 'annual') {
           // ---- ANNUAL: Stripe only charges once/year ----

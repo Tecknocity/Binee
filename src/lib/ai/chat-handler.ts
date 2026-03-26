@@ -28,10 +28,9 @@ import {
 } from '@/lib/ai/response-validator';
 import type { ValidationResult } from '@/lib/ai/response-validator';
 import {
-  calculateCreditCost,
   checkSufficientCredits,
 } from '@/lib/ai/billing';
-import { processAIUsage } from '@/billing/services/billing-service';
+import { tokensToCredits } from '@/billing/engine/token-converter';
 import { createClient } from '@supabase/supabase-js';
 
 // ---------------------------------------------------------------------------
@@ -155,9 +154,11 @@ export async function handleChat(
   console.log(`[handleChat] Step 2: routed to ${modelConfig.model} for task "${classification.taskType}"`);
 
   // -------------------------------------------------------------------------
-  // Step 3b: Calculate credit cost and check balance before proceeding (B-049)
+  // Step 3b: Pre-check workspace credit balance before proceeding (B-049)
   // -------------------------------------------------------------------------
-  const creditCost = calculateCreditCost(classification.taskType, routing.modelId);
+  // We check if the workspace has at least 1 credit. The actual cost is
+  // calculated after the API call (token-based). By design, the current
+  // action always completes — the user is blocked on the *next* action.
   let supabase: ReturnType<typeof getSupabaseAdmin>;
   try {
     supabase = getSupabaseAdmin();
@@ -176,7 +177,7 @@ export async function handleChat(
     throw new Error(`Workspace not found (id: ${workspace_id}): ${wsError?.message ?? 'no data returned'}`);
   }
 
-  const insufficientCredits = checkSufficientCredits(workspace.credit_balance, creditCost);
+  const insufficientCredits = checkSufficientCredits(workspace.credit_balance, 1);
   if (insufficientCredits) {
     return {
       content: insufficientCredits.message,
@@ -419,25 +420,60 @@ export async function handleChat(
   }
 
   // -------------------------------------------------------------------------
-  // Step 9: Deduct credits after successful AI response (B-049)
+  // Step 9: Deduct credits from WORKSPACE pool (B-049)
   // -------------------------------------------------------------------------
-  // NOTE: Legacy workspace-scoped flat deduction (deductCreditsForAIResponse)
-  // was removed — it double-charged users alongside the token-based system.
-  // Only the token-accurate user-scoped billing remains.
-
-  // B-091: Token-based user-scoped deduction (exact token-to-credit conversion)
-  const billingResult = await processAIUsage({
-    userId: user_id,
-    actionType: classification.taskType as 'chat' | 'health_check' | 'setup' | 'dashboard' | 'briefing',
-    sessionId: conversation_id,
+  // Token-based cost, rounded up to integer, deducted from the shared
+  // workspace credit_balance. All team members draw from the same pool.
+  const conversion = tokensToCredits({
+    input_tokens: totalInputTokens,
+    output_tokens: totalOutputTokens,
     model: routing.model as 'haiku' | 'sonnet' | 'opus',
-    inputTokens: totalInputTokens,
-    outputTokens: totalOutputTokens,
-  }).catch((err) => {
-    // Log but don't block the response if billing fails
-    console.error('[chat-handler] B-091 billing failed:', err);
-    return null;
   });
+  const creditCost = Math.max(1, Math.ceil(conversion.creditsConsumed));
+
+  // Atomic deduction from workspace pool via SQL RPC (row-locked)
+  let billingResult = null;
+  try {
+    const { data, error: deductError } = await supabase.rpc('deduct_credits', {
+      p_workspace_id: workspace_id,
+      p_user_id: user_id,
+      p_amount: creditCost,
+      p_description: `Chat: ${classification.taskType}`,
+      p_message_id: null,
+      p_metadata: {
+        task_type: classification.taskType,
+        model: routing.modelId,
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+        anthropic_cost_cents: conversion.totalCostCents,
+      },
+    });
+    if (deductError) {
+      console.error('[chat-handler] workspace credit deduction failed:', deductError.message);
+    } else {
+      billingResult = data;
+    }
+  } catch (err) {
+    console.error('[chat-handler] workspace credit deduction failed:', err);
+  }
+
+  // Log per-user usage for analytics (admin can see who burns what).
+  // This does NOT deduct from any balance — purely tracking.
+  try {
+    await supabase.from('credit_usage').insert({
+      user_id: user_id,
+      workspace_id: workspace_id,
+      action_type: classification.taskType,
+      model_used: routing.model,
+      input_tokens: totalInputTokens,
+      output_tokens: totalOutputTokens,
+      anthropic_cost_cents: conversion.totalCostCents,
+      credits_deducted: creditCost,
+    });
+  } catch (err) {
+    // Non-critical — don't block the response
+    console.error('[chat-handler] usage tracking insert failed:', err);
+  }
 
   // -------------------------------------------------------------------------
   // Step 10: Save messages + return response
