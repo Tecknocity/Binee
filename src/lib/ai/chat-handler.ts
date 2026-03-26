@@ -10,7 +10,7 @@ import { getModelForTask, routeToModel } from '@/lib/ai/router';
 import { loadSystemPrompt } from '@/lib/ai/prompts/system-prompt';
 import { assemblePrompt } from '@/lib/ai/prompt-assembler';
 import { buildContext } from '@/lib/ai/context';
-import { BINEE_TOOLS } from '@/lib/ai/tools';
+import { getToolsForTask } from '@/lib/ai/tools';
 import { executeTool } from '@/lib/ai/tool-executor';
 import {
   isWriteOperation,
@@ -30,7 +30,6 @@ import type { ValidationResult } from '@/lib/ai/response-validator';
 import {
   calculateCreditCost,
   checkSufficientCredits,
-  deductCreditsForAIResponse,
 } from '@/lib/ai/billing';
 import { processAIUsage } from '@/billing/services/billing-service';
 import { createClient } from '@supabase/supabase-js';
@@ -226,7 +225,7 @@ export async function handleChat(
   // Step 7: Call Claude API with tool use loop
   // -------------------------------------------------------------------------
   console.log('[handleChat] Step 6: calling Claude API');
-  const toolsForApi = clickUpConnected ? BINEE_TOOLS : [];
+  const toolsForApi = clickUpConnected ? getToolsForTask(classification.taskType) : [];
   const allToolCalls: ToolCallResult[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -244,6 +243,25 @@ export async function handleChat(
   // token-budgeted history + the current user message.
   const apiMessages: Anthropic.MessageParam[] = [...assembled.messages];
 
+  // Use Anthropic prompt caching: the system prompt and tool definitions
+  // are identical across rounds within a conversation, so marking them
+  // as ephemeral lets Anthropic cache them (90% cost reduction on hits).
+  const systemWithCache: Anthropic.TextBlockParam[] = [
+    {
+      type: 'text' as const,
+      text: assembled.system,
+      cache_control: { type: 'ephemeral' as const },
+    },
+  ];
+
+  const toolsWithCache = toolsForApi.length > 0
+    ? toolsForApi.map((tool, idx) =>
+        idx === toolsForApi.length - 1
+          ? { ...tool, cache_control: { type: 'ephemeral' as const } }
+          : tool
+      )
+    : [];
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     toolRounds = round + 1;
 
@@ -252,8 +270,8 @@ export async function handleChat(
       response = await getAnthropicClient().messages.create({
         model: modelConfig.model,
         max_tokens: modelConfig.maxTokens,
-        system: assembled.system,
-        ...(toolsForApi.length > 0 ? { tools: toolsForApi } : {}),
+        system: systemWithCache,
+        ...(toolsWithCache.length > 0 ? { tools: toolsWithCache } : {}),
         messages: apiMessages,
       });
     } catch (e) {
@@ -347,8 +365,8 @@ export async function handleChat(
       const confirmResponse = await getAnthropicClient().messages.create({
         model: modelConfig.model,
         max_tokens: modelConfig.maxTokens,
-        system: assembled.system,
-        ...(toolsForApi.length > 0 ? { tools: toolsForApi } : {}),
+        system: systemWithCache,
+        ...(toolsWithCache.length > 0 ? { tools: toolsWithCache } : {}),
         messages: apiMessages,
       });
 
@@ -403,15 +421,9 @@ export async function handleChat(
   // -------------------------------------------------------------------------
   // Step 9: Deduct credits after successful AI response (B-049)
   // -------------------------------------------------------------------------
-  // Legacy workspace-scoped deduction (flat credit cost)
-  await deductCreditsForAIResponse(supabase, {
-    workspaceId: workspace_id,
-    userId: user_id,
-    creditCost,
-    taskType: classification.taskType,
-    modelId: routing.modelId,
-    tokenUsage: assembled.tokenUsage,
-  });
+  // NOTE: Legacy workspace-scoped flat deduction (deductCreditsForAIResponse)
+  // was removed — it double-charged users alongside the token-based system.
+  // Only the token-accurate user-scoped billing remains.
 
   // B-091: Token-based user-scoped deduction (exact token-to-credit conversion)
   const billingResult = await processAIUsage({

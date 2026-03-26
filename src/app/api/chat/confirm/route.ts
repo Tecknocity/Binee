@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolvePendingAction } from '@/lib/ai/confirmation';
+import { createServerClient } from '@/lib/supabase/server';
 import type { ConfirmActionRequest } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
@@ -8,6 +9,13 @@ import type { ConfirmActionRequest } from '@/types/ai';
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate the user via session cookie
+    const supabase = await createServerClient();
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    if (authError || !authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
 
     const { workspace_id, conversation_id, action_id, confirmed } =

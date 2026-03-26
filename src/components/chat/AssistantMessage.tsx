@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import Image from 'next/image';
 import type { ChatMessage, DashboardChoiceData } from '@/hooks/useChat';
 import ToolCallIndicator from './ToolCallIndicator';
@@ -244,6 +244,10 @@ export default function AssistantMessage({
   onAlwaysAllowAction,
   onDashboardChoice,
 }: AssistantMessageProps) {
+  // Memoize markdown parsing — it's expensive (regex, DOM tree construction)
+  // and the message content never changes after render.
+  const renderedContent = useMemo(() => renderMarkdown(message.content), [message.content]);
+
   return (
     <div className="flex gap-3 mb-4">
       {/* Binee avatar */}
@@ -259,7 +263,7 @@ export default function AssistantMessage({
 
         {/* Message content with markdown */}
         <div className="bg-surface border border-border px-4 py-3 rounded-2xl rounded-bl-md">
-          {renderMarkdown(message.content)}
+          {renderedContent}
         </div>
 
         {/* Dashboard choice buttons */}

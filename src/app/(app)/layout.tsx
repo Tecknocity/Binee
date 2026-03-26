@@ -1,7 +1,6 @@
 'use client';
 
 import { Suspense } from 'react';
-import { AuthProvider } from '@/components/auth/AuthProvider';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppLayout from '@/components/layout/AppLayout';
@@ -29,19 +28,17 @@ function AppLoadingFallback() {
 
 export default function AppRouteLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AuthProvider>
-      <ProtectedRoute>
-        <WorkspaceProvider>
-          <SidebarProvider>
-            <ConversationsProvider>
-              <Suspense fallback={<AppLoadingFallback />}>
-                <OnboardingFlow />
-                <AppLayout>{children}</AppLayout>
-              </Suspense>
-            </ConversationsProvider>
-          </SidebarProvider>
-        </WorkspaceProvider>
-      </ProtectedRoute>
-    </AuthProvider>
+    <ProtectedRoute>
+      <WorkspaceProvider>
+        <SidebarProvider>
+          <ConversationsProvider>
+            <Suspense fallback={<AppLoadingFallback />}>
+              <OnboardingFlow />
+              <AppLayout>{children}</AppLayout>
+            </Suspense>
+          </ConversationsProvider>
+        </SidebarProvider>
+      </WorkspaceProvider>
+    </ProtectedRoute>
   );
 }

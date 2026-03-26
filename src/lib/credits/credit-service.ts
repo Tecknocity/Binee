@@ -113,38 +113,23 @@ export async function getUsageHistory(
 
 /**
  * Aggregate credit usage per workspace member.
- * Only counts deductions (negative-amount transactions).
+ * Uses a server-side SQL RPC to GROUP BY instead of fetching all rows
+ * and aggregating in JavaScript.
  */
 export async function getUsageByMember(
   workspaceId: string,
 ): Promise<MemberUsage[]> {
   const supabase = createBrowserClient();
 
-  const { data, error } = await supabase
-    .from('credit_transactions')
-    .select('user_id, amount')
-    .eq('workspace_id', workspaceId)
-    .eq('type', 'deduction');
+  const { data, error } = await supabase.rpc('get_credit_usage_by_member', {
+    p_workspace_id: workspaceId,
+  });
 
   if (error || !data) return [];
 
-  // Aggregate in JS since Supabase JS client doesn't support GROUP BY
-  const usageMap = new Map<string, { total: number; count: number }>();
-
-  for (const row of data) {
-    const uid = row.user_id ?? 'unknown';
-    const existing = usageMap.get(uid);
-    if (existing) {
-      existing.total += Math.abs(row.amount);
-      existing.count += 1;
-    } else {
-      usageMap.set(uid, { total: Math.abs(row.amount), count: 1 });
-    }
-  }
-
-  return Array.from(usageMap.entries()).map(([user_id, usage]) => ({
-    user_id,
-    total_credits_used: usage.total,
-    transaction_count: usage.count,
+  return (data as { user_id: string; total_credits: number; transaction_count: number }[]).map((row) => ({
+    user_id: row.user_id ?? 'unknown',
+    total_credits_used: row.total_credits,
+    transaction_count: row.transaction_count,
   }));
 }

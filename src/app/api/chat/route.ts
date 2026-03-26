@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleChat } from '@/lib/ai/chat-handler';
+import { createServerClient } from '@/lib/supabase/server';
+import { rateLimit } from '@/lib/rate-limit';
 import type { ChatRequest } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
@@ -13,6 +15,22 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate the user via session cookie
+    const supabase = await createServerClient();
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    if (authError || !authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Rate limit: 10 chat requests per minute per user
+    const rl = rateLimit(`chat:${authUser.id}`, 10, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait a moment before sending another message.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(rl.resetMs / 1000)) } },
+      );
+    }
+
     const body = await request.json();
 
     // Validate required fields
@@ -25,10 +43,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!user_id || typeof user_id !== 'string') {
+    // Ensure the authenticated user matches the claimed user_id
+    if (user_id !== authUser.id) {
       return NextResponse.json(
-        { error: 'user_id is required and must be a string' },
-        { status: 400 },
+        { error: 'user_id does not match authenticated user' },
+        { status: 403 },
       );
     }
 

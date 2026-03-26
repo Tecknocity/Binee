@@ -9,6 +9,13 @@ import { createServerClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate the user via session cookie
+    const supabase = await createServerClient();
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    if (authError || !authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { workspace_id, user_id } = body as {
       workspace_id?: string;
@@ -22,7 +29,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createServerClient();
+    // Ensure the authenticated user matches the claimed user_id
+    if (user_id !== authUser.id) {
+      return NextResponse.json(
+        { error: 'user_id does not match authenticated user' },
+        { status: 403 },
+      );
+    }
 
     // Fetch user profile for personalized greeting
     const { data: profile } = await supabase
