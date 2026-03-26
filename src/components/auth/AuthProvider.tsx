@@ -315,9 +315,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // If workspaces were found, we're done
     if (loaded.length > 0) return loaded;
 
-    // ensure-owner may have just created the workspace — retry once
+    // ensure-owner may have just created the workspace — retry once.
+    // No artificial delay needed: ensure-owner already completed above
+    // (via Promise.all), so any workspace it created is already committed.
     console.warn('ensureAndLoad: no workspaces found, retrying load');
-    await new Promise((r) => setTimeout(r, 500));
     return await loadWorkspaces(userId);
   }, [callEnsureOwnerOnce, loadWorkspaces]);
 

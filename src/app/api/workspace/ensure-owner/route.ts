@@ -284,9 +284,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Race condition guard: the DB trigger (handle_new_user) may have created
-    // a workspace concurrently, and/or another AuthProvider instance may have
-    // already called this API. Wait and re-check before creating.
-    await new Promise((r) => setTimeout(r, 1500));
+    // a workspace concurrently. Re-check immediately — the trigger runs
+    // synchronously within the signup transaction, so if it created a
+    // workspace it will already be visible here. No sleep needed.
     const { data: recheck } = await admin
       .from('workspaces')
       .select('id')
