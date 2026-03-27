@@ -539,6 +539,44 @@ export function useChat(conversationId: string | null) {
         totalCredits.current += data.credits_consumed ?? 0;
         updateMessages((prev) => [...prev, assistantMessage], effectiveId);
 
+        // SAFETY NET: verify the assistant message was saved server-side.
+        // The server saves it in handleChat step 10, but if it failed silently
+        // (e.g. credits_used type mismatch, timeout), the message only exists
+        // in React state and will be lost on page refresh. Check after a short
+        // delay and save client-side if missing.
+        if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
+          setTimeout(async () => {
+            try {
+              const { data: existing } = await supabase
+                .from('messages')
+                .select('id')
+                .eq('conversation_id', effectiveId)
+                .eq('workspace_id', workspaceId)
+                .eq('role', 'assistant')
+                .order('created_at', { ascending: false })
+                .limit(1);
+              // If no assistant message found for this conversation's latest,
+              // save it client-side as a fallback
+              if (!existing || existing.length === 0) {
+                console.warn('[useChat] Assistant message not found in DB — saving client-side fallback');
+                await supabase.from('messages').insert({
+                  workspace_id: workspaceId,
+                  conversation_id: effectiveId,
+                  role: 'assistant',
+                  content: data.content,
+                  credits_used: Math.round(data.credits_consumed ?? 0),
+                  metadata: {
+                    tool_calls: data.tool_calls ?? null,
+                    client_fallback: true,
+                  },
+                });
+              }
+            } catch {
+              // Non-critical — best effort
+            }
+          }, 3000); // 3s delay to give server time to complete
+        }
+
         // Update conversation title (only on the very first message) and timestamp
         if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
           const updatePayload: Record<string, string> = {
