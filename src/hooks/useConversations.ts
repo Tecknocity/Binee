@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,6 +77,14 @@ export function useConversations() {
   // Initial fetch
   useEffect(() => {
     fetchConversations();
+  }, [fetchConversations]);
+
+  // Re-fetch on session recovery (stale token was refreshed)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleRecovered = () => { fetchConversations(); };
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
   }, [fetchConversations]);
 
   // Real-time subscription for conversation changes

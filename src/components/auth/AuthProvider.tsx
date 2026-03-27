@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
+import { useSessionKeepalive, SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import type { Workspace, WorkspaceMember } from '@/types/database';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -84,6 +85,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Guard: prevent initAuth and onAuthStateChange from racing
   const initAuthDone = useRef(false);
+
+  // Mount session keepalive: periodic health checks + visibility change recovery
+  useSessionKeepalive();
 
   /**
    * Calls /api/workspace/ensure-owner exactly once per browser session.
@@ -388,6 +392,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             await ensureAndLoad(session.user.id);
             setLoading(false);
+          } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+            // Token was auto-refreshed by Supabase. Update the user object
+            // in case metadata changed, but do NOT re-run ensureAndLoad —
+            // the workspace data is still valid.
+            const mappedUser = mapSupabaseUser(session.user);
+            setUser(mappedUser);
           } else if (event === 'SIGNED_OUT') {
             setUser(null);
             setWorkspace(null);
@@ -408,6 +418,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, [supabase, ensureAndLoad]);
+
+  // Re-load workspace data when session is recovered after being stale
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleSessionRecovered = async () => {
+      if (!supabase) return;
+      const { data: { user: freshUser } } = await supabase.auth.getUser();
+      if (freshUser) {
+        const mappedUser = mapSupabaseUser(freshUser);
+        setUser(mappedUser);
+        await loadWorkspaces(freshUser.id);
+      }
+    };
+
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
+    return () => {
+      window.removeEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
+    };
+  }, [supabase, loadWorkspaces]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);

@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import type { Workspace, WorkspaceMember } from '@/types/database';
 
 interface WorkspaceContextValue {
@@ -168,6 +169,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       channelRef.current = null;
     };
   }, [workspace?.id, supabase, refreshWorkspace]);
+
+  // Re-fetch on session recovery (stale token was refreshed)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleRecovered = () => {
+      refreshWorkspace();
+      if (workspace?.id) fetchMembers(workspace.id);
+    };
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+  }, [refreshWorkspace, workspace?.id, fetchMembers]);
 
   // Combined refetch: refresh workspace data + members
   const refetch = useCallback(async () => {

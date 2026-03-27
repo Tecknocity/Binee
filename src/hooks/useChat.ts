@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import type { ToolCallResult } from '@/types/ai';
 import {
   shouldAutoApprove,
@@ -281,6 +282,16 @@ export function useChat(conversationId: string | null) {
   // Load messages when conversationId changes
   useEffect(() => {
     loadConversation(conversationId);
+  }, [conversationId, loadConversation]);
+
+  // Re-load conversation on session recovery (stale token was refreshed)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleRecovered = () => {
+      if (conversationId) loadConversation(conversationId);
+    };
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
   }, [conversationId, loadConversation]);
 
   // -------------------------------------------------------------------------
