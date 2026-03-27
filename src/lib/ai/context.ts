@@ -70,14 +70,15 @@ export async function buildContext(
 ): Promise<BineeContext> {
   const supabase = getSupabaseAdmin();
 
-  // For general_chat: skip the expensive business state document.
-  // Only fetch workspace + user metadata + conversation history.
-  const isLightweight = taskType === 'general_chat';
+  // For general_chat: use compact business state (not full) so the AI has
+  // basic workspace metrics when tools are available. Previously this was
+  // skipped entirely, but general_chat now has read-only tools.
+  const isLightweight = false;
 
   // For simple tasks: build a compact business state with just task metrics
   // (counts, overdue, unassigned) — skip the full structure/team/activity
   // queries. This reduces from 6 DB queries to 3 and cuts context by ~60%.
-  const COMPACT_TASK_TYPES = new Set(['simple_lookup', 'health_check', 'troubleshooting']);
+  const COMPACT_TASK_TYPES = new Set(['general_chat', 'simple_lookup', 'health_check', 'troubleshooting']);
   const isCompact = taskType ? COMPACT_TASK_TYPES.has(taskType) : false;
 
   const [
