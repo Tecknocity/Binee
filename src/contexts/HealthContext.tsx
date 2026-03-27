@@ -12,7 +12,12 @@ import { createBrowserClient } from '@/lib/supabase/client';
 import type { HealthCheckResult } from '@/types/database';
 import type { WorkspaceMetrics } from '@/lib/health/metrics';
 
-const supabase = createBrowserClient();
+// Lazy-initialized to avoid SSR/prerender crashes (env vars missing at build time).
+let _supabase: ReturnType<typeof createBrowserClient> | null = null;
+function getSupabase() {
+  if (!_supabase) _supabase = createBrowserClient();
+  return _supabase;
+}
 
 export interface WeeklySnapshot {
   week: string;
@@ -63,6 +68,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
 
     try {
       // Run API call and historical data fetches in parallel
+      const supabase = getSupabase();
       const [apiRes, historyRes, snapshotsRes] = await Promise.all([
         fetch('/api/health/check', {
           method: 'POST',
@@ -132,10 +138,12 @@ export function HealthProvider({ children }: { children: ReactNode }) {
       }
 
       setLastCheckAt(new Date().toISOString());
-      setHasLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Health check failed');
     } finally {
+      // Mark as loaded even on failure — prevents permanent "Running health
+      // check..." spinner when the API errors out or times out.
+      setHasLoaded(true);
       setIsLoading(false);
       runningRef.current = false;
     }

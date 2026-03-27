@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Settings, User, Shield, Users, ArrowLeft, Bell, CreditCard, Plug, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -74,8 +74,10 @@ export default function SettingsLayout() {
     router.replace(`/settings?tab=${id}`, { scroll: false });
   };
 
-  // Memoize active content to prevent unmount/remount on re-renders
-  const activeContent = (() => {
+  // Memoize active content to prevent unmount/remount on re-renders.
+  // Using useMemo ensures the JSX element is only recreated when activeTab changes,
+  // not on every parent render (an IIFE would recreate the element every render).
+  const activeContent = useMemo(() => {
     switch (activeTab) {
       case 'general': return <GeneralSettings />;
       case 'account': return <AccountSettings />;
@@ -86,7 +88,7 @@ export default function SettingsLayout() {
       case 'billing': return <BillingPage />;
       case 'integrations': return <IntegrationsSettingsPage />;
     }
-  })();
+  }, [activeTab]);
 
   return (
     <div className="w-full">

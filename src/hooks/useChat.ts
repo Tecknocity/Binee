@@ -204,6 +204,15 @@ function mapDbMessage(row: DbMessageRow): ChatMessage | null {
   return msg;
 }
 
+// Stable module-level Supabase client — prevents dependency-array churn
+// that causes message reloads and realtime channel re-subscriptions.
+// Lazy-initialized to avoid SSR/prerender crashes (env vars missing).
+let _supabase: ReturnType<typeof createBrowserClient> | null = null;
+function getSupabase() {
+  if (!_supabase) _supabase = createBrowserClient();
+  return _supabase;
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -215,7 +224,7 @@ export function useChat(conversationId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const totalCredits = useRef(0);
   const { workspace, user } = useAuth();
-  const supabase = createBrowserClient();
+  const supabase = getSupabase();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // Ref to allow auto-approve to call confirmAction before it's defined in the hook
   const confirmActionRef = useRef<(actionId: string, confirmed: boolean) => void>(() => {});
@@ -226,6 +235,11 @@ export function useChat(conversationId: string | null) {
   // Prevents stale-closure bugs from overwriting the title on every message.
   const titleSetRef = useRef(false);
 
+  // Stable IDs for dependency arrays — avoids re-running effects when the
+  // workspace/user *object* reference changes but the ID hasn't.
+  const workspaceId = workspace?.id ?? null;
+  const userId = user?.id ?? null;
+
   // -------------------------------------------------------------------------
   // Load messages from database
   // -------------------------------------------------------------------------
@@ -234,7 +248,7 @@ export function useChat(conversationId: string | null) {
     async (id: string | null) => {
       setError(null);
 
-      if (!id || !workspace || !user) {
+      if (!id || !workspaceId || !userId) {
         setMessages([]);
         totalCredits.current = 0;
         return;
@@ -250,7 +264,7 @@ export function useChat(conversationId: string | null) {
           .from('messages')
           .select('id, role, content, credits_used, metadata, created_at')
           .eq('conversation_id', id)
-          .eq('workspace_id', workspace.id)
+          .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: true })
           .limit(200);
 
@@ -284,7 +298,8 @@ export function useChat(conversationId: string | null) {
         setIsLoadingHistory(false);
       }
     },
-    [workspace, user, supabase],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+    [workspaceId, userId],
   );
 
   // Load messages when conversationId changes
@@ -351,7 +366,8 @@ export function useChat(conversationId: string | null) {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [conversationId, workspace?.id, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [conversationId, workspaceId]);
 
   // -------------------------------------------------------------------------
   // Send a message via the AI chat API
@@ -362,8 +378,7 @@ export function useChat(conversationId: string | null) {
       const effectiveId = overrideConversationId || conversationId;
       if (!effectiveId || !content.trim()) return;
 
-      const workspaceId = workspace?.id ?? '';
-      const userId = user?.id ?? '';
+      // workspaceId and userId are stable (from outer scope, derived from IDs only)
 
       // Prevent loadConversation from wiping our optimistic message
       sendingRef.current = true;
@@ -534,7 +549,8 @@ export function useChat(conversationId: string | null) {
         setIsLoading(false);
       }
     },
-    [conversationId, workspace, user],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+    [conversationId, workspaceId, userId],
   );
 
   // -------------------------------------------------------------------------
@@ -543,7 +559,7 @@ export function useChat(conversationId: string | null) {
 
   const confirmAction = useCallback(
     async (actionId: string, confirmed: boolean) => {
-      const workspaceId = workspace?.id ?? '';
+      // workspaceId is used directly from outer scope
 
       // Optimistically update the UI
       setMessages((prev) =>
@@ -617,7 +633,7 @@ export function useChat(conversationId: string | null) {
         setMessages((prev) => [...prev, errorMessage]);
       }
     },
-    [conversationId, workspace],
+    [conversationId, workspaceId],
   );
 
   // Keep ref in sync so auto-approve can call confirmAction
