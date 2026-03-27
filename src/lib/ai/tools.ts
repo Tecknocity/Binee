@@ -393,7 +393,9 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
 // ---------------------------------------------------------------------------
 
 const TOOL_NAMES_BY_TASK: Record<string, string[]> = {
-  general_chat: [],  // No tools for general conversation
+  general_chat: [
+    'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
+  ],  // Basic read-only tools so Binee can answer workspace questions naturally
   simple_lookup: [
     'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
     'get_team_activity', 'get_time_tracking_summary',

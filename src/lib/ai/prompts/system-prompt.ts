@@ -42,10 +42,15 @@ export async function loadSystemPrompt(
   context: BineeContext,
   options: SystemPromptOptions,
 ): Promise<string> {
-  // For general_chat: lightweight prompt — just personality, no business state,
-  // no KB modules, no computed data. Saves ~2,500 tokens per message.
+  // For general_chat: lightweight prompt with business state so the AI can
+  // use tools to answer workspace questions naturally.
   if (options.taskType === 'general_chat') {
-    return buildLightweightPrompt(context);
+    const base = buildLightweightPrompt(context);
+    // Append business state if ClickUp is connected so the AI has context
+    if (context.workspace.clickup_connected) {
+      return base + '\n\n' + buildBusinessState(context);
+    }
+    return base;
   }
 
   // For simple tasks (simple_lookup, health_check, troubleshooting):
@@ -103,9 +108,10 @@ function buildLightweightPrompt(context: BineeContext): string {
 You are speaking with ${user.display_name}.
 
 ## Guidelines
+- **ONLY respond to the user's LATEST message.** Prior messages are conversation history for context only — do NOT re-answer or re-address them. Treat them as already handled.
 - Be concise, helpful, and personable.
 - Answer any question the user asks — business, general knowledge, casual chat, anything.
-- If the user asks about their ClickUp workspace, tasks, team, or project data, let them know you can help with that — just ask them to phrase it so you can look up their workspace data.
+- If the user asks about their ClickUp workspace, tasks, team, or project data, use the available tools to look up the data and answer directly. Do NOT say you can't access their data if tools are available.
 - Never fabricate data. If you don't know something, say so.
 - Use bullet points and short paragraphs. Avoid filler.${historyNote}`;
 }
@@ -248,7 +254,7 @@ function buildConversationNote(context: BineeContext): string {
   if (historyLen === 0) return '';
 
   return `## CONVERSATION CONTEXT
-This conversation has ${historyLen} prior message(s). Maintain continuity — reference earlier context when relevant and avoid repeating information already discussed.`;
+This conversation has ${historyLen} prior message(s). **ONLY respond to the user's LATEST message.** Prior messages are conversation history for context only — do NOT re-answer or re-address them. Maintain continuity and avoid repeating information already discussed.`;
 }
 
 // ---------------------------------------------------------------------------

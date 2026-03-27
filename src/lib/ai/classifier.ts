@@ -55,6 +55,9 @@ const PATTERNS: Record<TaskType, RegExp[]> = {
     /\b(what are|how many|show me|list|status of|who is assigned|when is due)\b/i,
     /\b(tell me about|get|find|look up|check)\b/i,
     /\b(how much time|total tasks|count|what is)\b/i,
+    /\b(busy|workload|schedule|on my plate|to do|tasks? (for |due )?today|what('s| is) (up|going on|happening)|pending)\b/i,
+    /\b(my tasks|our tasks|any (tasks?|deadlines?|meetings?)|due (today|tomorrow|this week|soon))\b/i,
+    /\b(what do (I|we) have|what('s| is) coming up|anything (due|overdue|urgent))\b/i,
   ],
 };
 

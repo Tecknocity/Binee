@@ -121,26 +121,23 @@ export async function assemblePrompt(
   taskType: TaskType,
   options?: AssemblePromptOptions,
 ): Promise<AssembledPrompt> {
-  // For general_chat: skip KB modules entirely — lightweight prompt only
-  const isLightweight = taskType === 'general_chat';
-
   // Get task-specific token budget
   const budget = getBudgetForTask(taskType);
   const isMinimal = budget === BUDGET_MINIMAL;
 
-  // 1. Fetch brain modules from knowledge base (skip for lightweight/minimal)
-  const { taskModules, sharedModules } = (isLightweight || isMinimal)
+  // 1. Fetch brain modules from knowledge base (skip for minimal tasks)
+  const { taskModules, sharedModules } = isMinimal
     ? { taskModules: [], sharedModules: [] }
     : await getModulesForTaskType(taskType);
 
   // 2. Build each section with task-specific token budgets
   const systemSection = truncateToTokenBudget(systemPrompt, budget.system);
-  const kbSummarySection = (isLightweight || budget.kbSummary === 0) ? '' : buildKBSummarySection(sharedModules, budget.kbSummary);
-  const brainModulesSection = (isLightweight || budget.brainModulesMax === 0) ? '' : buildBrainModulesSection(
+  const kbSummarySection = budget.kbSummary === 0 ? '' : buildKBSummarySection(sharedModules, budget.kbSummary);
+  const brainModulesSection = budget.brainModulesMax === 0 ? '' : buildBrainModulesSection(
     taskModules,
     budget.brainModulesMax,
   );
-  const contextSection = isLightweight ? '' : buildContextSection(
+  const contextSection = buildContextSection(
     context,
     options?.dashboardContext,
     budget.context,
@@ -156,7 +153,19 @@ export async function assemblePrompt(
   const historyBudget = budget.history;
 
   // 4. Fit conversation history within budget
-  const fittedHistory = fitHistoryToTokenBudget(conversationHistory, historyBudget);
+  // De-duplicate: the current user message is saved to the DB *before* history
+  // is fetched (Step 3c in chat-handler), so fetchConversationHistory may
+  // return it as the last entry. Strip it to avoid sending it twice — it's
+  // re-appended below via options.currentMessage.
+  let dedupedHistory = conversationHistory;
+  if (options?.currentMessage && dedupedHistory.length > 0) {
+    const last = dedupedHistory[dedupedHistory.length - 1];
+    if (last.role === 'user' && last.content === options.currentMessage) {
+      dedupedHistory = dedupedHistory.slice(0, -1);
+    }
+  }
+
+  const fittedHistory = fitHistoryToTokenBudget(dedupedHistory, historyBudget);
 
   // 5. Assemble the system prompt string
   const systemParts: string[] = [systemSection];
