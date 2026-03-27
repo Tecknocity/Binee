@@ -25,54 +25,65 @@ export default function MemberUsageTable() {
     const supabase = createBrowserClient();
 
     async function fetchMemberUsage() {
-      // Get credit transactions for current billing period
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+      try {
+        // Get credit transactions for current billing period
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
 
-      // Fetch members and transactions in parallel
-      const [membersResult, txResult] = await Promise.all([
-        supabase
-          .from('workspace_members')
-          .select('user_id, display_name, email, avatar_url')
-          .eq('workspace_id', workspace!.id)
-          .eq('status', 'active'),
-        supabase
-          .from('credit_transactions')
-          .select('user_id, amount')
-          .eq('workspace_id', workspace!.id)
-          .eq('type', 'deduction')
-          .gte('created_at', startOfMonth.toISOString()),
-      ]);
+        // Fetch members and transactions in parallel
+        const [membersResult, txResult] = await Promise.all([
+          supabase
+            .from('workspace_members')
+            .select('user_id, display_name, email, avatar_url')
+            .eq('workspace_id', workspace!.id)
+            .eq('status', 'active'),
+          supabase
+            .from('credit_transactions')
+            .select('user_id, amount')
+            .eq('workspace_id', workspace!.id)
+            .eq('type', 'deduction')
+            .gte('created_at', startOfMonth.toISOString()),
+        ]);
 
-      const memberData = membersResult.data;
-      const txData = txResult.data;
-
-      if (!memberData?.length) {
-        setLoading(false);
-        return;
-      }
-
-      // Aggregate usage per member
-      const usageMap = new Map<string, number>();
-      txData?.forEach((tx) => {
-        if (tx.user_id) {
-          usageMap.set(tx.user_id, (usageMap.get(tx.user_id) || 0) + Math.abs(tx.amount));
+        if (membersResult.error) {
+          console.error('[MemberUsageTable] Members query failed:', membersResult.error.message);
+          setLoading(false);
+          return;
         }
-      });
 
-      const combined: MemberUsage[] = memberData.map((m) => ({
-        user_id: m.user_id,
-        display_name: m.display_name || m.email.split('@')[0],
-        email: m.email,
-        avatar_url: m.avatar_url,
-        total_credits: usageMap.get(m.user_id) || 0,
-      }));
+        const memberData = membersResult.data;
+        const txData = txResult.data;
 
-      // Sort by usage descending
-      combined.sort((a, b) => b.total_credits - a.total_credits);
-      setMembers(combined);
-      setLoading(false);
+        if (!memberData?.length) {
+          setLoading(false);
+          return;
+        }
+
+        // Aggregate usage per member
+        const usageMap = new Map<string, number>();
+        txData?.forEach((tx) => {
+          if (tx.user_id) {
+            usageMap.set(tx.user_id, (usageMap.get(tx.user_id) || 0) + Math.abs(tx.amount));
+          }
+        });
+
+        const combined: MemberUsage[] = memberData.map((m) => ({
+          user_id: m.user_id,
+          display_name: m.display_name || m.email.split('@')[0],
+          email: m.email,
+          avatar_url: m.avatar_url,
+          total_credits: usageMap.get(m.user_id) || 0,
+        }));
+
+        // Sort by usage descending
+        combined.sort((a, b) => b.total_credits - a.total_credits);
+        setMembers(combined);
+      } catch (err) {
+        console.error('[MemberUsageTable] Unexpected error:', err);
+      } finally {
+        setLoading(false);
+      }
     }
 
     fetchMemberUsage();
