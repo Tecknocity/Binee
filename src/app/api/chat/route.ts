@@ -15,6 +15,10 @@ export const maxDuration = 60;
 // ---------------------------------------------------------------------------
 
 export async function POST(request: NextRequest) {
+  // Store parsed body at the top level so the error handler can use it
+  // to persist error messages (even if handleChat throws).
+  let parsedBody: Partial<ChatRequest> | null = null;
+
   try {
     // Authenticate the user via session cookie
     const supabase = await createServerClient();
@@ -33,9 +37,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    parsedBody = body as Partial<ChatRequest>;
 
     // Validate required fields
-    const { workspace_id, user_id, conversation_id, message } = body as Partial<ChatRequest>;
+    const { workspace_id, user_id, conversation_id, message } = parsedBody;
 
     if (!workspace_id || typeof workspace_id !== 'string') {
       return NextResponse.json(
@@ -110,11 +115,9 @@ export async function POST(request: NextRequest) {
       .trim();
 
     // Persist the error as an assistant message SERVER-SIDE so it survives
-    // page reloads. Previously, error messages were only saved client-side
-    // (browser Supabase client), which meant they were lost on refresh —
-    // leaving conversations with user messages but no responses.
-    const body = await request.clone().json().catch(() => null);
-    if (body?.workspace_id && body?.conversation_id) {
+    // page reloads. Uses parsedBody from the try block (already parsed,
+    // no need to re-read the consumed request stream).
+    if (parsedBody?.workspace_id && parsedBody?.conversation_id) {
       try {
         const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -122,8 +125,8 @@ export async function POST(request: NextRequest) {
           const adminClient = createClient(url, serviceKey);
           const errorContent = `Something went wrong: ${safeMessage || 'An unexpected error occurred'}`;
           await adminClient.from('messages').insert({
-            workspace_id: body.workspace_id,
-            conversation_id: body.conversation_id,
+            workspace_id: parsedBody.workspace_id,
+            conversation_id: parsedBody.conversation_id,
             role: 'assistant',
             content: errorContent,
             credits_used: 0,

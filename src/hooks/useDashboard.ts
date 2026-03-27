@@ -150,7 +150,7 @@ export function useTaskStatusData(workspaceId: string | null) {
       }
       setData(Object.entries(counts).map(([name, value]) => ({ name, value })));
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };
@@ -185,7 +185,7 @@ export function useSprintProgressData(workspaceId: string | null) {
       }).filter((item) => item.total > 0);
       setData(items);
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };
@@ -216,7 +216,7 @@ export function useTimeTrackingData(workspaceId: string | null) {
       const orderedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       setData(orderedDays.map((day) => ({ day, hours: Math.round((dayHours[day] ?? 0) * 10) / 10 })));
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };
@@ -263,7 +263,7 @@ export function useWorkloadData(workspaceId: string | null) {
         .map(([name, stats]) => ({ name, ...stats }));
       setData(sorted);
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };
@@ -297,7 +297,7 @@ export function usePriorityBreakdownData(workspaceId: string | null) {
       }).filter((item) => item.urgent + item.high + item.normal + item.low > 0);
       setData(items.slice(0, 10));
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };
@@ -342,7 +342,7 @@ export function useRecentActivityData(workspaceId: string | null) {
       });
       setData(activities);
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };
@@ -385,7 +385,7 @@ export function useBarChartData(workspaceId: string | null) {
         .map(([name, completed], i) => ({ name, completed, color: colors[i % colors.length] }));
       setData(sorted);
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };
@@ -428,7 +428,7 @@ export function useLineChartData(workspaceId: string | null) {
 
       setData(weekLabels.map((week) => ({ week, completed: weekBuckets[week] })));
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };
@@ -491,7 +491,7 @@ export function useOverdueTasksData(workspaceId: string | null) {
         .slice(0, 20);
       setData(overdue);
       setLoading(false);
-    })();
+    })().catch(() => setLoading(false));
   }, [workspaceId]);
 
   return { data, loading };

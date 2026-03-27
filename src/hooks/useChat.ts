@@ -252,18 +252,20 @@ export function useChat(conversationId: string | null) {
       setError(null);
 
       if (!id || !workspaceId || !userId) {
-        // Don't clear messages if we have cached data — prevents the
-        // flash of empty state during transient null workspaceId windows.
         if (!id) {
           setMessages([]);
           totalCredits.current = 0;
         }
+        setIsLoadingHistory(false);
         return;
       }
 
       // If a message is currently being sent (e.g. right after conversation
       // creation), skip reloading to avoid wiping the optimistic user message.
-      if (sendingRef.current) return;
+      if (sendingRef.current) {
+        setIsLoadingHistory(false);
+        return;
+      }
 
       // Check cache first — show cached messages instantly (no spinner).
       // Then refresh from DB in the background.
@@ -376,8 +378,13 @@ export function useChat(conversationId: string | null) {
           if (!mapped) return;
 
           updateMessages((prev) => {
-            // Avoid duplicates — optimistic inserts or double deliveries
-            if (prev.some((m) => m.id === mapped.id)) return prev;
+            // Avoid duplicates — check DB ID, but also match optimistic
+            // messages (which use msg-* IDs) by content + role to prevent
+            // showing the same message twice.
+            if (prev.some((m) =>
+              m.id === mapped.id ||
+              (m.role === mapped.role && m.content === mapped.content)
+            )) return prev;
             return [...prev, mapped];
           });
 
@@ -635,10 +642,11 @@ export function useChat(conversationId: string | null) {
 
         // If confirmed and executed, add a follow-up message with the result
         if (confirmed && data.status === 'executed' && data.result) {
+          const resultContent = data.result.message ?? 'Action completed successfully.';
           const resultMessage: ChatMessage = {
             id: `msg-${Date.now()}-confirm`,
             role: 'assistant',
-            content: data.result.message ?? 'Action completed successfully.',
+            content: resultContent,
             timestamp: new Date(),
             toolCalls: [
               {
@@ -651,14 +659,40 @@ export function useChat(conversationId: string | null) {
             ],
           };
           setMessages((prev) => [...prev, resultMessage]);
+          // Persist to DB so result survives page reload
+          if (workspaceId && conversationId) {
+            supabase.from('messages').insert({
+              workspace_id: workspaceId,
+              conversation_id: conversationId,
+              role: 'assistant',
+              content: resultContent,
+              credits_used: 0,
+              metadata: { action_result: true, tool_calls: resultMessage.toolCalls },
+            }).then(({ error: insertErr }) => {
+              if (insertErr) console.error('[useChat] Failed to persist action result:', insertErr.message);
+            });
+          }
         } else if (data.status === 'failed') {
+          const failContent = `The action failed: ${data.error ?? 'Unknown error'}. Please try again.`;
           const errorMessage: ChatMessage = {
             id: `msg-${Date.now()}-err`,
             role: 'assistant',
-            content: `The action failed: ${data.error ?? 'Unknown error'}. Please try again.`,
+            content: failContent,
             timestamp: new Date(),
           };
           setMessages((prev) => [...prev, errorMessage]);
+          if (workspaceId && conversationId) {
+            supabase.from('messages').insert({
+              workspace_id: workspaceId,
+              conversation_id: conversationId,
+              role: 'assistant',
+              content: failContent,
+              credits_used: 0,
+              metadata: { error: true, action_failed: true },
+            }).then(({ error: insertErr }) => {
+              if (insertErr) console.error('[useChat] Failed to persist action error:', insertErr.message);
+            });
+          }
         }
       } catch {
         const errorMessage: ChatMessage = {
