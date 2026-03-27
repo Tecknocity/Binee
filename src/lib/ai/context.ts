@@ -206,49 +206,32 @@ async function buildCompactBusinessState(
 ): Promise<BusinessState> {
   const supabase = getSupabaseAdmin();
 
-  // Only fetch tasks and members — skip spaces, folders, lists, activity
-  const [tasksResult, membersResult] = await Promise.all([
-    supabase
-      .from('cached_tasks')
-      .select('id, status, priority, assignees, due_date')
-      .eq('workspace_id', workspaceId),
-    supabase
-      .from('cached_team_members')
-      .select('clickup_id, username')
-      .eq('workspace_id', workspaceId),
-  ]);
-
-  const tasks = tasksResult.data ?? [];
-  const members = membersResult.data ?? [];
-  const now = new Date().toISOString();
-
-  const overdueTasks = tasks.filter(
-    (t) => t.due_date && t.due_date < now && t.status !== 'closed' && t.status !== 'complete',
-  );
-  const unassignedTasks = tasks.filter(
-    (t) => !t.assignees || (Array.isArray(t.assignees) && t.assignees.length === 0),
+  // Use the server-side RPC that computes all metrics in a SINGLE SQL query
+  // instead of fetching every task row and counting in JavaScript.
+  // This is the same RPC used by the health check system (migration 030).
+  const { data: metrics, error: rpcError } = await supabase.rpc(
+    'compute_workspace_metrics_rpc',
+    { p_workspace_id: workspaceId },
   );
 
-  // Status distribution
-  const statusCounts: Record<string, number> = {};
-  for (const task of tasks) {
-    const status = task.status ?? 'unknown';
-    statusCounts[status] = (statusCounts[status] || 0) + 1;
+  if (rpcError || !metrics) {
+    console.error('[context] compact RPC failed, returning empty state:', rpcError?.message);
+    return getEmptyBusinessState(workspaceId);
   }
 
   return {
     generated_at: new Date().toISOString(),
     workspace_id: workspaceId,
     tasks: {
-      total: tasks.length,
-      overdue: overdueTasks.length,
-      unassigned: unassignedTasks.length,
-      by_status: statusCounts,
+      total: metrics.totalTasks ?? 0,
+      overdue: metrics.overdueTasks ?? 0,
+      unassigned: metrics.unassignedTasks ?? 0,
+      by_status: {},
       by_priority: {},
       by_assignee: [],
     },
     team: {
-      total_members: members.length,
+      total_members: metrics.totalMembers ?? 0,
       members: [],
     },
     structure: {
