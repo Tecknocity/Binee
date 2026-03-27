@@ -142,9 +142,39 @@ export async function handleChat(
 
   // -------------------------------------------------------------------------
   // Step 1-2: Classify the message (B-037)
+  // Fetch the last 2 messages from conversation history so short follow-ups
+  // like "try again", "do it", "yes" are classified in context of what was
+  // previously discussed — not as general_chat with no tools.
   // -------------------------------------------------------------------------
   console.log('[handleChat] Step 1: classifying message');
-  const classification = classifyMessage(message);
+
+  let conversationContext: string | undefined;
+  try {
+    let supabaseForContext: ReturnType<typeof getSupabaseAdmin>;
+    try {
+      supabaseForContext = getSupabaseAdmin();
+    } catch {
+      supabaseForContext = null as unknown as ReturnType<typeof getSupabaseAdmin>;
+    }
+    if (supabaseForContext) {
+      const { data: recentMessages } = await supabaseForContext
+        .from('messages')
+        .select('content')
+        .eq('conversation_id', conversation_id)
+        .order('created_at', { ascending: false })
+        .limit(2);
+      if (recentMessages && recentMessages.length > 0) {
+        conversationContext = recentMessages
+          .reverse()
+          .map((m) => m.content)
+          .join('\n');
+      }
+    }
+  } catch {
+    // Non-critical — proceed without context
+  }
+
+  const classification = classifyMessage(message, conversationContext);
 
   // -------------------------------------------------------------------------
   // Step 3: Route to model (B-038)
