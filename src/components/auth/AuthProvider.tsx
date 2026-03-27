@@ -284,8 +284,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('id', currentWorkspace.id)
       .single();
     if (ws) {
-      setWorkspace(ws as Workspace);
-      setWorkspaces((prev) => prev.map((w) => (w.id === ws.id ? (ws as Workspace) : w)));
+      // Only update state if something structurally changed.
+      // This prevents cascading re-renders when only credit_balance or
+      // updated_at changed (e.g. after every chat message credit deduction).
+      const changed = Object.keys(ws).some(
+        (k) => JSON.stringify((ws as unknown as Record<string, unknown>)[k]) !== JSON.stringify((currentWorkspace as unknown as Record<string, unknown>)[k]),
+      );
+      if (changed) {
+        setWorkspace(ws as Workspace);
+        setWorkspaces((prev) => prev.map((w) => (w.id === ws.id ? (ws as Workspace) : w)));
+      }
     }
   }, [supabase]);
 

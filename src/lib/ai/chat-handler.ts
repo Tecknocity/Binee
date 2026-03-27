@@ -190,6 +190,38 @@ export async function handleChat(
   }
 
   // -------------------------------------------------------------------------
+  // Step 3c: Save user message immediately (before AI call).
+  // This ensures the message is persisted even if the AI call fails, times
+  // out, or the user closes the browser. Similar to how Claude.ai saves the
+  // user message the moment you hit send.
+  // -------------------------------------------------------------------------
+  const { error: convUpsertErr } = await supabase
+    .from('conversations')
+    .upsert(
+      {
+        id: conversation_id,
+        workspace_id,
+        user_id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    );
+  if (convUpsertErr) {
+    console.error('[handleChat] Conversation upsert failed:', convUpsertErr.message);
+  }
+
+  const { error: userMsgErr } = await supabase.from('messages').insert({
+    workspace_id,
+    conversation_id,
+    role: 'user',
+    content: message,
+    credits_used: 0,
+  });
+  if (userMsgErr) {
+    console.error('[handleChat] User message early-save failed:', userMsgErr.message);
+  }
+
+  // -------------------------------------------------------------------------
   // Step 4-5: Build workspace context (B-041) + fetch brain modules (B-KB)
   // -------------------------------------------------------------------------
   console.log('[handleChat] Step 4: building context');
@@ -572,30 +604,16 @@ async function saveConversationMessages(
   taskType: string,
 ): Promise<void> {
   try {
-    // Upsert the conversation (create if first message)
+    // User message + conversation are already saved at the start of handleChat
+    // (Step 3c). Only save the assistant response here.
+    // Update conversation timestamp
     await supabase
       .from('conversations')
-      .upsert(
-        {
-          id: conversationId,
-          workspace_id: workspaceId,
-          user_id: userId,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' },
-      );
-
-    // Insert the user message
-    await supabase.from('messages').insert({
-      workspace_id: workspaceId,
-      conversation_id: conversationId,
-      role: 'user',
-      content: userMessage,
-      credits_used: 0,
-    });
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', conversationId);
 
     // Insert the assistant message with metadata
-    await supabase.from('messages').insert({
+    const { error: asstMsgErr } = await supabase.from('messages').insert({
       workspace_id: workspaceId,
       conversation_id: conversationId,
       role: 'assistant',
@@ -609,8 +627,10 @@ async function saveConversationMessages(
         task_type: taskType,
       },
     });
+    if (asstMsgErr) {
+      console.error('[chat-handler] Assistant message insert failed:', asstMsgErr.message);
+    }
   } catch (error) {
-    // Log but don't fail the response if message saving fails
     console.error('[chat-handler] Failed to save conversation messages:', error);
   }
 }

@@ -62,7 +62,8 @@ export function useConversations() {
   // Fetch conversations from the database
   const fetchConversations = useCallback(async () => {
     if (!workspaceId || !userId) {
-      setConversations([]);
+      // Don't clear existing conversations during transient null windows
+      // (e.g. workspace context refreshing). Only clear on first load.
       setIsLoading(false);
       return;
     }

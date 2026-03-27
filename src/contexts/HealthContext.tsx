@@ -66,6 +66,15 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
 
+    // Timeout protection: if the health check hangs for 30s, abort and
+    // release the lock so subsequent attempts aren't permanently blocked.
+    const timeoutId = setTimeout(() => {
+      setError('Health check timed out. Please try again.');
+      setHasLoaded(true);
+      setIsLoading(false);
+      runningRef.current = false;
+    }, 30_000);
+
     try {
       // Run API call and historical data fetches in parallel
       const supabase = getSupabase();
@@ -141,6 +150,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Health check failed');
     } finally {
+      clearTimeout(timeoutId);
       // Mark as loaded even on failure — prevents permanent "Running health
       // check..." spinner when the API errors out or times out.
       setHasLoaded(true);

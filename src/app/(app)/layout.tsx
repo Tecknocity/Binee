@@ -7,6 +7,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { ConversationsProvider } from '@/contexts/ConversationsContext';
+import { ChatCacheProvider } from '@/contexts/ChatCacheContext';
 import { HealthProvider } from '@/contexts/HealthContext';
 import { DashboardProvider } from '@/contexts/DashboardContext';
 import { Loader2 } from 'lucide-react';
@@ -34,6 +35,7 @@ export default function AppRouteLayout({ children }: { children: React.ReactNode
       <WorkspaceProvider>
         <SidebarProvider>
           <ConversationsProvider>
+            <ChatCacheProvider>
             <HealthProvider>
               <DashboardProvider>
                 <Suspense fallback={<AppLoadingFallback />}>
@@ -42,6 +44,7 @@ export default function AppRouteLayout({ children }: { children: React.ReactNode
                 </Suspense>
               </DashboardProvider>
             </HealthProvider>
+            </ChatCacheProvider>
           </ConversationsProvider>
         </SidebarProvider>
       </WorkspaceProvider>
