@@ -86,12 +86,14 @@ export default function WeeklyUsageSummary() {
     const eightWeeksAgo = new Date();
     eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
 
-    supabase
-      .from('credit_usage')
-      .select('action_type, credits_deducted, created_at')
-      .eq('workspace_id', workspace.id)
-      .gte('created_at', eightWeeksAgo.toISOString())
-      .order('created_at', { ascending: true })
+    Promise.resolve(
+      supabase
+        .from('credit_usage')
+        .select('action_type, credits_deducted, created_at')
+        .eq('workspace_id', workspace.id)
+        .gte('created_at', eightWeeksAgo.toISOString())
+        .order('created_at', { ascending: true }),
+    )
       .then(({ data: rows, error }) => {
         if (error) {
           console.error('[WeeklyUsageSummary] Query failed:', error.message);
