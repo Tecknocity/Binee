@@ -305,8 +305,14 @@ export default function ChatPage() {
         // before the conversation is created in the database.
         setPendingFirstMessage(content.trim());
         const newId = await createConversation();
-        setPendingFirstMessage(null);
+        // Start sending BEFORE clearing pendingFirstMessage so the
+        // optimistic user message is added to the messages array first.
+        // This prevents a flash of empty state between clearing the
+        // pending message and the optimistic insert.
         sendMessage(content, newId);
+        // Clear after a microtask to let React batch the optimistic
+        // message insert with this state update.
+        queueMicrotask(() => setPendingFirstMessage(null));
       } else {
         sendMessage(content);
       }
