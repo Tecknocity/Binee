@@ -84,6 +84,40 @@ export async function executeTool(
 }
 
 // ---------------------------------------------------------------------------
+// Helper: enrich task rows with list names for better AI responses
+// ---------------------------------------------------------------------------
+
+async function enrichWithListNames(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  workspaceId: string,
+  tasks: Array<{ clickup_id: string; name: string; status: string | null; assignees: unknown; due_date: string | null; priority: number | null; list_id: string }>,
+): Promise<Record<string, unknown>> {
+  const listIds = [...new Set(tasks.map((t) => t.list_id))];
+  const { data: lists } = await supabase
+    .from('cached_lists')
+    .select('clickup_id, name')
+    .eq('workspace_id', workspaceId)
+    .in('clickup_id', listIds);
+
+  const listMap = new Map((lists ?? []).map((l: { clickup_id: string; name: string }) => [l.clickup_id, l.name]));
+
+  return {
+    success: true,
+    tasks: tasks.map((t) => ({
+      id: t.clickup_id,
+      name: t.name,
+      status: t.status,
+      assignees: Array.isArray(t.assignees) ? t.assignees.map((a: { username?: string }) => a.username).filter(Boolean) : [],
+      due_date: t.due_date,
+      priority: t.priority,
+      list: listMap.get(t.list_id) ?? t.list_id,
+    })),
+    count: tasks.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // lookup_tasks — queries cached_tasks using correct schema columns
 // ---------------------------------------------------------------------------
 
@@ -141,9 +175,11 @@ async function handleLookupTasks(
       .not('status', 'ilike', '%complete%');
   }
 
-  if (input.query && typeof input.query === 'string') {
+  const searchQuery = (input.query && typeof input.query === 'string') ? input.query : null;
+
+  if (searchQuery) {
     query = query.or(
-      `name.ilike.%${input.query}%,description.ilike.%${input.query}%`,
+      `name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`,
     );
   }
 
@@ -162,28 +198,52 @@ async function handleLookupTasks(
   // Enrich tasks with list names for better AI responses
   const enrichedTasks = tasks ?? [];
   if (enrichedTasks.length > 0) {
-    const listIds = [...new Set(enrichedTasks.map((t) => t.list_id))];
-    const { data: lists } = await supabase
-      .from('cached_lists')
-      .select('clickup_id, name')
-      .eq('workspace_id', workspaceId)
-      .in('clickup_id', listIds);
+    return enrichWithListNames(supabase, workspaceId, enrichedTasks);
+  }
 
-    const listMap = new Map((lists ?? []).map((l) => [l.clickup_id, l.name]));
+  // --- Fuzzy fallback: if exact search returned nothing, try keyword search ---
+  // Split the query into significant keywords and search for each individually.
+  // This handles typos, wrong verbs, partial recall — e.g. user says "build a
+  // website" but the task is "update website", we'd match on "website".
+  if (searchQuery && searchQuery.length > 3) {
+    const STOP_WORDS = new Set([
+      'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+      'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
+      'on', 'with', 'at', 'by', 'from', 'as', 'into', 'about', 'like',
+      'and', 'or', 'but', 'not', 'no', 'so', 'if', 'then', 'than', 'that',
+      'this', 'it', 'its', 'my', 'me', 'we', 'our', 'your', 'his', 'her',
+      'their', 'them', 'find', 'show', 'get', 'tell', 'give', 'task', 'tasks',
+    ]);
 
-    return {
-      success: true,
-      tasks: enrichedTasks.map((t) => ({
-        id: t.clickup_id,
-        name: t.name,
-        status: t.status,
-        assignees: Array.isArray(t.assignees) ? t.assignees.map((a: { username?: string }) => a.username).filter(Boolean) : [],
-        due_date: t.due_date,
-        priority: t.priority,
-        list: listMap.get(t.list_id) ?? t.list_id,
-      })),
-      count: enrichedTasks.length,
-    };
+    const keywords = searchQuery
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+
+    if (keywords.length > 0) {
+      // Build OR conditions for each keyword against name
+      const keywordConditions = keywords
+        .map((kw) => `name.ilike.%${kw}%`)
+        .join(',');
+
+      const { data: fuzzyTasks } = await supabase
+        .from('cached_tasks')
+        .select('clickup_id, name, status, assignees, due_date, priority, list_id, description')
+        .eq('workspace_id', workspaceId)
+        .or(keywordConditions)
+        .limit(10)
+        .order('due_date', { ascending: true, nullsFirst: false });
+
+      if (fuzzyTasks && fuzzyTasks.length > 0) {
+        const result = await enrichWithListNames(supabase, workspaceId, fuzzyTasks);
+        return {
+          ...result,
+          fuzzy_match: true,
+          message: `No exact match for "${searchQuery}", but found ${fuzzyTasks.length} task(s) with similar keywords. These might be what you're looking for.`,
+        };
+      }
+    }
   }
 
   return { success: true, tasks: [], count: 0 };

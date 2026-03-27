@@ -9,20 +9,67 @@ import { getModulesForTaskType } from '@/lib/ai/knowledge-base';
 
 const CHARS_PER_TOKEN = 4;
 
-/** Token allocations per prompt component */
-const TOKEN_BUDGET = {
-  /** Base system prompt (identity & rules from B-039/KB) */
+/** Token budgets per task complexity tier.
+ *
+ * Why tiered? A question like "how many overdue tasks" should cost ~1,500
+ * tokens total, not 5,000+. The previous flat budget sent full brain modules,
+ * KB summaries, and business state for every task type — even when the answer
+ * was already in the context or required a single tool call.
+ *
+ * Tiers:
+ *   lightweight — general_chat (handled separately, ~300 tokens)
+ *   minimal     — simple_lookup, health_check, troubleshooting (~1,500 tokens)
+ *   standard    — complex_query, action_request, dashboard_request, analysis_audit (~3,500 tokens)
+ *   full        — setup_request, strategy (~6,000 tokens)
+ */
+interface TokenBudget {
+  system: number;
+  kbSummary: number;
+  brainModulesMax: number;
+  context: number;
+  history: number;
+}
+
+const BUDGET_MINIMAL: TokenBudget = {
+  system: 300,
+  kbSummary: 0,
+  brainModulesMax: 0,
+  context: 800,
+  history: 800,
+};
+
+const BUDGET_STANDARD: TokenBudget = {
   system: 600,
-  /** Shared knowledge base summary (always included) */
   kbSummary: 500,
-  /** Task-specific brain module(s) — varies by complexity */
-  brainModulesMin: 2000,
-  brainModulesMax: 4000,
-  /** Business context from B-041 (user, workspace, state) */
+  brainModulesMax: 2000,
   context: 1500,
-  /** Conversation history */
+  history: 1500,
+};
+
+const BUDGET_FULL: TokenBudget = {
+  system: 600,
+  kbSummary: 500,
+  brainModulesMax: 4000,
+  context: 1500,
   history: 2000,
-} as const;
+};
+
+const TASK_BUDGET_MAP: Record<TaskType, TokenBudget> = {
+  general_chat: BUDGET_MINIMAL,     // handled by lightweight prompt, but fallback
+  simple_lookup: BUDGET_MINIMAL,
+  health_check: BUDGET_MINIMAL,
+  troubleshooting: BUDGET_MINIMAL,
+  complex_query: BUDGET_STANDARD,
+  action_request: BUDGET_STANDARD,
+  dashboard_request: BUDGET_STANDARD,
+  analysis_audit: BUDGET_STANDARD,
+  setup_request: BUDGET_FULL,
+  strategy: BUDGET_FULL,
+};
+
+function getBudgetForTask(taskType: TaskType): TokenBudget {
+  return TASK_BUDGET_MAP[taskType] ?? BUDGET_STANDARD;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,22 +124,26 @@ export async function assemblePrompt(
   // For general_chat: skip KB modules entirely — lightweight prompt only
   const isLightweight = taskType === 'general_chat';
 
-  // 1. Fetch brain modules from knowledge base (skip for general chat)
-  const { taskModules, sharedModules } = isLightweight
+  // Get task-specific token budget
+  const budget = getBudgetForTask(taskType);
+  const isMinimal = budget === BUDGET_MINIMAL;
+
+  // 1. Fetch brain modules from knowledge base (skip for lightweight/minimal)
+  const { taskModules, sharedModules } = (isLightweight || isMinimal)
     ? { taskModules: [], sharedModules: [] }
     : await getModulesForTaskType(taskType);
 
-  // 2. Build each section with token budgets
-  const systemSection = truncateToTokenBudget(systemPrompt, TOKEN_BUDGET.system);
-  const kbSummarySection = isLightweight ? '' : buildKBSummarySection(sharedModules, TOKEN_BUDGET.kbSummary);
-  const brainModulesSection = isLightweight ? '' : buildBrainModulesSection(
+  // 2. Build each section with task-specific token budgets
+  const systemSection = truncateToTokenBudget(systemPrompt, budget.system);
+  const kbSummarySection = (isLightweight || budget.kbSummary === 0) ? '' : buildKBSummarySection(sharedModules, budget.kbSummary);
+  const brainModulesSection = (isLightweight || budget.brainModulesMax === 0) ? '' : buildBrainModulesSection(
     taskModules,
-    TOKEN_BUDGET.brainModulesMax,
+    budget.brainModulesMax,
   );
   const contextSection = isLightweight ? '' : buildContextSection(
     context,
     options?.dashboardContext,
-    TOKEN_BUDGET.context,
+    budget.context,
   );
 
   // 3. Calculate remaining budget for history after other sections
@@ -102,7 +153,7 @@ export async function assemblePrompt(
     estimateTokens(brainModulesSection) +
     estimateTokens(contextSection);
 
-  const historyBudget = TOKEN_BUDGET.history;
+  const historyBudget = budget.history;
 
   // 4. Fit conversation history within budget
   const fittedHistory = fitHistoryToTokenBudget(conversationHistory, historyBudget);

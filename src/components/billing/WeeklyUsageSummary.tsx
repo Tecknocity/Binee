@@ -62,6 +62,15 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   );
 }
 
+/** Get the Monday (start of week) for a given date */
+function getWeekStart(date: Date): string {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function WeeklyUsageSummary() {
   const { workspace } = useAuth();
   const [data, setData] = useState<WeeklyData[]>([]);
@@ -72,29 +81,68 @@ export default function WeeklyUsageSummary() {
 
     const supabase = createBrowserClient();
 
+    // Query credit_usage table which has workspace_id (added in migration 031)
+    // instead of weekly_usage_summaries which is user-scoped without workspace_id.
+    const eightWeeksAgo = new Date();
+    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+
     supabase
-      .from('weekly_usage_summaries')
-      .select('*')
+      .from('credit_usage')
+      .select('action_type, credits_deducted, created_at')
       .eq('workspace_id', workspace.id)
-      .order('week_start', { ascending: true })
-      .limit(8)
-      .then(({ data: rows }) => {
-        if (rows) {
-          setData(
-            rows.map((r) => ({
-              week: new Date(String(r.week_start)).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-              }),
-              total: Number(r.total_credits ?? 0),
-              chat: Number(r.chat_credits ?? 0),
-              health_check: Number(r.health_check_credits ?? 0),
-              setup: Number(r.setup_credits ?? 0),
-              dashboard: Number(r.dashboard_credits ?? 0),
-              briefing: Number(r.briefing_credits ?? 0),
-            }))
-          );
+      .gte('created_at', eightWeeksAgo.toISOString())
+      .order('created_at', { ascending: true })
+      .then(({ data: rows, error }) => {
+        if (error) {
+          console.error('[WeeklyUsageSummary] Query failed:', error.message);
+          setLoading(false);
+          return;
         }
+
+        if (rows && rows.length > 0) {
+          // Aggregate by week
+          const weekMap = new Map<string, WeeklyData>();
+
+          for (const row of rows) {
+            const weekKey = getWeekStart(new Date(row.created_at));
+            let entry = weekMap.get(weekKey);
+            if (!entry) {
+              entry = {
+                week: new Date(weekKey).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                }),
+                total: 0,
+                chat: 0,
+                health_check: 0,
+                setup: 0,
+                dashboard: 0,
+                briefing: 0,
+              };
+              weekMap.set(weekKey, entry);
+            }
+
+            const credits = Number(row.credits_deducted ?? 0);
+            entry.total += credits;
+            const actionType = row.action_type as keyof Omit<WeeklyData, 'week' | 'total'>;
+            if (actionType in entry) {
+              (entry[actionType] as number) += credits;
+            }
+          }
+
+          // Sort by week and take last 8
+          const sorted = Array.from(weekMap.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .slice(-8)
+            .map(([, v]) => v);
+
+          setData(sorted);
+        }
+
+        setLoading(false);
+      })
+      .catch(() => {
+        // Ensure spinner is cleared even on unexpected errors
         setLoading(false);
       });
   }, [workspace?.id]);

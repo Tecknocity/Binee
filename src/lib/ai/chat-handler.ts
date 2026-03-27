@@ -327,8 +327,23 @@ export async function handleChat(
         messages: apiMessages,
       });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(`Anthropic API error (round ${round + 1}): ${msg}`);
+      // Parse Anthropic SDK errors into user-friendly messages instead of
+      // exposing raw JSON error bodies to the frontend.
+      const raw = e instanceof Error ? e.message : String(e);
+      let userMessage: string;
+      if (raw.includes('rate_limit') || raw.includes('429')) {
+        userMessage = 'Rate limit reached — please try again in a moment.';
+      } else if (raw.includes('overloaded') || raw.includes('529')) {
+        userMessage = 'The AI service is temporarily overloaded. Please try again shortly.';
+      } else if (raw.includes('authentication') || raw.includes('401')) {
+        userMessage = 'AI service authentication error. Please contact support.';
+      } else if (raw.includes('timeout') || raw.includes('timed out')) {
+        userMessage = 'The AI request timed out. Please try again with a simpler question.';
+      } else {
+        userMessage = 'An error occurred while processing your request. Please try again.';
+      }
+      console.error(`[handleChat] Anthropic API error (round ${round + 1}):`, raw);
+      throw new Error(userMessage);
     }
     console.log(`[handleChat] Claude responded (round ${round + 1}, ${response.usage.output_tokens} tokens)`);
 

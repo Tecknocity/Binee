@@ -74,6 +74,12 @@ export async function buildContext(
   // Only fetch workspace + user metadata + conversation history.
   const isLightweight = taskType === 'general_chat';
 
+  // For simple tasks: build a compact business state with just task metrics
+  // (counts, overdue, unassigned) — skip the full structure/team/activity
+  // queries. This reduces from 6 DB queries to 3 and cuts context by ~60%.
+  const COMPACT_TASK_TYPES = new Set(['simple_lookup', 'health_check', 'troubleshooting']);
+  const isCompact = taskType ? COMPACT_TASK_TYPES.has(taskType) : false;
+
   const [
     workspaceResult,
     memberResult,
@@ -91,7 +97,11 @@ export async function buildContext(
       .eq('workspace_id', workspaceId)
       .eq('user_id', userId)
       .single(),
-    isLightweight ? Promise.resolve(getEmptyBusinessState(workspaceId)) : buildBusinessStateDocument(workspaceId),
+    isLightweight
+      ? Promise.resolve(getEmptyBusinessState(workspaceId))
+      : isCompact
+        ? buildCompactBusinessState(workspaceId)
+        : buildBusinessStateDocument(workspaceId),
     fetchConversationHistory(conversationId),
   ]);
 
@@ -184,6 +194,56 @@ export async function buildContext(
 // Queries cached_* tables and compresses workspace data into structured JSON.
 // Target: 1,500–3,000 tokens. Replaces sending raw data to the LLM.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Compact business state — just task metrics, no structure/team/activity
+// Used for simple_lookup, health_check, troubleshooting to cut ~60% tokens.
+// Only runs 2 DB queries instead of 6. Target: ~300–500 tokens.
+// ---------------------------------------------------------------------------
+
+async function buildCompactBusinessState(
+  workspaceId: string,
+): Promise<BusinessState> {
+  const supabase = getSupabaseAdmin();
+
+  // Use the server-side RPC that computes all metrics in a SINGLE SQL query
+  // instead of fetching every task row and counting in JavaScript.
+  // This is the same RPC used by the health check system (migration 030).
+  const { data: metrics, error: rpcError } = await supabase.rpc(
+    'compute_workspace_metrics_rpc',
+    { p_workspace_id: workspaceId },
+  );
+
+  if (rpcError || !metrics) {
+    console.error('[context] compact RPC failed, returning empty state:', rpcError?.message);
+    return getEmptyBusinessState(workspaceId);
+  }
+
+  return {
+    generated_at: new Date().toISOString(),
+    workspace_id: workspaceId,
+    tasks: {
+      total: metrics.totalTasks ?? 0,
+      overdue: metrics.overdueTasks ?? 0,
+      unassigned: metrics.unassignedTasks ?? 0,
+      by_status: {},
+      by_priority: {},
+      by_assignee: [],
+    },
+    team: {
+      total_members: metrics.totalMembers ?? 0,
+      members: [],
+    },
+    structure: {
+      total_spaces: 0,
+      total_folders: 0,
+      total_lists: 0,
+      spaces: [],
+    },
+    recent_activity: { total_events: 0, by_type: {} },
+    _meta: { approx_tokens: 0, truncated: false },
+  };
+}
 
 export async function buildBusinessStateDocument(
   workspaceId: string,

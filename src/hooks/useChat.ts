@@ -533,11 +533,13 @@ export function useChat(conversationId: string | null) {
 
         const isTimeout =
           err instanceof DOMException && err.name === 'AbortError';
-        const errorDetail = isTimeout
+        const rawDetail = isTimeout
           ? 'The request timed out. Please try again with a simpler question.'
           : err instanceof Error
             ? err.message
             : 'An unexpected error occurred';
+        // Apply the same user-friendly formatting used for tool call errors
+        const errorDetail = formatErrorMessage(rawDetail);
         const fallbackContent =
           `Something went wrong: ${errorDetail}`;
         const fallbackMessage: ChatMessage = {
