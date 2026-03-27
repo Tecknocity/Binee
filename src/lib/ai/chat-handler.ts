@@ -226,9 +226,19 @@ export async function handleChat(
   // Step 7: Call Claude API with tool use loop
   // -------------------------------------------------------------------------
   console.log('[handleChat] Step 6: calling Claude API');
-  const toolsForApi = (clickUpConnected && classification.taskType !== 'general_chat')
+  const customTools = (clickUpConnected && classification.taskType !== 'general_chat')
     ? getToolsForTask(classification.taskType)
     : [];
+
+  // Anthropic server-side web search tool — lets Claude search the web for
+  // real-time data (weather, news, prices, etc.) without a third-party API.
+  // Added for general_chat and simple_lookup so Binee can answer real-time questions.
+  const WEB_SEARCH_TASK_TYPES = new Set(['general_chat', 'simple_lookup', 'complex_query', 'strategy', 'troubleshooting']);
+  const webSearchTool = WEB_SEARCH_TASK_TYPES.has(classification.taskType)
+    ? [{ type: 'web_search_20250305' as const, name: 'web_search' as const }]
+    : [];
+
+  const toolsForApi = [...customTools, ...webSearchTool];
   const allToolCalls: ToolCallResult[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -257,13 +267,19 @@ export async function handleChat(
     },
   ];
 
-  const toolsWithCache = toolsForApi.length > 0
-    ? toolsForApi.map((tool, idx) =>
-        idx === toolsForApi.length - 1
-          ? { ...tool, cache_control: { type: 'ephemeral' as const } }
-          : tool
-      )
-    : [];
+  // Apply cache_control to the last custom tool (not the web search server tool).
+  // Server tools like web_search don't support cache_control.
+  const toolsWithCache: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < customTools.length; i++) {
+    const tool = customTools[i];
+    if (i === customTools.length - 1) {
+      toolsWithCache.push({ ...tool, cache_control: { type: 'ephemeral' as const } });
+    } else {
+      toolsWithCache.push(tool);
+    }
+  }
+  // Append web search server tool after custom tools (no cache_control)
+  toolsWithCache.push(...webSearchTool);
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     toolRounds = round + 1;
@@ -287,6 +303,8 @@ export async function handleChat(
     totalOutputTokens += response.usage.output_tokens;
 
     // Process content blocks
+    // Server tool blocks (web_search_tool_result, etc.) are informational —
+    // Anthropic handles them internally. We only process text and custom tool_use.
     const textBlocks: string[] = [];
     const toolUseBlocks: Anthropic.ToolUseBlock[] = [];
 
@@ -296,6 +314,7 @@ export async function handleChat(
       } else if (block.type === 'tool_use') {
         toolUseBlocks.push(block);
       }
+      // server_tool_use, web_search_tool_result blocks are handled by Anthropic
     }
 
     // If no tool uses, we have our final response
