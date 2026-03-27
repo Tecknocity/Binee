@@ -41,6 +41,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Separate credit balance state — updated locally from realtime events
+  // without creating a new workspace object reference. This prevents
+  // credit deductions from cascading re-renders across the entire app.
+  const [creditOverride, setCreditOverride] = useState<number | null>(null);
 
   const supabase = createBrowserClient();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -135,7 +139,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [workspace?.id, authLoading, user, workspace, fetchMembers]);
 
-  // Subscribe to realtime changes on the current workspace row (credit_balance, etc.)
+  // Subscribe to realtime changes on the current workspace row.
+  // IMPORTANT: Credit balance changes happen on every chat message. We handle
+  // them locally from the realtime payload to avoid a full refreshWorkspace()
+  // call that would create a new workspace object, cascading re-renders across
+  // the entire app (dashboards, health, chat all depend on workspace context).
   useEffect(() => {
     if (!workspace?.id) return;
 
@@ -145,19 +153,38 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       channelRef.current = null;
     }
 
+    const workspaceId = workspace.id;
     const channel = supabase
-      .channel(`workspace-${workspace.id}`)
+      .channel(`workspace-${workspaceId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'workspaces',
-          filter: `id=eq.${workspace.id}`,
+          filter: `id=eq.${workspaceId}`,
         },
-        () => {
-          // Refresh workspace data when any update occurs (credit balance, settings, etc.)
-          refreshWorkspace();
+        (payload) => {
+          const updated = payload.new as Record<string, unknown>;
+          // Only do a full refresh if something structural changed (name, plan,
+          // settings, clickup_connected, etc.). Credit balance and updated_at
+          // changes are applied locally without creating a new workspace object.
+          const current = workspace;
+          const creditOnly =
+            updated.credit_balance !== current.credit_balance &&
+            updated.name === current.name &&
+            updated.plan === current.plan &&
+            updated.slug === current.slug &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            updated.clickup_connected === (current as any).clickup_connected;
+
+          if (creditOnly) {
+            // Apply credit balance locally — no new object reference, no cascade
+            setCreditOverride(typeof updated.credit_balance === 'number' ? updated.credit_balance : null);
+          } else {
+            // Structural change — full refresh needed
+            refreshWorkspace();
+          }
         },
       )
       .subscribe();
@@ -168,6 +195,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace object used for comparison, but we only want to re-subscribe on ID change
   }, [workspace?.id, supabase, refreshWorkspace]);
 
   // Re-fetch on session recovery (stale token was refreshed)
@@ -194,11 +222,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // where pages wait for the full member list before showing any content.
   const loading = authLoading;
 
+  // Reset credit override when the workspace object itself changes (full refresh)
+  useEffect(() => {
+    setCreditOverride(null);
+  }, [workspace]);
+
   const value: WorkspaceContextValue = {
     workspace,
     workspace_id: workspace?.id ?? null,
     plan_tier: workspace?.plan ?? null,
-    credit_balance: workspace?.credit_balance ?? 0,
+    // Use local credit override when available (from realtime events),
+    // otherwise fall back to the workspace object's value.
+    credit_balance: creditOverride ?? workspace?.credit_balance ?? 0,
     members,
     membership,
     loading,

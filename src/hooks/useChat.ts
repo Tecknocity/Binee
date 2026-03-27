@@ -9,6 +9,7 @@ import {
   shouldAutoApprove,
   setActionPreference,
 } from '@/lib/ai/action-preferences';
+import { useChatCache } from '@/contexts/ChatCacheContext';
 
 // ---------------------------------------------------------------------------
 // Helper: generate a short title from the first user message
@@ -235,6 +236,8 @@ export function useChat(conversationId: string | null) {
   // Prevents stale-closure bugs from overwriting the title on every message.
   const titleSetRef = useRef(false);
 
+  const chatCache = useChatCache();
+
   // Stable IDs for dependency arrays — avoids re-running effects when the
   // workspace/user *object* reference changes but the ID hasn't.
   const workspaceId = workspace?.id ?? null;
@@ -249,8 +252,12 @@ export function useChat(conversationId: string | null) {
       setError(null);
 
       if (!id || !workspaceId || !userId) {
-        setMessages([]);
-        totalCredits.current = 0;
+        // Don't clear messages if we have cached data — prevents the
+        // flash of empty state during transient null workspaceId windows.
+        if (!id) {
+          setMessages([]);
+          totalCredits.current = 0;
+        }
         return;
       }
 
@@ -258,7 +265,21 @@ export function useChat(conversationId: string | null) {
       // creation), skip reloading to avoid wiping the optimistic user message.
       if (sendingRef.current) return;
 
-      setIsLoadingHistory(true);
+      // Check cache first — show cached messages instantly (no spinner).
+      // Then refresh from DB in the background.
+      const cached = chatCache.get(id);
+      if (cached.length > 0) {
+        setMessages(cached);
+        totalCredits.current = cached.reduce(
+          (sum, m) => sum + (m.creditsConsumed ?? 0),
+          0,
+        );
+        titleSetRef.current = true;
+        // Don't show loading spinner — we already have data to display
+      } else {
+        setIsLoadingHistory(true);
+      }
+
       try {
         const { data, error: fetchError } = await supabase
           .from('messages')
@@ -270,8 +291,11 @@ export function useChat(conversationId: string | null) {
 
         if (fetchError) {
           console.error('Failed to load messages:', fetchError.message);
-          setMessages([]);
-          totalCredits.current = 0;
+          // Keep cached messages if DB fetch fails — don't wipe the screen
+          if (cached.length === 0) {
+            setMessages([]);
+            totalCredits.current = 0;
+          }
           return;
         }
 
@@ -291,14 +315,18 @@ export function useChat(conversationId: string | null) {
         }
 
         setMessages(mapped);
+        // Write through to cache
+        if (id) chatCache.set(id, mapped);
       } catch {
-        setMessages([]);
-        totalCredits.current = 0;
+        if (cached.length === 0) {
+          setMessages([]);
+          totalCredits.current = 0;
+        }
       } finally {
         setIsLoadingHistory(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase and chatCache are stable module-level singletons
     [workspaceId, userId],
   );
 
@@ -347,7 +375,7 @@ export function useChat(conversationId: string | null) {
           const mapped = mapDbMessage(row);
           if (!mapped) return;
 
-          setMessages((prev) => {
+          updateMessages((prev) => {
             // Avoid duplicates — optimistic inserts or double deliveries
             if (prev.some((m) => m.id === mapped.id)) return prev;
             return [...prev, mapped];
@@ -368,6 +396,20 @@ export function useChat(conversationId: string | null) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
   }, [conversationId, workspaceId]);
+
+  // Helper: update messages state AND write through to cache
+  const updateMessages = useCallback(
+    (updater: (prev: ChatMessage[]) => ChatMessage[], convId?: string) => {
+      setMessages((prev) => {
+        const next = updater(prev);
+        const cacheId = convId || conversationId;
+        if (cacheId) chatCache.set(cacheId, next);
+        return next;
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversationId],
+  );
 
   // -------------------------------------------------------------------------
   // Send a message via the AI chat API
@@ -390,7 +432,7 @@ export function useChat(conversationId: string | null) {
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, userMessage]);
+      updateMessages((prev) => [...prev, userMessage], effectiveId);
       setIsLoading(true);
       setError(null);
 
@@ -459,7 +501,7 @@ export function useChat(conversationId: string | null) {
         };
 
         totalCredits.current += data.credits_consumed ?? 0;
-        setMessages((prev) => [...prev, assistantMessage]);
+        updateMessages((prev) => [...prev, assistantMessage], effectiveId);
 
         // Update conversation title (only on the very first message) and timestamp
         if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
@@ -505,7 +547,7 @@ export function useChat(conversationId: string | null) {
           timestamp: new Date(),
           creditsConsumed: 0,
         };
-        setMessages((prev) => [...prev, fallbackMessage]);
+        updateMessages((prev) => [...prev, fallbackMessage], effectiveId);
         setError(errorDetail);
 
         // Persist messages to DB even on error so chat history is saved

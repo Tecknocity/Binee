@@ -573,7 +573,7 @@ async function saveConversationMessages(
 ): Promise<void> {
   try {
     // Upsert the conversation (create if first message)
-    await supabase
+    const { error: upsertErr } = await supabase
       .from('conversations')
       .upsert(
         {
@@ -584,18 +584,26 @@ async function saveConversationMessages(
         },
         { onConflict: 'id' },
       );
+    if (upsertErr) {
+      console.error('[chat-handler] Conversation upsert failed:', upsertErr.message);
+      // Don't continue — FK constraint will fail on message inserts
+      return;
+    }
 
     // Insert the user message
-    await supabase.from('messages').insert({
+    const { error: userMsgErr } = await supabase.from('messages').insert({
       workspace_id: workspaceId,
       conversation_id: conversationId,
       role: 'user',
       content: userMessage,
       credits_used: 0,
     });
+    if (userMsgErr) {
+      console.error('[chat-handler] User message insert failed:', userMsgErr.message);
+    }
 
     // Insert the assistant message with metadata
-    await supabase.from('messages').insert({
+    const { error: asstMsgErr } = await supabase.from('messages').insert({
       workspace_id: workspaceId,
       conversation_id: conversationId,
       role: 'assistant',
@@ -609,8 +617,10 @@ async function saveConversationMessages(
         task_type: taskType,
       },
     });
+    if (asstMsgErr) {
+      console.error('[chat-handler] Assistant message insert failed:', asstMsgErr.message);
+    }
   } catch (error) {
-    // Log but don't fail the response if message saving fails
     console.error('[chat-handler] Failed to save conversation messages:', error);
   }
 }
