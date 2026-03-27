@@ -104,7 +104,7 @@ export default function CreditUsageChart() {
         </div>
         <div className="flex items-center gap-2 text-right">
           <div>
-            <p className="text-lg font-bold text-text-primary font-mono">{totalUsed}</p>
+            <p className="text-lg font-bold text-text-primary font-mono">{Math.round(totalUsed * 10) / 10}</p>
             <p className="text-xs text-text-muted">credits used</p>
           </div>
           <TrendingDown className="w-4 h-4 text-text-muted" />

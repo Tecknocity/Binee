@@ -18,6 +18,7 @@ function getSupabaseAdmin() {
 // ---------------------------------------------------------------------------
 
 const TASK_TYPE_TO_KB_TYPES: Record<string, string[]> = {
+  general_chat: [],  // No KB modules for general conversation
   simple_lookup: ['chat', 'general', 'knowledge'],
   complex_query: ['chat', 'general', 'knowledge'],
   action_request: ['action', 'execution'],

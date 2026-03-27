@@ -139,7 +139,7 @@ export default function MemberUsageTable() {
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono font-medium text-text-primary">
-                    {member.total_credits}
+                    {Math.round(member.total_credits * 10) / 10}
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="h-2 bg-border/50 rounded-full overflow-hidden">

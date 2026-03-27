@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(
     {
-      displayBalance: balance,
+      displayBalance: Math.floor(balance),
       subscription: 0,
       subscriptionPlanCredits: 0,
       paygo: 0,

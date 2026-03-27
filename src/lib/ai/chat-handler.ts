@@ -177,7 +177,7 @@ export async function handleChat(
     throw new Error(`Workspace not found (id: ${workspace_id}): ${wsError?.message ?? 'no data returned'}`);
   }
 
-  const insufficientCredits = checkSufficientCredits(workspace.credit_balance, 1);
+  const insufficientCredits = checkSufficientCredits(Math.floor(workspace.credit_balance), 1);
   if (insufficientCredits) {
     return {
       content: insufficientCredits.message,
@@ -226,7 +226,9 @@ export async function handleChat(
   // Step 7: Call Claude API with tool use loop
   // -------------------------------------------------------------------------
   console.log('[handleChat] Step 6: calling Claude API');
-  const toolsForApi = clickUpConnected ? getToolsForTask(classification.taskType) : [];
+  const toolsForApi = (clickUpConnected && classification.taskType !== 'general_chat')
+    ? getToolsForTask(classification.taskType)
+    : [];
   const allToolCalls: ToolCallResult[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -422,14 +424,15 @@ export async function handleChat(
   // -------------------------------------------------------------------------
   // Step 9: Deduct credits from WORKSPACE pool (B-049)
   // -------------------------------------------------------------------------
-  // Token-based cost, rounded up to integer, deducted from the shared
-  // workspace credit_balance. All team members draw from the same pool.
+  // Token-based cost — exact fractional value, no rounding.
+  // The database stores the precise amount; frontend shows Math.floor().
   const conversion = tokensToCredits({
     input_tokens: totalInputTokens,
     output_tokens: totalOutputTokens,
     model: routing.model as 'haiku' | 'sonnet' | 'opus',
   });
-  const creditCost = Math.max(1, Math.ceil(conversion.creditsConsumed));
+  // Round to 4 decimal places to match numeric(12,4) column
+  const creditCost = Math.round(conversion.creditsConsumed * 10000) / 10000;
 
   // Atomic deduction from workspace pool via SQL RPC (row-locked)
   let billingResult = null;

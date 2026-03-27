@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
 
     const balance = workspace?.credit_balance ?? 0;
     credits = {
-      displayBalance: balance,
+      displayBalance: Math.floor(balance),
       // Workspace-scoped billing: single pool, no subscription/paygo split.
       // These fields are kept for backward compatibility with frontend components.
       subscription: 0,

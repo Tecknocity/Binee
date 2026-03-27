@@ -26,5 +26,5 @@ export function formatRelativeTime(date: string | Date): string {
 }
 
 export function formatCredits(credits: number): string {
-  return credits.toLocaleString();
+  return Math.floor(credits).toLocaleString();
 }

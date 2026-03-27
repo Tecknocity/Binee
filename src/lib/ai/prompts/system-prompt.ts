@@ -42,6 +42,12 @@ export async function loadSystemPrompt(
   context: BineeContext,
   options: SystemPromptOptions,
 ): Promise<string> {
+  // For general_chat: lightweight prompt — just personality, no business state,
+  // no KB modules, no computed data. Saves ~2,500 tokens per message.
+  if (options.taskType === 'general_chat') {
+    return buildLightweightPrompt(context);
+  }
+
   const [baseIdentity, knowledgeContext] = await Promise.all([
     loadBaseIdentity(),
     buildKnowledgeContext(options.taskType),
@@ -67,6 +73,29 @@ export async function loadSystemPrompt(
   parts.push(buildConversationNote(context));
 
   return parts.filter(Boolean).join('\n\n');
+}
+
+// ---------------------------------------------------------------------------
+// Lightweight prompt for general_chat — no business state, no KB
+// ---------------------------------------------------------------------------
+
+function buildLightweightPrompt(context: BineeContext): string {
+  const { user } = context;
+  const historyLen = context.conversationHistory.length;
+  const historyNote = historyLen > 0
+    ? `\n\nThis conversation has ${historyLen} prior message(s). Maintain continuity.`
+    : '';
+
+  return `You are Binee, a smart and friendly AI business consultant built by Tecknocity. You help professionals with general questions, brainstorming, advice, and everyday conversation.
+
+You are speaking with ${user.display_name}.
+
+## Guidelines
+- Be concise, helpful, and personable.
+- Answer any question the user asks — business, general knowledge, casual chat, anything.
+- If the user asks about their ClickUp workspace, tasks, team, or project data, let them know you can help with that — just ask them to phrase it so you can look up their workspace data.
+- Never fabricate data. If you don't know something, say so.
+- Use bullet points and short paragraphs. Avoid filler.${historyNote}`;
 }
 
 // ---------------------------------------------------------------------------

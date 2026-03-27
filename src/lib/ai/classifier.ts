@@ -7,6 +7,7 @@ import type { TaskType, ClassificationResult } from '@/types/ai';
 // ---------------------------------------------------------------------------
 
 const PATTERNS: Record<TaskType, RegExp[]> = {
+  general_chat: [],  // No patterns — this is the fallback when nothing matches
   action_request: [
     /\b(create|update|assign|move|delete|remove|add|set|change|rename|close|reopen|complete|archive)\b/i,
     /\b(mark as|update to|assign to|create a task|change the status|move to)\b/i,
@@ -78,6 +79,7 @@ export function classifyMessage(
     : message;
 
   const scores: Record<TaskType, number> = {
+    general_chat: 0,
     simple_lookup: 0,
     complex_query: 0,
     action_request: 0,
@@ -101,7 +103,7 @@ export function classifyMessage(
   }
 
   // Find the highest-scoring task type
-  let bestType: TaskType = 'simple_lookup'; // default fallback
+  let bestType: TaskType = 'general_chat'; // default: general conversation (no workspace context needed)
   let bestScore = 0;
 
   for (const [taskType, score] of Object.entries(scores)) {
@@ -117,7 +119,7 @@ export function classifyMessage(
   const reasoning =
     bestScore > 0
       ? `Matched ${bestScore} keyword pattern(s) for "${bestType}"`
-      : 'No strong pattern match; defaulting to simple_lookup';
+      : 'No workspace-specific patterns matched; routing as general chat';
 
   return {
     taskType: bestType,

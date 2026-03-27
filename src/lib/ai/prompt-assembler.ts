@@ -74,17 +74,22 @@ export async function assemblePrompt(
   taskType: TaskType,
   options?: AssemblePromptOptions,
 ): Promise<AssembledPrompt> {
-  // 1. Fetch brain modules from knowledge base
-  const { taskModules, sharedModules } = await getModulesForTaskType(taskType);
+  // For general_chat: skip KB modules entirely — lightweight prompt only
+  const isLightweight = taskType === 'general_chat';
+
+  // 1. Fetch brain modules from knowledge base (skip for general chat)
+  const { taskModules, sharedModules } = isLightweight
+    ? { taskModules: [], sharedModules: [] }
+    : await getModulesForTaskType(taskType);
 
   // 2. Build each section with token budgets
   const systemSection = truncateToTokenBudget(systemPrompt, TOKEN_BUDGET.system);
-  const kbSummarySection = buildKBSummarySection(sharedModules, TOKEN_BUDGET.kbSummary);
-  const brainModulesSection = buildBrainModulesSection(
+  const kbSummarySection = isLightweight ? '' : buildKBSummarySection(sharedModules, TOKEN_BUDGET.kbSummary);
+  const brainModulesSection = isLightweight ? '' : buildBrainModulesSection(
     taskModules,
     TOKEN_BUDGET.brainModulesMax,
   );
-  const contextSection = buildContextSection(
+  const contextSection = isLightweight ? '' : buildContextSection(
     context,
     options?.dashboardContext,
     TOKEN_BUDGET.context,

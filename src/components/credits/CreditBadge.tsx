@@ -20,14 +20,16 @@ export default function CreditBadge() {
   const router = useRouter();
   const { credit_balance } = useWorkspace();
 
+  const displayBalance = Math.floor(credit_balance);
+
   const color = (() => {
-    if (credit_balance <= WARNING_THRESHOLDS.empty) {
+    if (displayBalance <= WARNING_THRESHOLDS.empty) {
       return { text: 'text-red-400', icon: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
     }
-    if (credit_balance <= WARNING_THRESHOLDS.critical) {
+    if (displayBalance <= WARNING_THRESHOLDS.critical) {
       return { text: 'text-red-400', icon: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
     }
-    if (credit_balance <= WARNING_THRESHOLDS.low) {
+    if (displayBalance <= WARNING_THRESHOLDS.low) {
       return { text: 'text-yellow-400', icon: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
     }
     return { text: 'text-emerald-400', icon: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' };
@@ -41,16 +43,16 @@ export default function CreditBadge() {
         color.bg,
         color.border
       )}
-      aria-label={`${credit_balance} credits remaining — click to view billing`}
+      aria-label={`${displayBalance} credits remaining — click to view billing`}
     >
       <Coins className={cn('w-3.5 h-3.5', color.icon)} />
       <span className={cn('text-xs font-mono font-medium', color.text)}>
-        {credit_balance.toLocaleString()}
+        {displayBalance.toLocaleString()}
       </span>
-      {credit_balance <= WARNING_THRESHOLDS.empty && (
+      {displayBalance <= WARNING_THRESHOLDS.empty && (
         <AlertCircle className="w-3.5 h-3.5 text-red-400" />
       )}
-      <CreditIndicator balance={credit_balance} />
+      <CreditIndicator balance={displayBalance} />
     </button>
   );
 }
