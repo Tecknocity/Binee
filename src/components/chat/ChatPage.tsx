@@ -275,7 +275,6 @@ export default function ChatPage() {
     confirmAction,
     alwaysAllowAction,
     selectDashboardChoice,
-    loadConversation,
   } = useChat(effectiveConversationId);
 
   // When ?new=1 is in URL, clear the active conversation so we show the welcome screen
@@ -286,9 +285,8 @@ export default function ChatPage() {
     }
   }, [isNew, setActiveConversation, router]);
 
-  useEffect(() => {
-    loadConversation(effectiveConversationId);
-  }, [effectiveConversationId, loadConversation]);
+  // Note: loadConversation is already triggered inside useChat when
+  // conversationId changes — no need to call it again here.
 
   const handleNewChat = useCallback(() => {
     setActiveConversation(null);
@@ -350,6 +348,15 @@ export default function ChatPage() {
     [selectDashboardChoice, handleSend],
   );
 
+  const handleRename = useCallback(
+    (newTitle: string) => {
+      if (activeConversationId) {
+        renameConversation(activeConversationId, newTitle);
+      }
+    },
+    [activeConversationId, renameConversation],
+  );
+
   // Show error state when workspace setup failed — with interactive fix
   if (!wsLoading && !workspace && user) {
     return <WorkspaceSetupError wsError={wsError} user={user} />;
@@ -361,15 +368,6 @@ export default function ChatPage() {
   // Get the active conversation's title for the header
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const conversationTitle = activeConversation?.title || 'New conversation';
-
-  const handleRename = useCallback(
-    (newTitle: string) => {
-      if (activeConversationId) {
-        renameConversation(activeConversationId, newTitle);
-      }
-    },
-    [activeConversationId, renameConversation],
-  );
 
   // Determine which empty state variant to show
   const emptyStateVariant: EmptyStateVariant = isOutOfCredits

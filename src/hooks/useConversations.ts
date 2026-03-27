@@ -22,12 +22,23 @@ export interface Conversation {
 // Hook
 // ---------------------------------------------------------------------------
 
+// Stable module-level Supabase client reference — avoids dependency-array
+// churn that causes refetches and realtime channel re-subscriptions.
+// Lazy-initialized to avoid SSR/prerender crashes (env vars missing).
+let _supabase: ReturnType<typeof createBrowserClient> | null = null;
+function getSupabase() {
+  if (!_supabase) _supabase = createBrowserClient();
+  return _supabase;
+}
+
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { workspace, user } = useAuth();
-  const supabase = createBrowserClient();
+  // Use the stable module-level singleton — getSupabase() always returns
+  // the same object, so `supabase` is a stable reference across renders.
+  const supabase = getSupabase();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Map a database row to a Conversation object
@@ -43,9 +54,14 @@ export function useConversations() {
     [],
   );
 
+  // Stable IDs for dependency arrays — avoids re-running effects when the
+  // workspace/user *object* reference changes but the ID hasn't.
+  const workspaceId = workspace?.id ?? null;
+  const userId = user?.id ?? null;
+
   // Fetch conversations from the database
   const fetchConversations = useCallback(async () => {
-    if (!workspace || !user) {
+    if (!workspaceId || !userId) {
       setConversations([]);
       setIsLoading(false);
       return;
@@ -56,8 +72,8 @@ export function useConversations() {
       const { data, error } = await supabase
         .from('conversations')
         .select('id, title, summary, updated_at, created_at')
-        .eq('workspace_id', workspace.id)
-        .eq('user_id', user.id)
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', userId)
         .order('updated_at', { ascending: false })
         .limit(50);
 
@@ -72,7 +88,8 @@ export function useConversations() {
     } finally {
       setIsLoading(false);
     }
-  }, [workspace, user, supabase, mapRow]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [workspaceId, userId, mapRow]);
 
   // Initial fetch
   useEffect(() => {
@@ -89,7 +106,7 @@ export function useConversations() {
 
   // Real-time subscription for conversation changes
   useEffect(() => {
-    if (!workspace?.id || !user?.id) return;
+    if (!workspaceId || !userId) return;
 
     // Clean up previous subscription
     if (channelRef.current) {
@@ -98,14 +115,14 @@ export function useConversations() {
     }
 
     const channel = supabase
-      .channel(`conversations-${workspace.id}-${user.id}`)
+      .channel(`conversations-${workspaceId}-${userId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace.id},user_id=eq.${user.id}`,
+          filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
         },
         (payload) => {
           const row = payload.new as { id: string; user_id: string; title: string | null; summary: string | null; updated_at: string; created_at: string };
@@ -122,7 +139,7 @@ export function useConversations() {
           event: 'UPDATE',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace.id},user_id=eq.${user.id}`,
+          filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
         },
         (payload) => {
           const row = payload.new as { id: string; user_id: string; title: string | null; summary: string | null; updated_at: string; created_at: string };
@@ -139,7 +156,7 @@ export function useConversations() {
           event: 'DELETE',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace.id},user_id=eq.${user.id}`,
+          filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
         },
         (payload) => {
           const row = payload.old as { id: string };
@@ -154,11 +171,12 @@ export function useConversations() {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [workspace?.id, user?.id, supabase, mapRow]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [workspaceId, userId, mapRow]);
 
   // Create a new conversation in the database
   const createConversation = useCallback(async () => {
-    if (!workspace || !user) return `conv-${Date.now()}`;
+    if (!workspaceId || !userId) return `conv-${Date.now()}`;
 
     // Optimistic local insert
     const tempId = `conv-${Date.now()}`;
@@ -177,8 +195,8 @@ export function useConversations() {
       const { data, error } = await supabase
         .from('conversations')
         .insert({
-          workspace_id: workspace.id,
-          user_id: user.id,
+          workspace_id: workspaceId,
+          user_id: userId,
           title: 'New conversation',
           context_type: 'general',
         })
@@ -200,7 +218,8 @@ export function useConversations() {
     } catch {
       return tempId;
     }
-  }, [workspace, user, supabase, mapRow]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [workspaceId, userId, mapRow]);
 
   // Delete a conversation from the database
   const deleteConversation = useCallback(
@@ -234,7 +253,8 @@ export function useConversations() {
         }
       }
     },
-    [activeConversationId, conversations, supabase, fetchConversations],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+    [activeConversationId, conversations, fetchConversations],
   );
 
   // Rename (update title of) a conversation
@@ -263,7 +283,8 @@ export function useConversations() {
         }
       }
     },
-    [supabase, fetchConversations],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+    [fetchConversations],
   );
 
   const setActiveConversation = useCallback((id: string | null) => {
