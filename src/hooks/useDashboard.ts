@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import type { Dashboard, DashboardWidget } from '@/types/database';
 
 // ---------------------------------------------------------------------------
@@ -25,6 +26,11 @@ interface CacheEntry<T> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const queryCache = new Map<string, CacheEntry<any>>();
+
+/** Clear the entire query cache. Called on session recovery to force fresh fetches. */
+export function clearDashboardCache() {
+  queryCache.clear();
+}
 
 async function cachedQuery<T>(
   key: string,
@@ -844,6 +850,19 @@ export function useDashboard(): DashboardState {
       setWidgets((prev) => prev.map((w) => (w.id === id ? updated : w)));
     }
   }, []);
+
+  // -----------------------------------------------------------------------
+  // Re-fetch on session recovery (stale token was refreshed)
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleRecovered = () => {
+      clearDashboardCache();
+      fetchDashboards();
+    };
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+  }, [fetchDashboards]);
 
   // -----------------------------------------------------------------------
   // Public refresh function
