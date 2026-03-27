@@ -269,7 +269,8 @@ export async function handleChat(
 
   // Apply cache_control to the last custom tool (not the web search server tool).
   // Server tools like web_search don't support cache_control.
-  const toolsWithCache: Array<Record<string, unknown>> = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const toolsWithCache: any[] = [];
   for (let i = 0; i < customTools.length; i++) {
     const tool = customTools[i];
     if (i === customTools.length - 1) {
