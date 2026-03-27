@@ -199,6 +199,30 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'get_weekly_summary',
+    description:
+      'Get a time-scoped progress summary showing tasks completed, tasks due, tasks created, and tasks currently in progress within a date range. Use this when the user asks about "this week\'s progress", "what happened last week", "today\'s tasks", or any time-bounded summary. Defaults to the current week (Monday–Sunday).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        period: {
+          type: 'string',
+          enum: ['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'custom'],
+          description: 'Predefined time period (default: "this_week")',
+        },
+        start_date: {
+          type: 'string',
+          description: 'Custom start date as ISO date string (only used when period is "custom")',
+        },
+        end_date: {
+          type: 'string',
+          description: 'Custom end date as ISO date string (only used when period is "custom")',
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'get_team_activity',
     description:
       'Get recent team activity from webhook events. Shows task creations, updates, completions, comments, and other actions within a time window.',
@@ -395,14 +419,16 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
 const TOOL_NAMES_BY_TASK: Record<string, string[]> = {
   general_chat: [
     'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
+    'get_weekly_summary',
   ],  // Basic read-only tools so Binee can answer workspace questions naturally
   simple_lookup: [
     'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
-    'get_team_activity', 'get_time_tracking_summary',
+    'get_team_activity', 'get_time_tracking_summary', 'get_weekly_summary',
   ],
   complex_query: [
     'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
     'get_team_activity', 'get_time_tracking_summary', 'get_workspace_health',
+    'get_weekly_summary',
   ],
   action_request: [
     'lookup_tasks', 'update_task', 'create_task', 'assign_task', 'move_task',
@@ -414,7 +440,7 @@ const TOOL_NAMES_BY_TASK: Record<string, string[]> = {
   ],
   health_check: [
     'get_workspace_health', 'get_overdue_tasks', 'lookup_tasks',
-    'get_workspace_summary',
+    'get_workspace_summary', 'get_weekly_summary',
   ],
   dashboard_request: [
     'create_dashboard_widget', 'update_dashboard_widget',
@@ -424,10 +450,11 @@ const TOOL_NAMES_BY_TASK: Record<string, string[]> = {
   analysis_audit: [
     'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
     'get_workspace_health', 'get_team_activity', 'get_time_tracking_summary',
+    'get_weekly_summary',
   ],
   strategy: [
     'get_workspace_summary', 'get_workspace_health', 'lookup_tasks',
-    'get_team_activity',
+    'get_team_activity', 'get_weekly_summary',
   ],
   troubleshooting: [
     'lookup_tasks', 'get_workspace_summary', 'get_workspace_health',
