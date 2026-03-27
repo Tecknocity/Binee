@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { VISIBILITY_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import type { UserProfile } from '@/types/database';
 
 type UserProfileData = Omit<UserProfile, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
@@ -30,11 +31,21 @@ export function useUserProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Counter to force re-fetch when visibility recovers after idle
+  const [refreshGen, setRefreshGen] = useState(0);
 
   // Stable ref for supabase client — avoid recreating on every render
   const supabaseRef = useRef(createBrowserClient());
 
-  // Load profile on mount when user is available
+  // Re-fetch profile when tab becomes visible after being hidden
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = () => setRefreshGen((g: number) => g + 1);
+    window.addEventListener(VISIBILITY_RECOVERED_EVENT, handler);
+    return () => window.removeEventListener(VISIBILITY_RECOVERED_EVENT, handler);
+  }, []);
+
+  // Load profile on mount when user is available (and on visibility recovery)
   useEffect(() => {
     if (!user) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- setting loading false when no user is present
@@ -85,7 +96,7 @@ export function useUserProfile() {
 
     load();
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [user?.id, refreshGen]);
 
   // Upsert profile data
   // eslint-disable-next-line react-hooks/preserve-manual-memoization -- deps intentionally exclude full user object to avoid unnecessary re-creation

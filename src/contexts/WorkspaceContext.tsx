@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
+import { SESSION_RECOVERED_EVENT, VISIBILITY_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import type { Workspace, WorkspaceMember } from '@/types/database';
 
 interface WorkspaceContextValue {
@@ -45,8 +45,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // without creating a new workspace object reference. This prevents
   // credit deductions from cascading re-renders across the entire app.
   const [creditOverride, setCreditOverride] = useState<number | null>(null);
+  // Counter to force realtime channel re-subscription on visibility recovery
+  const [realtimeGeneration, setRealtimeGeneration] = useState(0);
 
-  const supabase = createBrowserClient();
+  // Use a stable ref for the Supabase client — calling createBrowserClient()
+  // in the render body returns the same singleton, but using a ref makes the
+  // stability explicit and avoids lint warnings about unstable deps.
+  const supabaseRef = useRef(createBrowserClient());
+  const supabase = supabaseRef.current;
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Fetch workspace members when workspace changes.
@@ -155,7 +161,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     const workspaceId = workspace.id;
     const channel = supabase
-      .channel(`workspace-${workspaceId}`)
+      .channel(`workspace-${workspaceId}-${realtimeGeneration}`)
       .on(
         'postgres_changes',
         {
@@ -195,8 +201,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace object used for comparison, but we only want to re-subscribe on ID change
-  }, [workspace?.id, supabase, refreshWorkspace]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace object used for comparison, but we only want to re-subscribe on ID change; realtimeGeneration forces re-subscribe on visibility recovery
+  }, [workspace?.id, supabase, refreshWorkspace, realtimeGeneration]);
 
   // Re-fetch on session recovery (stale token was refreshed)
   useEffect(() => {
@@ -207,6 +213,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+  }, [refreshWorkspace, workspace?.id, fetchMembers]);
+
+  // Re-subscribe realtime channel + refresh when tab becomes visible
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleVisibility = () => {
+      setRealtimeGeneration((g: number) => g + 1);
+      refreshWorkspace();
+      if (workspace?.id) fetchMembers(workspace.id);
+    };
+    window.addEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
+    return () => window.removeEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
   }, [refreshWorkspace, workspace?.id, fetchMembers]);
 
   // Combined refetch: refresh workspace data + members

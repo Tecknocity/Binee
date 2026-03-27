@@ -6,7 +6,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
+import { SESSION_RECOVERED_EVENT, VISIBILITY_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import type { Dashboard, DashboardWidget } from '@/types/database';
 
 // ---------------------------------------------------------------------------
@@ -27,9 +27,37 @@ interface CacheEntry<T> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const queryCache = new Map<string, CacheEntry<any>>();
 
-/** Clear the entire query cache. Called on session recovery to force fresh fetches. */
+/** Clear the entire query cache. Called on session/visibility recovery to force fresh fetches. */
 export function clearDashboardCache() {
   queryCache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Widget refresh generation — a simple counter that widget hooks subscribe to.
+// When the counter increments (on visibility/session recovery), all widget
+// useEffects re-run and fetch fresh data from Supabase cached tables.
+// This solves the "No data available" problem where widgets only fetched once
+// on mount and never refetched even after the in-memory cache expired.
+// ---------------------------------------------------------------------------
+
+let _widgetRefreshGeneration = 0;
+const _widgetRefreshListeners = new Set<() => void>();
+
+/** Increment the generation counter and notify all widget hooks to re-fetch. */
+function notifyWidgetRefresh() {
+  _widgetRefreshGeneration++;
+  _widgetRefreshListeners.forEach((fn) => fn());
+}
+
+/** Hook that returns the current widget refresh generation, causing re-render on change. */
+function useWidgetRefreshGeneration(): number {
+  const [gen, setGen] = useState(_widgetRefreshGeneration);
+  useEffect(() => {
+    const listener = () => setGen(_widgetRefreshGeneration);
+    _widgetRefreshListeners.add(listener);
+    return () => { _widgetRefreshListeners.delete(listener); };
+  }, []);
+  return gen;
 }
 
 async function cachedQuery<T>(
@@ -137,9 +165,11 @@ function fetchCachedMembers(workspaceId: string) {
 export function useTaskStatusData(workspaceId: string | null) {
   const [data, setData] = useState<{ name: string; value: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       const tasks = await fetchCachedTasks(workspaceId);
       if (tasks.length === 0) { setData([]); setLoading(false); return; }
@@ -151,7 +181,7 @@ export function useTaskStatusData(workspaceId: string | null) {
       setData(Object.entries(counts).map(([name, value]) => ({ name, value })));
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -159,9 +189,11 @@ export function useTaskStatusData(workspaceId: string | null) {
 export function useSprintProgressData(workspaceId: string | null) {
   const [data, setData] = useState<{ name: string; completed: number; total: number; expectedPct: number; daysLeft: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       // Fetch lists and tasks in parallel using shared cache
       const [lists, tasks] = await Promise.all([
@@ -186,7 +218,7 @@ export function useSprintProgressData(workspaceId: string | null) {
       setData(items);
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -194,9 +226,11 @@ export function useSprintProgressData(workspaceId: string | null) {
 export function useTimeTrackingData(workspaceId: string | null) {
   const [data, setData] = useState<{ day: string; hours: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data: entries } = await supabase
@@ -217,7 +251,7 @@ export function useTimeTrackingData(workspaceId: string | null) {
       setData(orderedDays.map((day) => ({ day, hours: Math.round((dayHours[day] ?? 0) * 10) / 10 })));
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -225,9 +259,11 @@ export function useTimeTrackingData(workspaceId: string | null) {
 export function useWorkloadData(workspaceId: string | null) {
   const [data, setData] = useState<{ name: string; completed: number; inProgress: number; overdue: number; total: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       // Fetch tasks and members in parallel using shared cache
       const [tasks, members] = await Promise.all([
@@ -264,7 +300,7 @@ export function useWorkloadData(workspaceId: string | null) {
       setData(sorted);
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -272,9 +308,11 @@ export function useWorkloadData(workspaceId: string | null) {
 export function usePriorityBreakdownData(workspaceId: string | null) {
   const [data, setData] = useState<{ list: string; urgent: number; high: number; normal: number; low: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       // Fetch lists and tasks in parallel using shared cache
       const [lists, tasks] = await Promise.all([
@@ -298,7 +336,7 @@ export function usePriorityBreakdownData(workspaceId: string | null) {
       setData(items.slice(0, 10));
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -306,9 +344,11 @@ export function usePriorityBreakdownData(workspaceId: string | null) {
 export function useRecentActivityData(workspaceId: string | null) {
   const [data, setData] = useState<{ id: string; type: string; user: string; action: string; target: string; time: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       const allTasks = await fetchCachedTasks(workspaceId);
       // Sort and limit locally (cache stores full dataset)
@@ -343,7 +383,7 @@ export function useRecentActivityData(workspaceId: string | null) {
       setData(activities);
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -351,9 +391,11 @@ export function useRecentActivityData(workspaceId: string | null) {
 export function useBarChartData(workspaceId: string | null) {
   const [data, setData] = useState<{ name: string; completed: number; color: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       // Fetch tasks and members in parallel using shared cache
       const [tasks, members] = await Promise.all([
@@ -386,7 +428,7 @@ export function useBarChartData(workspaceId: string | null) {
       setData(sorted);
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -394,9 +436,11 @@ export function useBarChartData(workspaceId: string | null) {
 export function useLineChartData(workspaceId: string | null) {
   const [data, setData] = useState<{ week: string; completed: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       const eightWeeksAgo = new Date(Date.now() - 56 * 24 * 60 * 60 * 1000).toISOString();
       const allTasks = await fetchCachedTasks(workspaceId);
@@ -429,7 +473,7 @@ export function useLineChartData(workspaceId: string | null) {
       setData(weekLabels.map((week) => ({ week, completed: weekBuckets[week] })));
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -447,9 +491,11 @@ export interface OverdueTask {
 export function useOverdueTasksData(workspaceId: string | null) {
   const [data, setData] = useState<OverdueTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const refreshGen = useWidgetRefreshGeneration();
 
   useEffect(() => {
     if (!workspaceId) { setLoading(false); return; }
+    setLoading(true);
     (async () => {
       const now = new Date().toISOString();
       // Fetch tasks and lists in parallel using shared cache
@@ -492,7 +538,7 @@ export function useOverdueTasksData(workspaceId: string | null) {
       setData(overdue);
       setLoading(false);
     })().catch(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, refreshGen]);
 
   return { data, loading };
 }
@@ -859,9 +905,24 @@ export function useDashboard(): DashboardState {
     const handleRecovered = () => {
       clearDashboardCache();
       fetchDashboards();
+      notifyWidgetRefresh(); // Force all widget hooks to re-fetch data
     };
     window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+  }, [fetchDashboards]);
+
+  // Re-fetch on visibility recovery (tab became visible after being hidden).
+  // The in-memory cache may have expired while the tab was hidden, and Supabase
+  // queries may have silently failed. Clear cache and re-fetch everything.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleVisibility = () => {
+      clearDashboardCache();
+      fetchDashboards();
+      notifyWidgetRefresh(); // Force all widget hooks to re-fetch data
+    };
+    window.addEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
+    return () => window.removeEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
   }, [fetchDashboards]);
 
   // -----------------------------------------------------------------------
