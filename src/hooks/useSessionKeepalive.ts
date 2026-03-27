@@ -97,12 +97,15 @@ export function useSessionKeepalive() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const elapsed = Date.now() - lastCheckRef.current;
-        // Only check if at least 1 minute has passed since last check
-        if (elapsed > 60_000) {
-          // Always notify that visibility was recovered — realtime WebSocket
-          // channels die in background tabs even when the auth token is valid.
-          // This lets hooks re-subscribe their channels proactively.
+        // Dispatch visibility recovery after just 5 seconds of being hidden.
+        // Browsers can start throttling tabs very quickly, and Supabase's
+        // internal auth state can become stale during token auto-refresh
+        // in background tabs, causing RLS queries to return empty results.
+        if (elapsed > 5_000) {
           dispatchVisibilityRecovered();
+        }
+        // Full session validation (getUser server call) after 1 minute
+        if (elapsed > 60_000) {
           validateSession('visibility-change');
         }
       }
