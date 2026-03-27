@@ -19,6 +19,11 @@ const SONNET_MAX_TOKENS = 4096;
 // ---------------------------------------------------------------------------
 
 const MODEL_ROUTING: Record<TaskType, ModelRouting> = {
+  general_chat: {
+    model: 'haiku',
+    modelId: HAIKU_MODEL_ID,
+    creditCost: 1,
+  },
   simple_lookup: {
     model: 'haiku',
     modelId: HAIKU_MODEL_ID,

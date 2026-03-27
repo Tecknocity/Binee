@@ -55,7 +55,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
             />
             <span className="text-text-secondary">{ACTION_LABELS[entry.dataKey] ?? entry.dataKey}</span>
           </div>
-          <span className="font-mono font-medium text-text-primary">{entry.value}</span>
+          <span className="font-mono font-medium text-text-primary">{Math.round(entry.value * 10) / 10}</span>
         </div>
       ))}
     </div>
@@ -122,7 +122,7 @@ export default function WeeklyUsageSummary() {
           <p className="text-sm text-text-secondary">Last 8 weeks</p>
         </div>
         <div className="text-right">
-          <p className="text-lg font-bold text-text-primary font-mono">{totalCredits}</p>
+          <p className="text-lg font-bold text-text-primary font-mono">{Math.round(totalCredits * 10) / 10}</p>
           <p className="text-xs text-text-muted">total credits</p>
         </div>
       </div>

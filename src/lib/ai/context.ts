@@ -43,6 +43,22 @@ function getSupabaseAdmin() {
 }
 
 // ---------------------------------------------------------------------------
+// Empty business state — used for general_chat to skip expensive queries
+// ---------------------------------------------------------------------------
+
+function getEmptyBusinessState(workspaceId: string): BusinessState {
+  return {
+    generated_at: new Date().toISOString(),
+    workspace_id: workspaceId,
+    tasks: { total: 0, overdue: 0, unassigned: 0, by_status: {}, by_priority: {}, by_assignee: [] },
+    team: { total_members: 0, members: [] },
+    structure: { total_spaces: 0, total_folders: 0, total_lists: 0, spaces: [] },
+    recent_activity: { total_events: 0, by_type: {} },
+    _meta: { approx_tokens: 0, truncated: false },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Build full context for the AI
 // ---------------------------------------------------------------------------
 
@@ -54,9 +70,10 @@ export async function buildContext(
 ): Promise<BineeContext> {
   const supabase = getSupabaseAdmin();
 
-  // NOTE: buildWorkspaceSummary and buildRecentActivity were removed —
-  // they duplicated data already in businessState (structured JSON).
-  // This saves ~400 tokens per call and 2 fewer DB queries.
+  // For general_chat: skip the expensive business state document.
+  // Only fetch workspace + user metadata + conversation history.
+  const isLightweight = taskType === 'general_chat';
+
   const [
     workspaceResult,
     memberResult,
@@ -74,7 +91,7 @@ export async function buildContext(
       .eq('workspace_id', workspaceId)
       .eq('user_id', userId)
       .single(),
-    buildBusinessStateDocument(workspaceId),
+    isLightweight ? Promise.resolve(getEmptyBusinessState(workspaceId)) : buildBusinessStateDocument(workspaceId),
     fetchConversationHistory(conversationId),
   ]);
 

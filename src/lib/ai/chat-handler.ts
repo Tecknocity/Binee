@@ -226,7 +226,9 @@ export async function handleChat(
   // Step 7: Call Claude API with tool use loop
   // -------------------------------------------------------------------------
   console.log('[handleChat] Step 6: calling Claude API');
-  const toolsForApi = clickUpConnected ? getToolsForTask(classification.taskType) : [];
+  const toolsForApi = (clickUpConnected && classification.taskType !== 'general_chat')
+    ? getToolsForTask(classification.taskType)
+    : [];
   const allToolCalls: ToolCallResult[] = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;

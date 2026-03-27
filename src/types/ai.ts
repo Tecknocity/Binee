@@ -1,4 +1,5 @@
 export type TaskType =
+  | 'general_chat'
   | 'simple_lookup'
   | 'complex_query'
   | 'action_request'
