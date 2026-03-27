@@ -130,16 +130,50 @@ export function extractSourceNumbers(data: BusinessState | null | undefined): nu
 // ---------------------------------------------------------------------------
 
 /**
+ * Extract all numeric values from tool call results recursively.
+ * This ensures numbers returned by tools (e.g. get_weekly_summary counts)
+ * are treated as ground truth, not flagged as hallucinations.
+ */
+function extractToolResultNumbers(toolCalls: ToolCallResult[]): number[] {
+  const numbers = new Set<number>();
+
+  function walk(value: unknown): void {
+    if (typeof value === 'number' && isFinite(value)) {
+      numbers.add(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (value !== null && typeof value === 'object') {
+      for (const val of Object.values(value as Record<string, unknown>)) {
+        walk(val);
+      }
+    }
+  }
+
+  for (const tc of toolCalls) {
+    if (tc.result) walk(tc.result);
+  }
+
+  return Array.from(numbers);
+}
+
+/**
  * Check whether the LLM response contains numbers that were NOT present in
- * the source computed_data. Numbers that can be trivially derived from source
- * data (sums, differences, percentages) are allowed.
+ * the source computed_data OR tool call results. Numbers that can be trivially
+ * derived from source data (sums, differences, percentages) are allowed.
  */
 export function checkForHallucinatedNumbers(
   responseText: string,
   businessState: BusinessState | null | undefined,
+  toolCalls?: ToolCallResult[],
 ): HallucinationCheckResult {
   const responseNumbers = extractNumbers(responseText);
-  const sourceNumbers = extractSourceNumbers(businessState);
+  const businessStateNumbers = extractSourceNumbers(businessState);
+  const toolNumbers = toolCalls ? extractToolResultNumbers(toolCalls) : [];
+  const sourceNumbers = [...new Set([...businessStateNumbers, ...toolNumbers])];
 
   if (sourceNumbers.length === 0 || responseNumbers.length === 0) {
     return { hallucinatedNumbers: [], responseNumbers, sourceNumbers };
@@ -203,7 +237,7 @@ const COMPLEX_TASK_TYPES: TaskType[] = [
  *   1. Non-empty content
  *   2. Reasonable length for complex task types
  *   3. No raw JSON / error leakage from tool results
- *   4. No hallucinated numbers (numbers not found in source data)
+ *   4. No hallucinated numbers (numbers not found in source data OR tool results)
  */
 export function validateResponse(
   content: string,
@@ -251,9 +285,11 @@ export function validateResponse(
     });
   }
 
-  // 5. Hallucinated numbers — only check when we have source data
+  // 5. Hallucinated numbers — check against BOTH business state AND tool results.
+  // Previously this only checked BusinessState, causing numbers from tool
+  // call results to be flagged as "hallucinated" with a misleading disclaimer.
   if (businessState) {
-    const hallucinationCheck = checkForHallucinatedNumbers(content, businessState);
+    const hallucinationCheck = checkForHallucinatedNumbers(content, businessState, toolCalls);
     if (hallucinationCheck.hallucinatedNumbers.length > 0) {
       issues.push({
         type: 'hallucinated_number',

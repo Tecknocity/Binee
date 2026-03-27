@@ -58,6 +58,8 @@ export async function executeTool(
         return await handleMoveTask(toolInput, workspaceId);
       case 'get_workspace_summary':
         return await handleGetWorkspaceSummary(workspaceId);
+      case 'get_weekly_summary':
+        return await handleGetWeeklySummary(toolInput, workspaceId);
       case 'get_team_activity':
         return await handleGetTeamActivity(toolInput, workspaceId);
       case 'get_workspace_health':
@@ -749,6 +751,142 @@ async function handleGetWorkspaceSummary(
 }
 
 // ---------------------------------------------------------------------------
+// get_weekly_summary — time-scoped progress report
+// ---------------------------------------------------------------------------
+
+async function handleGetWeeklySummary(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  const period = (input.period as string) ?? 'this_week';
+  let startDate: Date;
+  let endDate: Date;
+
+  if (period === 'custom' && input.start_date && input.end_date) {
+    startDate = new Date(input.start_date as string);
+    endDate = new Date(input.end_date as string);
+  } else {
+    const range = getDateRange(period === 'yesterday' ? 'today' : period);
+    startDate = range.startDate;
+    endDate = range.endDate;
+
+    if (period === 'yesterday') {
+      endDate = new Date(startDate);
+      startDate = new Date(startDate);
+      startDate.setDate(startDate.getDate() - 1);
+      endDate.setHours(0, 0, 0, 0);
+    }
+  }
+
+  const startISO = startDate.toISOString();
+  const endISO = endDate.toISOString();
+  const nowISO = new Date().toISOString();
+
+  // Fetch all tasks in the workspace (we need to filter by multiple date conditions)
+  const { data: allTasks, error } = await supabase
+    .from('cached_tasks')
+    .select('clickup_id, name, status, assignees, due_date, priority, list_id, created_at, updated_at')
+    .eq('workspace_id', workspaceId);
+
+  if (error) {
+    return { error: `Failed to fetch tasks: ${error.message}`, success: false };
+  }
+
+  const tasks = allTasks ?? [];
+
+  // Completed/closed status patterns
+  const isCompleted = (status: string | null) => {
+    if (!status) return false;
+    const s = status.toLowerCase();
+    return s.includes('closed') || s.includes('complete') || s.includes('done') || s.includes('deployed');
+  };
+
+  const isInProgress = (status: string | null) => {
+    if (!status) return false;
+    const s = status.toLowerCase();
+    return s.includes('in progress') || s.includes('in review') || s.includes('feedback');
+  };
+
+  // Tasks completed during this period (updated_at within range AND status is complete)
+  const completedThisPeriod = tasks.filter((t) => {
+    if (!isCompleted(t.status)) return false;
+    const updated = t.updated_at ?? t.created_at;
+    return updated >= startISO && updated <= endISO;
+  });
+
+  // Tasks due during this period
+  const dueThisPeriod = tasks.filter((t) => {
+    if (!t.due_date) return false;
+    return t.due_date >= startISO && t.due_date <= endISO;
+  });
+
+  // Tasks created during this period
+  const createdThisPeriod = tasks.filter((t) => {
+    return t.created_at >= startISO && t.created_at <= endISO;
+  });
+
+  // Tasks currently overdue (due before now, not completed)
+  const overdueNow = tasks.filter((t) => {
+    if (!t.due_date) return false;
+    if (isCompleted(t.status)) return false;
+    return t.due_date < nowISO;
+  });
+
+  // Tasks currently in progress
+  const inProgressNow = tasks.filter((t) => isInProgress(t.status));
+
+  // Build list name map for enrichment
+  const listIds = [...new Set(tasks.map((t) => t.list_id))];
+  const { data: lists } = await supabase
+    .from('cached_lists')
+    .select('clickup_id, name')
+    .eq('workspace_id', workspaceId)
+    .in('clickup_id', listIds.length > 0 ? listIds : ['']);
+  const listMap = new Map((lists ?? []).map((l: { clickup_id: string; name: string }) => [l.clickup_id, l.name]));
+
+  // Helper to format task list (limited to avoid huge payloads)
+  const formatTasks = (taskList: typeof tasks, limit = 15) =>
+    taskList.slice(0, limit).map((t) => ({
+      id: t.clickup_id,
+      name: t.name,
+      status: t.status,
+      due_date: t.due_date,
+      list: listMap.get(t.list_id) ?? t.list_id,
+      assignees: Array.isArray(t.assignees) ? t.assignees.map((a: { username?: string }) => a.username).filter(Boolean) : [],
+    }));
+
+  // Status breakdown for tasks due this period
+  const dueByStatus: Record<string, number> = {};
+  for (const t of dueThisPeriod) {
+    const status = t.status ?? 'unknown';
+    dueByStatus[status] = (dueByStatus[status] || 0) + 1;
+  }
+
+  return {
+    success: true,
+    period,
+    start_date: startISO,
+    end_date: endISO,
+    summary: {
+      completed_count: completedThisPeriod.length,
+      due_count: dueThisPeriod.length,
+      created_count: createdThisPeriod.length,
+      overdue_count: overdueNow.length,
+      in_progress_count: inProgressNow.length,
+      total_tasks: tasks.length,
+    },
+    completed_tasks: formatTasks(completedThisPeriod),
+    due_tasks: formatTasks(dueThisPeriod),
+    created_tasks: formatTasks(createdThisPeriod, 10),
+    overdue_tasks: formatTasks(overdueNow, 10),
+    in_progress_tasks: formatTasks(inProgressNow, 10),
+    due_by_status: dueByStatus,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // get_team_activity — recent webhook-based activity feed
 // ---------------------------------------------------------------------------
 
@@ -764,9 +902,12 @@ async function handleGetTeamActivity(
   );
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
+  // webhook_events schema: id, workspace_id, webhook_id, event_type, payload (jsonb),
+  // processed, processed_at, error, created_at, source, received_at.
+  // Task details (task_id, task_name, triggered_by) are inside the payload jsonb.
   let query = supabase
     .from('webhook_events')
-    .select('id, event_type, task_id, task_name, triggered_by, payload, created_at')
+    .select('id, event_type, payload, created_at')
     .eq('workspace_id', workspaceId)
     .gte('created_at', since)
     .order('created_at', { ascending: false });
@@ -789,12 +930,24 @@ async function handleGetTeamActivity(
 
   const allEvents = events ?? [];
 
+  // Extract task details from the payload jsonb column
+  const enrichedEvents = allEvents.map((e) => {
+    const payload = (e.payload ?? {}) as Record<string, unknown>;
+    return {
+      event_type: e.event_type,
+      task_id: (payload.task_id as string) ?? null,
+      task_name: (payload.task_name as string) ?? (payload.name as string) ?? null,
+      triggered_by: (payload.triggered_by as string) ?? (payload.user as string) ?? null,
+      timestamp: e.created_at,
+    };
+  });
+
   // Filter by member name if requested
-  let filteredEvents = allEvents;
+  let filteredEvents = enrichedEvents;
   if (input.member_name && typeof input.member_name === 'string') {
     const memberFilter = (input.member_name as string).toLowerCase();
-    filteredEvents = allEvents.filter((e) => {
-      const triggeredBy = (e.triggered_by as string)?.toLowerCase() ?? '';
+    filteredEvents = enrichedEvents.filter((e) => {
+      const triggeredBy = e.triggered_by?.toLowerCase() ?? '';
       return triggeredBy.includes(memberFilter);
     });
   }
@@ -812,13 +965,7 @@ async function handleGetTeamActivity(
     since,
     total_events: filteredEvents.length,
     event_counts: eventCounts,
-    events: filteredEvents.map((e) => ({
-      event_type: e.event_type,
-      task_id: e.task_id,
-      task_name: e.task_name,
-      triggered_by: e.triggered_by,
-      timestamp: e.created_at,
-    })),
+    events: filteredEvents,
   };
 }
 

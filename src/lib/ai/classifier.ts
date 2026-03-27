@@ -58,6 +58,10 @@ const PATTERNS: Record<TaskType, RegExp[]> = {
     /\b(busy|workload|schedule|on my plate|to do|tasks? (for |due )?today|what('s| is) (up|going on|happening)|pending)\b/i,
     /\b(my tasks|our tasks|any (tasks?|deadlines?|meetings?)|due (today|tomorrow|this week|soon))\b/i,
     /\b(what do (I|we) have|what('s| is) coming up|anything (due|overdue|urgent))\b/i,
+    /\b(progress|summary|recap|update|report)\b.*\b(this week|last week|today|yesterday|this month|weekly|daily)\b/i,
+    /\b(this week|last week|today|yesterday|this month|weekly|daily)\b.*\b(progress|summary|recap|update|report|tasks?)\b/i,
+    /\b(what (did|have) (I|we) (done|completed|finished|accomplished))\b/i,
+    /\b(summarize|summarise)\b.*\b(week|progress|work|tasks?)\b/i,
   ],
 };
 
