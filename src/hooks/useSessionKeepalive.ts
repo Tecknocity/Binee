@@ -16,12 +16,27 @@ const HEALTH_CHECK_INTERVAL = 3 * 60_000; // 3 minutes
 export const SESSION_RECOVERED_EVENT = 'binee:session-recovered';
 
 /**
+ * Custom event dispatched when the tab becomes visible after being hidden
+ * for a significant period (>= 1 minute). Unlike SESSION_RECOVERED_EVENT,
+ * this fires even when the auth token is still valid — because realtime
+ * WebSocket channels can die in background tabs even if the token is fine.
+ * Listeners should use this to re-subscribe realtime channels.
+ */
+export const VISIBILITY_RECOVERED_EVENT = 'binee:visibility-recovered';
+
+/**
  * Dispatches a custom event to notify the app that the session was recovered.
  * Listeners (dashboard cache, workspace context, etc.) should re-fetch data.
  */
 function dispatchSessionRecovered() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(SESSION_RECOVERED_EVENT));
+  }
+}
+
+function dispatchVisibilityRecovered() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(VISIBILITY_RECOVERED_EVENT));
   }
 }
 
@@ -84,6 +99,10 @@ export function useSessionKeepalive() {
         const elapsed = Date.now() - lastCheckRef.current;
         // Only check if at least 1 minute has passed since last check
         if (elapsed > 60_000) {
+          // Always notify that visibility was recovered — realtime WebSocket
+          // channels die in background tabs even when the auth token is valid.
+          // This lets hooks re-subscribe their channels proactively.
+          dispatchVisibilityRecovered();
           validateSession('visibility-change');
         }
       }

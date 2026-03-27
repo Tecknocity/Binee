@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
+import { SESSION_RECOVERED_EVENT, VISIBILITY_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,6 +35,8 @@ export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Counter to force realtime channel re-subscription when visibility recovers
+  const [realtimeGeneration, setRealtimeGeneration] = useState(0);
   const { workspace, user } = useAuth();
   // Use the stable module-level singleton — getSupabase() always returns
   // the same object, so `supabase` is a stable reference across renders.
@@ -105,6 +107,18 @@ export function useConversations() {
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
   }, [fetchConversations]);
 
+  // Re-subscribe realtime channels + refresh data when tab becomes visible
+  // after being hidden. Browsers kill WebSocket connections in background tabs.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleVisibility = () => {
+      setRealtimeGeneration((g: number) => g + 1);
+      fetchConversations();
+    };
+    window.addEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
+    return () => window.removeEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
+  }, [fetchConversations]);
+
   // Real-time subscription for conversation changes
   useEffect(() => {
     if (!workspaceId || !userId) return;
@@ -116,7 +130,7 @@ export function useConversations() {
     }
 
     const channel = supabase
-      .channel(`conversations-${workspaceId}-${userId}`)
+      .channel(`conversations-${workspaceId}-${userId}-${realtimeGeneration}`)
       .on(
         'postgres_changes',
         {
@@ -172,8 +186,8 @@ export function useConversations() {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-  }, [workspaceId, userId, mapRow]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton; realtimeGeneration forces re-subscribe on visibility recovery
+  }, [workspaceId, userId, mapRow, realtimeGeneration]);
 
   // Create a new conversation in the database
   const createConversation = useCallback(async () => {

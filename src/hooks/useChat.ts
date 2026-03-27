@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
+import { SESSION_RECOVERED_EVENT, VISIBILITY_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import type { ToolCallResult } from '@/types/ai';
 import {
   shouldAutoApprove,
@@ -237,6 +237,10 @@ export function useChat(conversationId: string | null) {
   const titleSetRef = useRef(false);
 
   const chatCache = useChatCache();
+  // Counter to force realtime channel re-subscription when visibility recovers.
+  // Incrementing this value causes the realtime useEffect to re-run, tearing
+  // down the (possibly dead) channel and creating a fresh one.
+  const [realtimeGeneration, setRealtimeGeneration] = useState(0);
 
   // Stable IDs for dependency arrays — avoids re-running effects when the
   // workspace/user *object* reference changes but the ID hasn't.
@@ -349,6 +353,21 @@ export function useChat(conversationId: string | null) {
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
   }, [conversationId, loadConversation]);
 
+  // Re-subscribe realtime channels + refresh data when tab becomes visible
+  // after being hidden. Browsers throttle background tabs, killing WebSocket
+  // connections even when the auth token is still valid.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleVisibility = () => {
+      // Bump generation to force the realtime effect to re-subscribe
+      setRealtimeGeneration((g: number) => g + 1);
+      // Also refresh messages from DB in case we missed realtime events
+      if (conversationId) loadConversation(conversationId);
+    };
+    window.addEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
+    return () => window.removeEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
+  }, [conversationId, loadConversation]);
+
   // -------------------------------------------------------------------------
   // Realtime subscription for new messages
   // -------------------------------------------------------------------------
@@ -363,7 +382,7 @@ export function useChat(conversationId: string | null) {
     }
 
     const channel = supabase
-      .channel(`messages-${conversationId}`)
+      .channel(`messages-${conversationId}-${realtimeGeneration}`)
       .on(
         'postgres_changes',
         {
@@ -401,8 +420,8 @@ export function useChat(conversationId: string | null) {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-  }, [conversationId, workspaceId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton; realtimeGeneration forces re-subscribe on visibility recovery
+  }, [conversationId, workspaceId, realtimeGeneration]);
 
   // Helper: update messages state AND write through to cache
   const updateMessages = useCallback(
