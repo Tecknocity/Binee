@@ -550,17 +550,11 @@ export function useChat(conversationId: string | null) {
         updateMessages((prev) => [...prev, fallbackMessage], effectiveId);
         setError(errorDetail);
 
-        // Persist messages to DB even on error so chat history is saved
+        // Persist error message to DB so chat history shows what went wrong.
+        // Note: the user message is already saved server-side in handleChat step 3c
+        // (before the AI call), so we only save the error response here.
         if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
           try {
-            // Save user message
-            await supabase.from('messages').insert({
-              workspace_id: workspaceId,
-              conversation_id: effectiveId,
-              role: 'user',
-              content: content.trim(),
-              credits_used: 0,
-            });
             // Save assistant error message
             await supabase.from('messages').insert({
               workspace_id: workspaceId,

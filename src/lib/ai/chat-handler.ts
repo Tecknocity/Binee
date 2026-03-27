@@ -190,6 +190,38 @@ export async function handleChat(
   }
 
   // -------------------------------------------------------------------------
+  // Step 3c: Save user message immediately (before AI call).
+  // This ensures the message is persisted even if the AI call fails, times
+  // out, or the user closes the browser. Similar to how Claude.ai saves the
+  // user message the moment you hit send.
+  // -------------------------------------------------------------------------
+  const { error: convUpsertErr } = await supabase
+    .from('conversations')
+    .upsert(
+      {
+        id: conversation_id,
+        workspace_id,
+        user_id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    );
+  if (convUpsertErr) {
+    console.error('[handleChat] Conversation upsert failed:', convUpsertErr.message);
+  }
+
+  const { error: userMsgErr } = await supabase.from('messages').insert({
+    workspace_id,
+    conversation_id,
+    role: 'user',
+    content: message,
+    credits_used: 0,
+  });
+  if (userMsgErr) {
+    console.error('[handleChat] User message early-save failed:', userMsgErr.message);
+  }
+
+  // -------------------------------------------------------------------------
   // Step 4-5: Build workspace context (B-041) + fetch brain modules (B-KB)
   // -------------------------------------------------------------------------
   console.log('[handleChat] Step 4: building context');
@@ -572,35 +604,13 @@ async function saveConversationMessages(
   taskType: string,
 ): Promise<void> {
   try {
-    // Upsert the conversation (create if first message)
-    const { error: upsertErr } = await supabase
+    // User message + conversation are already saved at the start of handleChat
+    // (Step 3c). Only save the assistant response here.
+    // Update conversation timestamp
+    await supabase
       .from('conversations')
-      .upsert(
-        {
-          id: conversationId,
-          workspace_id: workspaceId,
-          user_id: userId,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' },
-      );
-    if (upsertErr) {
-      console.error('[chat-handler] Conversation upsert failed:', upsertErr.message);
-      // Don't continue — FK constraint will fail on message inserts
-      return;
-    }
-
-    // Insert the user message
-    const { error: userMsgErr } = await supabase.from('messages').insert({
-      workspace_id: workspaceId,
-      conversation_id: conversationId,
-      role: 'user',
-      content: userMessage,
-      credits_used: 0,
-    });
-    if (userMsgErr) {
-      console.error('[chat-handler] User message insert failed:', userMsgErr.message);
-    }
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', conversationId);
 
     // Insert the assistant message with metadata
     const { error: asstMsgErr } = await supabase.from('messages').insert({
