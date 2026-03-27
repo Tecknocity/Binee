@@ -41,13 +41,14 @@ const navSections = [
 ];
 
 function getCreditColor(balance: number) {
-  if (balance <= WARNING_THRESHOLDS.empty) {
+  const display = Math.floor(balance);
+  if (display <= WARNING_THRESHOLDS.empty) {
     return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
   }
-  if (balance <= WARNING_THRESHOLDS.critical) {
+  if (display <= WARNING_THRESHOLDS.critical) {
     return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
   }
-  if (balance <= WARNING_THRESHOLDS.low) {
+  if (display <= WARNING_THRESHOLDS.low) {
     return { text: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' };
   }
   return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' };
@@ -408,7 +409,7 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1">
                           <span className={cn('text-sm font-semibold font-mono', creditColor.text)}>
-                            {workspace?.credit_balance?.toLocaleString() ?? '---'}
+                            {workspace?.credit_balance != null ? Math.floor(workspace.credit_balance).toLocaleString() : '---'}
                           </span>
                           {(workspace?.credit_balance ?? 0) <= WARNING_THRESHOLDS.empty && (
                             <AlertCircle className="w-3.5 h-3.5 text-red-400" />
@@ -643,7 +644,7 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1">
                           <span className={cn('text-sm font-semibold font-mono', creditColor.text)}>
-                            {workspace?.credit_balance?.toLocaleString() ?? '---'}
+                            {workspace?.credit_balance != null ? Math.floor(workspace.credit_balance).toLocaleString() : '---'}
                           </span>
                           {(workspace?.credit_balance ?? 0) <= WARNING_THRESHOLDS.empty && (
                             <AlertCircle className="w-3.5 h-3.5 text-red-400" />
