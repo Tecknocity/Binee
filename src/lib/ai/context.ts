@@ -74,6 +74,12 @@ export async function buildContext(
   // Only fetch workspace + user metadata + conversation history.
   const isLightweight = taskType === 'general_chat';
 
+  // For simple tasks: build a compact business state with just task metrics
+  // (counts, overdue, unassigned) — skip the full structure/team/activity
+  // queries. This reduces from 6 DB queries to 3 and cuts context by ~60%.
+  const COMPACT_TASK_TYPES = new Set(['simple_lookup', 'health_check', 'troubleshooting']);
+  const isCompact = taskType ? COMPACT_TASK_TYPES.has(taskType) : false;
+
   const [
     workspaceResult,
     memberResult,
@@ -91,7 +97,11 @@ export async function buildContext(
       .eq('workspace_id', workspaceId)
       .eq('user_id', userId)
       .single(),
-    isLightweight ? Promise.resolve(getEmptyBusinessState(workspaceId)) : buildBusinessStateDocument(workspaceId),
+    isLightweight
+      ? Promise.resolve(getEmptyBusinessState(workspaceId))
+      : isCompact
+        ? buildCompactBusinessState(workspaceId)
+        : buildBusinessStateDocument(workspaceId),
     fetchConversationHistory(conversationId),
   ]);
 
@@ -184,6 +194,73 @@ export async function buildContext(
 // Queries cached_* tables and compresses workspace data into structured JSON.
 // Target: 1,500–3,000 tokens. Replaces sending raw data to the LLM.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Compact business state — just task metrics, no structure/team/activity
+// Used for simple_lookup, health_check, troubleshooting to cut ~60% tokens.
+// Only runs 2 DB queries instead of 6. Target: ~300–500 tokens.
+// ---------------------------------------------------------------------------
+
+async function buildCompactBusinessState(
+  workspaceId: string,
+): Promise<BusinessState> {
+  const supabase = getSupabaseAdmin();
+
+  // Only fetch tasks and members — skip spaces, folders, lists, activity
+  const [tasksResult, membersResult] = await Promise.all([
+    supabase
+      .from('cached_tasks')
+      .select('id, status, priority, assignees, due_date')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('cached_team_members')
+      .select('clickup_id, username')
+      .eq('workspace_id', workspaceId),
+  ]);
+
+  const tasks = tasksResult.data ?? [];
+  const members = membersResult.data ?? [];
+  const now = new Date().toISOString();
+
+  const overdueTasks = tasks.filter(
+    (t) => t.due_date && t.due_date < now && t.status !== 'closed' && t.status !== 'complete',
+  );
+  const unassignedTasks = tasks.filter(
+    (t) => !t.assignees || (Array.isArray(t.assignees) && t.assignees.length === 0),
+  );
+
+  // Status distribution
+  const statusCounts: Record<string, number> = {};
+  for (const task of tasks) {
+    const status = task.status ?? 'unknown';
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+  }
+
+  return {
+    generated_at: new Date().toISOString(),
+    workspace_id: workspaceId,
+    tasks: {
+      total: tasks.length,
+      overdue: overdueTasks.length,
+      unassigned: unassignedTasks.length,
+      by_status: statusCounts,
+      by_priority: {},
+      by_assignee: [],
+    },
+    team: {
+      total_members: members.length,
+      members: [],
+    },
+    structure: {
+      total_spaces: 0,
+      total_folders: 0,
+      total_lists: 0,
+      spaces: [],
+    },
+    recent_activity: { total_events: 0, by_type: {} },
+    _meta: { approx_tokens: 0, truncated: false },
+  };
+}
 
 export async function buildBusinessStateDocument(
   workspaceId: string,

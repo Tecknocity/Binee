@@ -48,9 +48,17 @@ export async function loadSystemPrompt(
     return buildLightweightPrompt(context);
   }
 
+  // For simple tasks (simple_lookup, health_check, troubleshooting):
+  // Use a compact prompt with just identity + business state.
+  // Skip KB modules and computed data sections — the business state JSON
+  // already contains the data needed (task counts, overdue, etc.) and tools
+  // can fetch anything else. This cuts ~3,000 tokens per request.
+  const MINIMAL_TASK_TYPES = new Set(['simple_lookup', 'health_check', 'troubleshooting']);
+  const isMinimal = MINIMAL_TASK_TYPES.has(options.taskType);
+
   const [baseIdentity, knowledgeContext] = await Promise.all([
     loadBaseIdentity(),
-    buildKnowledgeContext(options.taskType),
+    isMinimal ? Promise.resolve(null) : buildKnowledgeContext(options.taskType),
   ]);
 
   const parts: string[] = [];
@@ -62,7 +70,11 @@ export async function loadSystemPrompt(
   parts.push(buildBusinessState(context));
 
   // 3. Computed data — workspace summary, recent activity, available actions
-  parts.push(buildComputedData(context, options.dashboardContext));
+  // Skip for minimal tasks — the business state in the prompt-assembler's
+  // context section already provides task counts, and tools handle the rest.
+  if (!isMinimal) {
+    parts.push(buildComputedData(context, options.dashboardContext));
+  }
 
   // 4. Knowledge context from KB (task-specific + shared modules)
   if (knowledgeContext) {
