@@ -222,6 +222,9 @@ export function useChat(conversationId: string | null) {
   // Guard: when sendMessage is in-flight, prevent loadConversation from wiping
   // the optimistic messages (race condition when a new conversation is created)
   const sendingRef = useRef(false);
+  // Track whether the auto-generated title has already been set for this conversation.
+  // Prevents stale-closure bugs from overwriting the title on every message.
+  const titleSetRef = useRef(false);
 
   // -------------------------------------------------------------------------
   // Load messages from database
@@ -268,6 +271,11 @@ export function useChat(conversationId: string | null) {
           0,
         );
 
+        // If the conversation already has messages, the title was already set
+        if (mapped.length > 0) {
+          titleSetRef.current = true;
+        }
+
         setMessages(mapped);
       } catch {
         setMessages([]);
@@ -281,6 +289,8 @@ export function useChat(conversationId: string | null) {
 
   // Load messages when conversationId changes
   useEffect(() => {
+    // Reset the title-set guard when switching conversations
+    titleSetRef.current = false;
     loadConversation(conversationId);
   }, [conversationId, loadConversation]);
 
@@ -436,15 +446,14 @@ export function useChat(conversationId: string | null) {
         totalCredits.current += data.credits_consumed ?? 0;
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // Update conversation title (on first message) and summary
+        // Update conversation title (only on the very first message) and timestamp
         if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
-          const isFirstMessage = messages.length === 0;
           const updatePayload: Record<string, string> = {
-            summary: content.trim().substring(0, 200),
             updated_at: new Date().toISOString(),
           };
-          if (isFirstMessage) {
+          if (!titleSetRef.current) {
             updatePayload.title = generateTitleFromMessage(content);
+            titleSetRef.current = true;
           }
           supabase
             .from('conversations')
@@ -505,13 +514,12 @@ export function useChat(conversationId: string | null) {
               metadata: { error: true, error_detail: errorDetail },
             });
             // Auto-generate title from first message if this is a new conversation
-            const isFirstMessage = messages.length === 0;
             const updatePayload: Record<string, string> = {
-              summary: content.trim().substring(0, 200),
               updated_at: new Date().toISOString(),
             };
-            if (isFirstMessage) {
+            if (!titleSetRef.current) {
               updatePayload.title = generateTitleFromMessage(content);
+              titleSetRef.current = true;
             }
             await supabase
               .from('conversations')
