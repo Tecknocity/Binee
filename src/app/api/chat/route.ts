@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleChat } from '@/lib/ai/chat-handler';
 import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import type { ChatRequest } from '@/types/ai';
 
@@ -107,6 +108,32 @@ export async function POST(request: NextRequest) {
       .replace(/at\s+\S+\s+\(.*?\)/g, '')   // strip stack frames
       .replace(/SELECT.*?FROM/gi, '[query]') // strip raw SQL
       .trim();
+
+    // Persist the error as an assistant message SERVER-SIDE so it survives
+    // page reloads. Previously, error messages were only saved client-side
+    // (browser Supabase client), which meant they were lost on refresh —
+    // leaving conversations with user messages but no responses.
+    const body = await request.clone().json().catch(() => null);
+    if (body?.workspace_id && body?.conversation_id) {
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (url && serviceKey) {
+          const adminClient = createClient(url, serviceKey);
+          const errorContent = `Something went wrong: ${safeMessage || 'An unexpected error occurred'}`;
+          await adminClient.from('messages').insert({
+            workspace_id: body.workspace_id,
+            conversation_id: body.conversation_id,
+            role: 'assistant',
+            content: errorContent,
+            credits_used: 0,
+            metadata: { error: true, error_detail: safeMessage },
+          });
+        }
+      } catch (saveErr) {
+        console.error('[POST /api/chat] Failed to persist error message:', saveErr);
+      }
+    }
 
     return NextResponse.json(
       { error: safeMessage || 'An unexpected error occurred' },
