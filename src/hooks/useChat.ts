@@ -309,6 +309,16 @@ export function useChat(conversationId: string | null) {
           .map((row) => mapDbMessage(row as DbMessageRow))
           .filter((m): m is ChatMessage => m !== null);
 
+        // STALE-WHILE-REVALIDATE GUARD: If we already had messages (from cache
+        // or previous load) but the DB returned empty, keep the existing data.
+        // This happens when Supabase's auth token is briefly stale during a tab
+        // switch — RLS silently returns zero rows instead of an error. Without
+        // this guard, setMessages([]) would wipe the screen.
+        if (mapped.length === 0 && cached.length > 0) {
+          console.warn('[useChat] DB returned empty but cache has messages — keeping cached data (likely transient auth gap)');
+          return;
+        }
+
         // Sum up credits from loaded messages
         totalCredits.current = mapped.reduce(
           (sum, m) => sum + (m.creditsConsumed ?? 0),

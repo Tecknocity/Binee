@@ -77,9 +77,22 @@ async function cachedQuery<T>(
   }
 
   const promise = fetcher().then((data) => {
+    // STALE-WHILE-REVALIDATE GUARD: If the fetch returned empty but we
+    // previously had data, keep the old data. This prevents transient auth
+    // gaps (RLS returning zero rows during token refresh) from wiping
+    // dashboard widgets. The old data will be refreshed on next successful fetch.
+    if (Array.isArray(data) && data.length === 0 && cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
+      console.warn(`[Dashboard] Query "${key}" returned empty but cache has data — keeping stale data`);
+      return cached.data as T;
+    }
     queryCache.set(key, { data, timestamp: Date.now() });
     return data;
   }).catch((err) => {
+    // On error, keep stale data if available instead of deleting
+    if (cached?.data) {
+      console.warn(`[Dashboard] Query "${key}" failed, keeping stale data`);
+      return cached.data as T;
+    }
     queryCache.delete(key);
     throw err;
   });
@@ -623,7 +636,23 @@ export function useDashboard(): DashboardState {
 
     let dashList = (dashResult.data ?? []) as Dashboard[];
 
-    // Create a default dashboard if none exist
+    // STALE-WHILE-REVALIDATE GUARD: If the query returned empty but we
+    // already have dashboards loaded, keep them. This prevents transient
+    // auth gaps (RLS returning zero rows during token refresh on tab switch)
+    // from wiping the dashboard page.
+    if (dashList.length === 0 && initialLoadDone.current) {
+      setDashboards((prev) => {
+        if (prev.length > 0) {
+          console.warn('[useDashboard] DB returned empty dashboards but state has data — keeping existing');
+          return prev;
+        }
+        return prev;
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    // Create a default dashboard if none exist (first load only)
     if (dashList.length === 0 && userId) {
       const { data: newDash } = await supabase
         .from('dashboards')

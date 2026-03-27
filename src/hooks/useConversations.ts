@@ -82,12 +82,24 @@ export function useConversations() {
 
       if (error) {
         console.error('Failed to fetch conversations:', error.message);
-        setConversations([]);
+        // Keep existing conversations on error — don't wipe the sidebar
+        setConversations((prev) => prev.length > 0 ? prev : []);
       } else {
-        setConversations((data ?? []).map(mapRow));
+        const fetched = (data ?? []).map(mapRow);
+        // STALE-WHILE-REVALIDATE GUARD: If DB returned empty but we already
+        // have conversations, keep them. RLS silently returns zero rows when
+        // the auth token is briefly stale during a tab switch.
+        setConversations((prev) => {
+          if (fetched.length === 0 && prev.length > 0) {
+            console.warn('[useConversations] DB returned empty but state has data — keeping existing conversations');
+            return prev;
+          }
+          return fetched;
+        });
       }
     } catch {
-      setConversations([]);
+      // Keep existing conversations on error
+      setConversations((prev) => prev.length > 0 ? prev : []);
     } finally {
       setIsLoading(false);
     }
