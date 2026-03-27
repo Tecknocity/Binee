@@ -663,13 +663,17 @@ async function saveConversationMessages(
       conversation_id: conversationId,
       role: 'assistant',
       content: assistantMessage,
-      credits_used: creditsConsumed,
+      // credits_used is integer in the DB (migration 001), but creditCost is
+      // fractional after migration 032. Round to integer to avoid insert failures.
+      credits_used: Math.round(creditsConsumed),
       metadata: {
         model_used: modelUsed,
         tokens_input: tokensInput,
         tokens_output: tokensOutput,
         tool_calls: toolCalls,
         task_type: taskType,
+        // Store exact fractional cost in metadata for accurate tracking
+        credits_exact: creditsConsumed,
       },
     });
     if (asstMsgErr) {
