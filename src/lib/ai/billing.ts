@@ -1,5 +1,4 @@
 import type { TaskType } from '@/types/ai';
-import { getModelForTask } from '@/lib/ai/router';
 import { CREDIT_COSTS } from '@/lib/credits/costs';
 import type { DeductResult } from '@/lib/credits/types';
 
@@ -8,45 +7,32 @@ import type { DeductResult } from '@/lib/credits/types';
 // ---------------------------------------------------------------------------
 
 /**
- * Credit cost tiers:
- *   Haiku            = 1 credit
+ * Credit cost tiers (legacy — new architecture uses token-based costing):
  *   Sonnet (simple)  = 3 credits
  *   Sonnet (complex) = 5 credits
  *
- * "Complex" Sonnet task types: setup_request, strategy
+ * "Complex" task types: setup_request, strategy
  */
-const COMPLEX_SONNET_TASKS: Set<TaskType> = new Set([
+const COMPLEX_TASK_TYPES: Set<TaskType> = new Set([
   'setup_request',
   'strategy',
 ]);
 
 /**
- * Calculate the credit cost for an AI interaction based on task type,
- * model used, and token count.
- *
- * The primary cost driver is task type (which determines the model).
- * Token count is available for future graduated pricing but does not
- * currently affect the cost.
+ * Calculate the credit cost for an AI interaction based on task type and model.
+ * Note: The new master agent architecture uses token-based costing via
+ * tokensToCredits(). This function is kept for backward compatibility.
  */
 export function calculateCreditCost(
   taskType: TaskType,
   modelUsed: string,
-  tokenCount: number = 0,
+  _tokenCount: number = 0,
 ): number {
-  const routing = getModelForTask(taskType);
-
-  // Use the router's credit cost as the source of truth
-  // This keeps billing in sync with the routing table in router.ts
-  if (routing) {
-    return routing.creditCost;
-  }
-
-  // Fallback: determine cost from model tier + complexity
   if (modelUsed.includes('haiku')) {
     return CREDIT_COSTS.SIMPLE_CHAT; // 1
   }
 
-  if (COMPLEX_SONNET_TASKS.has(taskType)) {
+  if (COMPLEX_TASK_TYPES.has(taskType)) {
     return CREDIT_COSTS.STRATEGIC_CHAT; // 5
   }
 

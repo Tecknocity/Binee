@@ -1,8 +1,8 @@
-// Specialized prompt loaders — each loads brain modules dynamically from KB
-export { loadChatPrompt } from '@/lib/ai/prompts/chat-prompt';
-export { loadSetupPrompt } from '@/lib/ai/prompts/setup-prompt';
-export { loadBriefingPrompt } from '@/lib/ai/prompts/briefing-prompt';
-export { loadRuleCreationPrompt } from '@/lib/ai/prompts/rule-creation-prompt';
-export { loadDashboardPrompt } from '@/lib/ai/prompts/dashboard-prompt';
-export { loadActionPrompt } from '@/lib/ai/prompts/action-prompt';
-export { loadSystemPrompt } from '@/lib/ai/prompts/system-prompt';
+// Prompt exports — new architecture
+export { MASTER_AGENT_PROMPT } from '@/lib/ai/prompts/master-agent';
+export {
+  TASK_MANAGER_PROMPT,
+  WORKSPACE_ANALYST_PROMPT,
+  SETUPPER_PROMPT,
+  DASHBOARD_BUILDER_PROMPT,
+} from '@/lib/ai/prompts/sub-agents';

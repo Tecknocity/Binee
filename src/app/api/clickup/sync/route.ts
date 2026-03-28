@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { performInitialSync } from '@/lib/clickup/sync';
 import { createServerClient } from '@/lib/supabase/server';
+import { createDefaultDashboard } from '@/lib/ai/tools/default-dashboard';
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -66,6 +67,13 @@ export async function POST(request: Request) {
         clickup_sync_error: result.errors.length > 0 ? result.errors.join('; ') : null,
       })
       .eq('id', workspace_id);
+
+    // Create default "Project Overview" dashboard after sync
+    try {
+      await createDefaultDashboard(workspace_id);
+    } catch (dashErr) {
+      console.error('[sync] Default dashboard creation failed:', dashErr);
+    }
 
     return NextResponse.json({ success: true, result });
   } catch (error) {

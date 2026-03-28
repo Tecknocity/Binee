@@ -3,7 +3,6 @@
 // Scoring config is loaded from the health-tracker KB module with hardcoded fallbacks.
 
 import { createClient } from '@supabase/supabase-js';
-import { getModule } from '@/lib/ai/knowledge-base';
 import type { HealthScore, HealthFactor, ScoringConfig, ScoringFactorConfig } from './types';
 
 // ---------------------------------------------------------------------------
@@ -267,26 +266,9 @@ function scoreTeamActivity(
 // ---------------------------------------------------------------------------
 
 export async function computeHealthScore(workspaceId: string): Promise<HealthScore> {
-  // Step 1 — Load scoring config from KB
-  let config: ScoringConfig;
-  let configSource: HealthScore['configSource'] = 'kb';
-
-  try {
-    const healthModule = await getModule('health-tracker');
-    const parsed = healthModule ? parseHealthScoringConfig(healthModule.content) : null;
-
-    if (parsed) {
-      config = parsed;
-    } else {
-      console.warn('[health-scorer] KB module "health-tracker" not found or unparseable, using FALLBACK_DEFAULTS');
-      config = FALLBACK_DEFAULTS;
-      configSource = 'fallback';
-    }
-  } catch (err) {
-    console.warn('[health-scorer] Failed to load KB config, using FALLBACK_DEFAULTS:', err);
-    config = FALLBACK_DEFAULTS;
-    configSource = 'fallback';
-  }
+  // Step 1 — Use scoring config defaults (KB system removed in architecture migration)
+  const config: ScoringConfig = FALLBACK_DEFAULTS;
+  const configSource: HealthScore['configSource'] = 'fallback';
 
   // Step 2 — Query cached data
   const supabase = getSupabaseAdmin();
