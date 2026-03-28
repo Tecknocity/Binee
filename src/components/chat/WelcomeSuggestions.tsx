@@ -5,7 +5,7 @@ import {
   Zap,
   Settings,
   LayoutDashboard,
-  HeartPulse,
+  BarChart3,
 } from 'lucide-react';
 
 interface WelcomeSuggestionsProps {
@@ -34,9 +34,9 @@ const SUGGESTIONS = [
     label: 'Build dashboards',
   },
   {
-    text: 'Run a health check on my workspace',
-    icon: HeartPulse,
-    label: 'Check health',
+    text: 'How is my workspace looking?',
+    icon: BarChart3,
+    label: 'Analyze workspace',
   },
 ];
 

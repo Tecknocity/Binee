@@ -1,10 +1,14 @@
+// src/lib/ai/tools.ts
+// REWRITTEN — Sub-Agent Tools + Direct Tools + ClickUp Tool Registry
+
 import type Anthropic from '@anthropic-ai/sdk';
 
 // ---------------------------------------------------------------------------
-// Tool definitions for the Anthropic API
+// CLICKUP TOOL REGISTRY
+// Complete tool definitions used by both DIRECT_TOOLS and sub-agent executor.
 // ---------------------------------------------------------------------------
 
-export const BINEE_TOOLS: Anthropic.Tool[] = [
+export const CLICKUP_TOOL_REGISTRY: Anthropic.Tool[] = [
   {
     name: 'lookup_tasks',
     description:
@@ -124,7 +128,7 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_overdue_tasks',
     description:
-      'Get all tasks that are past their due date and not yet completed or closed. Returns task details sorted by how overdue they are (most overdue first).',
+      'Get all tasks that are past their due date and not yet completed or closed. Returns task details sorted by how overdue they are.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -163,7 +167,7 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
         replace_existing: {
           type: 'boolean',
           description:
-            'If true, removes all current assignees before assigning the new one. Default: false (adds to existing assignees).',
+            'If true, removes all current assignees before assigning the new one. Default: false.',
         },
       },
       required: ['task_id', 'assignee_name'],
@@ -191,7 +195,7 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_workspace_summary',
     description:
-      'Get a high-level summary of the workspace including total tasks, tasks by status, tasks by assignee, lists, and team members. Use this to answer general questions about the workspace state.',
+      'Get a high-level summary of the workspace including total tasks, tasks by status, tasks by assignee, lists, and team members.',
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -201,7 +205,7 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_weekly_summary',
     description:
-      'Get a time-scoped progress summary showing tasks completed, tasks due, tasks created, and tasks currently in progress within a date range. Use this when the user asks about "this week\'s progress", "what happened last week", "today\'s tasks", or any time-bounded summary. Defaults to the current week (Monday–Sunday).',
+      'Get a time-scoped progress summary showing tasks completed, tasks due, tasks created, and tasks currently in progress within a date range.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -225,7 +229,7 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_team_activity',
     description:
-      'Get recent team activity from webhook events. Shows task creations, updates, completions, comments, and other actions within a time window.',
+      'Get recent team activity from webhook events. Shows task creations, updates, completions, comments, and other actions.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -288,13 +292,13 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'create_dashboard_widget',
     description:
-      'Create a new widget on the user\'s dashboard. Use KB knowledge to determine the best widget type and configuration for the user\'s request.',
+      'Create a new widget on the user\'s dashboard.',
     input_schema: {
       type: 'object' as const,
       properties: {
         widget_type: {
           type: 'string',
-          description: 'Type of widget (determined by AI from KB knowledge)',
+          description: 'Type of widget',
         },
         title: {
           type: 'string',
@@ -302,7 +306,7 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
         },
         data_query: {
           type: 'object',
-          description: 'Query definition for what data to display. Properties: data_source (tasks, time_entries, health, team_members), metric (count, hours, score), group_by (status, assignee, list, priority, day, week, month), filters (object with status, assignee, list_name, date_range, overdue), sort_by (value_desc, value_asc, name), limit (number).',
+          description: 'Query definition for what data to display. Properties: data_source, metric, group_by, filters, sort_by, limit.',
         },
         config: {
           type: 'object',
@@ -323,7 +327,7 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'update_dashboard_widget',
     description:
-      'Update an existing widget\'s configuration. Use this when the user wants to change a widget\'s date range, filters, grouping, sorting, or title. Identify the target widget from the active dashboard context.',
+      'Update an existing widget\'s configuration.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -335,30 +339,12 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
           type: 'object',
           description: 'Config changes to apply to the widget',
           properties: {
-            title: {
-              type: 'string',
-              description: 'New title for the widget',
-            },
-            date_range: {
-              type: 'object',
-              description: 'New date range filter (e.g. { "start": "2026-02-22", "end": "2026-03-24" } or { "preset": "last_30_days" })',
-            },
-            filters: {
-              type: 'array',
-              description: 'Array of filter objects to apply (e.g. [{ "field": "priority", "value": "urgent" }])',
-            },
-            grouping: {
-              type: 'string',
-              description: 'New grouping dimension (e.g. "status", "assignee", "priority", "list", "day", "week", "month")',
-            },
-            sort: {
-              type: 'object',
-              description: 'Sort configuration (e.g. { "by": "value", "order": "desc" })',
-            },
-            widget_type: {
-              type: 'string',
-              description: 'New widget type (determined by AI from KB knowledge)',
-            },
+            title: { type: 'string', description: 'New title for the widget' },
+            date_range: { type: 'object', description: 'New date range filter' },
+            filters: { type: 'array', description: 'Array of filter objects to apply' },
+            grouping: { type: 'string', description: 'New grouping dimension' },
+            sort: { type: 'object', description: 'Sort configuration' },
+            widget_type: { type: 'string', description: 'New widget type' },
           },
         },
       },
@@ -383,7 +369,7 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'list_dashboards',
     description:
-      'List all dashboards in the workspace. Use this to help the user choose which dashboard to add widgets to or to see what dashboards exist.',
+      'List all dashboards in the workspace.',
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -393,13 +379,13 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
   {
     name: 'list_dashboard_widgets',
     description:
-      'List all widgets on a specific dashboard. Use this to understand what already exists before adding, updating, or removing widgets.',
+      'List all widgets on a specific dashboard.',
     input_schema: {
       type: 'object' as const,
       properties: {
         dashboard_id: {
           type: 'string',
-          description: 'The ID of the dashboard to list widgets for. If not provided, uses the default dashboard.',
+          description: 'The ID of the dashboard to list widgets for.',
         },
         dashboard_name: {
           type: 'string',
@@ -412,61 +398,173 @@ export const BINEE_TOOLS: Anthropic.Tool[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Task-type-based tool filtering — only send relevant tools to reduce
-// token overhead (~30-40% fewer tool-definition tokens per call).
+// SUB-AGENT TOOLS
+// These are the tools the master agent uses to delegate to specialized sub-agents.
 // ---------------------------------------------------------------------------
 
-const TOOL_NAMES_BY_TASK: Record<string, string[]> = {
-  general_chat: [
-    'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
-    'get_weekly_summary',
-  ],  // Basic read-only tools so Binee can answer workspace questions naturally
-  simple_lookup: [
-    'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
-    'get_team_activity', 'get_time_tracking_summary', 'get_weekly_summary',
-  ],
-  complex_query: [
-    'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
-    'get_team_activity', 'get_time_tracking_summary', 'get_workspace_health',
-    'get_weekly_summary',
-  ],
-  action_request: [
-    'lookup_tasks', 'update_task', 'create_task', 'assign_task', 'move_task',
-    'get_overdue_tasks',
-  ],
-  setup_request: [
-    'lookup_tasks', 'create_task', 'get_workspace_summary',
-    'get_workspace_health',
-  ],
-  health_check: [
-    'get_workspace_health', 'get_overdue_tasks', 'lookup_tasks',
-    'get_workspace_summary', 'get_weekly_summary',
-  ],
-  dashboard_request: [
-    'create_dashboard_widget', 'update_dashboard_widget',
-    'delete_dashboard_widget', 'list_dashboards', 'list_dashboard_widgets',
-    'lookup_tasks', 'get_workspace_summary',
-  ],
-  analysis_audit: [
-    'lookup_tasks', 'get_overdue_tasks', 'get_workspace_summary',
-    'get_workspace_health', 'get_team_activity', 'get_time_tracking_summary',
-    'get_weekly_summary',
-  ],
-  strategy: [
-    'get_workspace_summary', 'get_workspace_health', 'lookup_tasks',
-    'get_team_activity', 'get_weekly_summary',
-  ],
-  troubleshooting: [
-    'lookup_tasks', 'get_workspace_summary', 'get_workspace_health',
-  ],
-};
+export const SUB_AGENT_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'task_manager',
+    description: `Delegate to the Task Manager sub-agent for creating, updating, searching, moving, or organizing tasks in ClickUp. Use this when the user wants to:
+- Create a new task (with name, assignee, due date, priority, list)
+- Update an existing task (status, assignee, due date, priority, custom fields)
+- Search for tasks by name, assignee, status, list, or due date
+- Find overdue tasks or tasks matching specific criteria
+- Assign or reassign tasks to team members
+- Move tasks between lists
+- Add time entries or manage time tracking
+- Perform bulk operations on multiple tasks
 
-/**
- * Return only the tools relevant to the given task type.
- * Falls back to the full BINEE_TOOLS array for unknown task types.
- */
-export function getToolsForTask(taskType: string): typeof BINEE_TOOLS {
-  const names = TOOL_NAMES_BY_TASK[taskType];
-  if (!names) return BINEE_TOOLS;
-  return BINEE_TOOLS.filter((t) => names.includes(t.name));
-}
+DO NOT use this for: workspace structure changes (use setupper), dashboard creation (use dashboard_builder), or workspace analysis (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        request: {
+          type: 'string',
+          description: 'Natural language description of what the user wants to do with tasks. Include all relevant details from the user message.',
+        },
+      },
+      required: ['request'],
+    },
+  },
+  {
+    name: 'workspace_analyst',
+    description: `Delegate to the Workspace Analyst sub-agent for analyzing workspace health, structure, and usage patterns. Use this when the user wants to:
+- Get an overview or health check of their workspace
+- Understand what's working and what's not in their ClickUp setup
+- See workspace metrics, trends, or comparisons over time
+- Audit their workspace structure (spaces, folders, lists, statuses)
+- Identify bottlenecks, unused areas, or problematic patterns
+- Get recommendations for workspace improvements
+- Run a full workspace scan (for the Setup flow)
+
+DO NOT use this for: creating or modifying workspace structure (use setupper), managing tasks (use task_manager), or building dashboards (use dashboard_builder).`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        request: {
+          type: 'string',
+          description: 'Natural language description of what analysis the user wants.',
+        },
+        mode: {
+          type: 'string',
+          enum: ['audit', 'snapshot'],
+          description: 'audit = human-readable analysis for chat. snapshot = structured data for the Setup flow.',
+        },
+      },
+      required: ['request'],
+    },
+  },
+  {
+    name: 'setupper',
+    description: `Delegate to the Setupper sub-agent for creating or improving ClickUp workspace structure. Use this when the user wants to:
+- Set up their ClickUp workspace for the first time
+- Create new Spaces, Folders, or Lists
+- Add or modify status configurations
+- Create custom fields
+- Restructure or reorganize their workspace
+- Apply industry-specific workspace templates
+- Improve their current workspace structure based on analysis
+
+DO NOT use this for: analyzing workspace health (use workspace_analyst first, then setupper to act on findings), managing individual tasks (use task_manager), or building dashboards (use dashboard_builder). The Setupper NEVER deletes existing structures — it only creates new ones alongside existing ones.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        request: {
+          type: 'string',
+          description: 'Natural language description of what workspace structure the user wants to create or change.',
+        },
+        analyst_snapshot: {
+          type: 'string',
+          description: 'Optional: JSON snapshot from the Workspace Analyst if a scan was run first.',
+        },
+      },
+      required: ['request'],
+    },
+  },
+  {
+    name: 'dashboard_builder',
+    description: `Delegate to the Dashboard Builder sub-agent for creating, modifying, or managing dashboards and widgets. Use this when the user wants to:
+- Create a new dashboard
+- Add widgets to a dashboard (charts, tables, summary cards, etc.)
+- Modify existing widget configurations (filters, grouping, time range)
+- Remove widgets from a dashboard
+- Get suggestions for dashboard layouts based on their needs
+- Build specific dashboard types (project overview, team performance, sprint, client)
+
+DO NOT use this for: analyzing workspace data outside of dashboards (use workspace_analyst), managing tasks (use task_manager), or modifying workspace structure (use setupper).`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        request: {
+          type: 'string',
+          description: 'Natural language description of what the user wants on their dashboard.',
+        },
+      },
+      required: ['request'],
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// DIRECT TOOLS
+// ClickUp tools the master agent can call directly for simple operations.
+// ---------------------------------------------------------------------------
+
+export const DIRECT_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'lookup_tasks',
+    description: 'Quick task search. Use for simple lookups like "show me tasks assigned to Sarah" or "how many tasks are in the Marketing list." For complex task operations (create, update, bulk), use the task_manager sub-agent instead.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        assignee: { type: 'string', description: 'Filter by assignee name' },
+        status: { type: 'string', description: 'Filter by status name' },
+        list_name: { type: 'string', description: 'Filter by list name' },
+        search_term: { type: 'string', description: 'Search task names' },
+        include_closed: { type: 'boolean', description: 'Include closed tasks (default false)' },
+        limit: { type: 'number', description: 'Max results (default 20)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_overdue_tasks',
+    description: 'Get all overdue tasks. Quick read-only lookup. For taking action on overdue tasks (reassigning, updating), use the task_manager sub-agent.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        assignee: { type: 'string', description: 'Filter by assignee name' },
+        space_name: { type: 'string', description: 'Filter by space name' },
+        limit: { type: 'number', description: 'Max results (default 20)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_workspace_summary',
+    description: 'Get high-level workspace metrics: total tasks, by status, by priority, by assignee. Use for quick stats. For deep analysis, use workspace_analyst.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_weekly_summary',
+    description: 'Get time-scoped task metrics (today, this week, this month). Quick stats on recent progress.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        period: { type: 'string', enum: ['today', 'week', 'month'], description: 'Time period' },
+      },
+      required: [],
+    },
+  },
+];
+
+// For backward compatibility
+export const ALL_TOOLS = [...SUB_AGENT_TOOLS, ...DIRECT_TOOLS];
+
+// Legacy export name — referenced by sub-agent executor and other modules
+export const BINEE_TOOLS = CLICKUP_TOOL_REGISTRY;

@@ -10,6 +10,8 @@ export type TaskType =
   | 'strategy'
   | 'troubleshooting';
 
+export type SubAgentName = 'task_manager' | 'workspace_analyst' | 'setupper' | 'dashboard_builder';
+
 export type ModelTier = 'haiku' | 'sonnet';
 
 export interface ModelRouting {
@@ -37,6 +39,12 @@ export interface BineeContext {
     clickup_plan_tier: string | null;
     credit_balance: number;
     last_sync_at: string | null;
+    company_profile?: {
+      company_name?: string;
+      industry?: string;
+      team_size?: string;
+      primary_use_case?: string;
+    };
   };
   businessState: BusinessState;
   workspaceSummary: string;

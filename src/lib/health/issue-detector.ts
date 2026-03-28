@@ -4,11 +4,9 @@
 // with hardcoded fallbacks when KB is unavailable.
 
 import { createClient } from '@supabase/supabase-js';
-import { getModule } from '@/lib/ai/knowledge-base';
 import {
   BUILT_IN_RULES,
   FALLBACK_RULE_CONFIG,
-  parseIssueDetectionRules,
 } from './rules';
 import type {
   DetectedIssue,
@@ -38,52 +36,8 @@ async function loadRuleConfig(): Promise<{
   config: RuleConfig;
   source: 'kb' | 'fallback';
 }> {
-  try {
-    const [healthModule, auditorModule] = await Promise.all([
-      getModule('health-tracker'),
-      getModule('analyzer-auditor'),
-    ]);
-
-    if (!healthModule && !auditorModule) {
-      console.warn(
-        '[issue-detector] Neither KB module found (health-tracker, analyzer-auditor), using FALLBACK_RULE_CONFIG',
-      );
-      return { config: FALLBACK_RULE_CONFIG, source: 'fallback' };
-    }
-
-    const parsed = parseIssueDetectionRules(
-      healthModule?.content ?? '',
-      auditorModule?.content ?? '',
-    );
-
-    if (!parsed) {
-      console.warn(
-        '[issue-detector] KB modules found but could not parse rule config, using FALLBACK_RULE_CONFIG',
-      );
-      return { config: FALLBACK_RULE_CONFIG, source: 'fallback' };
-    }
-
-    // Merge with fallback defaults for any missing keys
-    const merged: RuleConfig = {
-      thresholds: { ...FALLBACK_RULE_CONFIG.thresholds, ...parsed.thresholds },
-      severityMappings: {
-        ...FALLBACK_RULE_CONFIG.severityMappings,
-        ...parsed.severityMappings,
-      },
-      recommendationTemplates: {
-        ...FALLBACK_RULE_CONFIG.recommendationTemplates,
-        ...parsed.recommendationTemplates,
-      },
-    };
-
-    return { config: merged, source: 'kb' };
-  } catch (err) {
-    console.warn(
-      '[issue-detector] Failed to load KB config, using FALLBACK_RULE_CONFIG:',
-      err,
-    );
-    return { config: FALLBACK_RULE_CONFIG, source: 'fallback' };
-  }
+  // KB system removed in architecture migration — always use fallback defaults
+  return { config: FALLBACK_RULE_CONFIG, source: 'fallback' };
 }
 
 // ---------------------------------------------------------------------------

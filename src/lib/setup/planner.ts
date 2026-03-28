@@ -6,7 +6,7 @@ import type {
   SetupPlanValidationResult,
 } from './types';
 import { generateManualSteps } from './manual-steps';
-import { getModule, getModulesByPrefix } from '@/lib/ai/knowledge-base';
+import { SETUPPER_PROMPT } from '@/lib/ai/prompts/sub-agents';
 
 // ---------------------------------------------------------------------------
 // Anthropic client (lazy — server-only)
@@ -28,13 +28,6 @@ async function getAnthropicClient(): Promise<Anthropic> {
 }
 
 // ---------------------------------------------------------------------------
-// KB module keys
-// ---------------------------------------------------------------------------
-
-const SETUPPER_MODULE_KEY = 'setupper';
-const TEMPLATES_PREFIX = 'clickup-templates-database';
-
-// ---------------------------------------------------------------------------
 // B-073: Generate a structured workspace plan from a business profile
 // ---------------------------------------------------------------------------
 
@@ -42,35 +35,19 @@ const TEMPLATES_PREFIX = 'clickup-templates-database';
  * Generate a ClickUp workspace plan tailored to the user's business.
  *
  * Flow:
- *   1. Load KB modules (setupper + clickup-templates-database-*)
- *   2. Assemble AI call with KB modules as context
+ *   1. Use embedded setupper prompt (replaces KB modules)
+ *   2. Assemble AI call with prompt as context
  *   3. Parse AI response into structured SetupPlan
  *   4. Validate output
  */
 export async function generateSetupPlan(
   businessProfile: BusinessProfile,
 ): Promise<SetupPlan> {
-  // Step 1 — Load KB modules (NOT hardcoded templates)
-  const [setupperModule, templateModules] = await Promise.all([
-    getModule(SETUPPER_MODULE_KEY),
-    getModulesByPrefix(TEMPLATES_PREFIX),
-  ]);
+  // Step 1 — Use the embedded setupper prompt (KB system removed)
+  const setupperContent = SETUPPER_PROMPT;
 
-  const setupperContent = setupperModule?.content ?? '';
-  const templatesContent = templateModules
-    .sort((a, b) => a.module_key.localeCompare(b.module_key))
-    .map((m) => m.content)
-    .join('\n\n---\n\n');
-
-  if (!setupperContent) {
-    console.warn('[planner] setupper KB module not found — AI will rely on general knowledge');
-  }
-  if (templateModules.length === 0) {
-    console.warn('[planner] No template KB modules found — AI will rely on general knowledge');
-  }
-
-  // Step 2 — Assemble AI call with KB modules as context
-  const systemPrompt = buildSystemPrompt(setupperContent, templatesContent);
+  // Step 2 — Assemble AI call
+  const systemPrompt = buildSystemPrompt(setupperContent, '');
   const userMessage = buildUserMessage(businessProfile);
 
   const anthropic = await getAnthropicClient();

@@ -6,7 +6,7 @@ import {
   Zap,
   Settings,
   LayoutDashboard,
-  HeartPulse,
+  BarChart3,
   Loader2,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -46,9 +46,9 @@ const WELCOME_SUGGESTIONS = [
     label: 'Build dashboards',
   },
   {
-    text: 'Run a health check on my workspace',
-    icon: HeartPulse,
-    label: 'Check health',
+    text: 'How is my workspace looking?',
+    icon: BarChart3,
+    label: 'Analyze workspace',
   },
 ];
 
