@@ -31,4 +31,3 @@ export {
   DASHBOARD_BUILDER_PROMPT,
 } from '@/lib/ai/prompts/sub-agents';
 export { executeSubAgent } from '@/lib/ai/sub-agent-executor';
-export { buildSystemPrompt, buildSetupPrompt, buildHealthPrompt } from '@/lib/ai/prompts';
