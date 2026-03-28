@@ -7,7 +7,6 @@ import {
   moveTask as clickupMoveTask,
 } from '@/lib/clickup/operations';
 import type { CreateTaskParams, UpdateTaskParams } from '@/types/clickup';
-import { runHealthCheck } from '@/lib/health/checker';
 import {
   handleCreateDashboardWidget,
   handleUpdateDashboardWidget,
@@ -62,8 +61,6 @@ export async function executeTool(
         return await handleGetWeeklySummary(toolInput, workspaceId);
       case 'get_team_activity':
         return await handleGetTeamActivity(toolInput, workspaceId);
-      case 'get_workspace_health':
-        return await handleGetWorkspaceHealth(workspaceId);
       case 'get_time_tracking_summary':
         return await handleGetTimeTrackingSummary(toolInput, workspaceId);
       case 'create_dashboard_widget':
@@ -966,53 +963,6 @@ async function handleGetTeamActivity(
     total_events: filteredEvents.length,
     event_counts: eventCounts,
     events: filteredEvents,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// get_workspace_health — uses real health checker
-// ---------------------------------------------------------------------------
-
-async function handleGetWorkspaceHealth(
-  workspaceId: string,
-): Promise<Record<string, unknown>> {
-  const supabase = getSupabaseAdmin();
-
-  // Get previous health score for trend comparison
-  const { data: lastCheck } = await supabase
-    .from('health_check_results')
-    .select('overall_score')
-    .eq('workspace_id', workspaceId)
-    .order('checked_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  const previousScore = lastCheck?.overall_score ?? undefined;
-  const result = await runHealthCheck(workspaceId, previousScore);
-
-  // Store the health check result
-  await supabase.from('health_check_results').insert({
-    workspace_id: workspaceId,
-    overall_score: result.overall_score,
-    category_scores: result.category_scores,
-    issues: result.issues,
-    recommendations: result.recommendations,
-    previous_score: previousScore ?? null,
-    credits_used: 1,
-  });
-
-  return {
-    success: true,
-    health: {
-      overall_score: result.overall_score,
-      previous_score: previousScore,
-      trend: previousScore !== undefined
-        ? result.overall_score > previousScore ? 'improving' : result.overall_score < previousScore ? 'declining' : 'stable'
-        : 'first_check',
-      category_scores: result.category_scores,
-      issues: result.issues,
-      recommendations: result.recommendations,
-    },
   };
 }
 

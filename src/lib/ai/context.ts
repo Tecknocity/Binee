@@ -1,7 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import type { BineeContext, BusinessState, TaskType } from '@/types/ai';
-import { computeHealthScore } from '@/lib/health/scorer';
-import { detectIssues } from '@/lib/health/issue-detector';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -147,42 +145,6 @@ export async function buildContext(
       }
     } catch (err) {
       console.warn('[context] Failed to fetch active dashboard for dashboard_request:', err);
-    }
-  }
-
-  // B-065: When task is a health check, fetch health score + active issues
-  if (taskType === 'health_check') {
-    try {
-      const [healthScore, issues] = await Promise.all([
-        computeHealthScore(workspaceId),
-        detectIssues(workspaceId),
-      ]);
-
-      result.healthSnapshot = {
-        health_score: healthScore.overall,
-        health_factors: healthScore.factors.map((f) => ({
-          name: f.name,
-          score: f.score,
-          weight: f.weight,
-          details: f.details,
-          severity: f.severity,
-        })),
-        active_issues: issues.slice(0, 10).map((i) => ({
-          rule_name: i.rule_name,
-          severity: i.severity,
-          description: i.description,
-          affected_items: i.affected_items.map((a) => ({
-            type: a.type,
-            id: a.id,
-            name: a.name,
-          })),
-          recommendation: i.recommendation,
-        })),
-        critical_count: issues.filter((i) => i.severity === 'critical').length,
-        warning_count: issues.filter((i) => i.severity === 'warning').length,
-      };
-    } catch (err) {
-      console.warn('[context] Failed to fetch health snapshot for health_check:', err);
     }
   }
 
