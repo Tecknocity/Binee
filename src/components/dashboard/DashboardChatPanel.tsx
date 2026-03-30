@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { X, Bot, Loader2, SendHorizontal, Sparkles, Coins } from 'lucide-react';
 import type { ChatMessage } from '@/hooks/useChat';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -145,6 +145,7 @@ interface DashboardChatPanelProps {
 export default function DashboardChatPanel({
   open,
   onClose,
+  dashboardId,
   dashboardName,
   onDashboardUpdated,
 }: DashboardChatPanelProps) {
@@ -155,6 +156,13 @@ export default function DashboardChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Stable conversation ID per dashboard — persists across messages so the
+  // dashboard_builder sub-agent can maintain context within a session.
+  const conversationId = useMemo(
+    () => `dashboard-builder-${dashboardId}-${Date.now()}`,
+    [dashboardId],
+  );
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -205,7 +213,7 @@ export default function DashboardChatPanel({
         body: JSON.stringify({
           workspace_id: workspace_id ?? '',
           user_id: user?.id ?? '',
-          conversation_id: `dashboard-builder-${Date.now()}`,
+          conversation_id: conversationId,
           message: content,
         }),
       });
@@ -242,7 +250,7 @@ export default function DashboardChatPanel({
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, isLoading, dashboardName, onDashboardUpdated]);
+  }, [inputValue, isLoading, workspace_id, user, conversationId, dashboardName, onDashboardUpdated]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
