@@ -481,7 +481,8 @@ export function useSetup(): UseSetupReturn {
       const idx = messageCount;
       setMessageCount((c) => c + 1);
 
-      // Attempt real AI call via /api/chat
+      // Attempt real AI call via /api/chat — the master agent routes
+      // setup-related requests to the setupper sub-agent automatically.
       try {
         const response = await fetch('/api/chat', {
           method: 'POST',
@@ -490,7 +491,7 @@ export function useSetup(): UseSetupReturn {
             workspace_id,
             user_id: user?.id ?? 'anonymous',
             conversation_id: conversationId,
-            message: `[SETUP DISCOVERY] ${msg}`,
+            message: `I'm setting up my ClickUp workspace. ${msg}`,
           }),
         });
 
@@ -519,7 +520,7 @@ export function useSetup(): UseSetupReturn {
   );
 
   const selectTemplate = useCallback(
-    (template: string) => {
+    async (template: string) => {
       const templateDescriptions: Record<string, string> = {
         agency:
           'I run a digital marketing agency. We handle social media, content creation, and paid ads for multiple clients.',
@@ -537,26 +538,56 @@ export function useSetup(): UseSetupReturn {
       setBusinessDescription(description);
       setIsSending(true);
 
-      // Generate plan immediately for template
-      setTimeout(() => {
-        const legacyPlan = generateDefaultPlan(template);
-        setProposedPlan(legacyPlan);
-        setManualSteps(legacyPlan.manualSteps);
-        addMessage(
-          'assistant',
-          `I've created a workspace structure tailored for your ${template} business. It includes **${legacyPlan.spaces.length} spaces** with organized folders, lists, and starter tasks.\n\nLet me show you the full structure for review.`
-        );
-        setIsSending(false);
-        setCurrentStep(2);
-      }, 1200);
+      // Attempt AI-powered plan generation via master agent → setupper
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspace_id,
+            user_id: user?.id ?? 'anonymous',
+            conversation_id: conversationId,
+            message: `Please set up my ClickUp workspace. ${description} Create the full structure — Spaces, Folders, Lists, and statuses — tailored for a ${template} business.`,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.content) {
+            const parsedPlan = parseAIResponseToPlan(data.content);
+            setProposedPlan(parsedPlan);
+            setManualSteps(parsedPlan.manualSteps);
+            addMessage(
+              'assistant',
+              `I've created a workspace structure tailored for your ${template} business. It includes **${parsedPlan.spaces.length} spaces** with organized folders, lists, and starter tasks.\n\nLet me show you the full structure for review.`
+            );
+            setIsSending(false);
+            setCurrentStep(2);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to local default plan
+      }
+
+      // Fallback: generate a default plan locally
+      const legacyPlan = generateDefaultPlan(template);
+      setProposedPlan(legacyPlan);
+      setManualSteps(legacyPlan.manualSteps);
+      addMessage(
+        'assistant',
+        `I've created a workspace structure tailored for your ${template} business. It includes **${legacyPlan.spaces.length} spaces** with organized folders, lists, and starter tasks.\n\nLet me show you the full structure for review.`
+      );
+      setIsSending(false);
+      setCurrentStep(2);
     },
-    [addMessage]
+    [addMessage, workspace_id, user, conversationId]
   );
 
   const generateStructure = useCallback(async () => {
     setIsSending(true);
 
-    // Attempt AI-powered structure generation
+    // AI-powered structure generation via master agent → setupper sub-agent
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -565,7 +596,7 @@ export function useSetup(): UseSetupReturn {
           workspace_id,
           user_id: user?.id ?? 'anonymous',
           conversation_id: conversationId,
-          message: `[SETUP GENERATE] Based on our conversation, generate a complete ClickUp workspace structure as JSON. Business context: ${businessDescription}`,
+          message: `Please set up my ClickUp workspace now. Create the full structure — Spaces, Folders, Lists, and statuses — based on what I've told you about my business: ${businessDescription}`,
         }),
       });
 
@@ -649,7 +680,7 @@ export function useSetup(): UseSetupReturn {
       addMessage('user', feedback);
       setIsSending(true);
 
-      // Try AI-powered revision
+      // AI-powered revision via master agent → setupper sub-agent
       try {
         const response = await fetch('/api/chat', {
           method: 'POST',
@@ -658,7 +689,7 @@ export function useSetup(): UseSetupReturn {
             workspace_id,
             user_id: user?.id ?? 'anonymous',
             conversation_id: conversationId,
-            message: `[SETUP REVISION] The user wants changes to the proposed plan: ${feedback}`,
+            message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}`,
           }),
         });
 
