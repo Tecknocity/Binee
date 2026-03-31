@@ -15,7 +15,8 @@ import {
   getOperationTrustTier,
 } from './confirmation';
 import { checkSufficientCredits } from './billing';
-import { tokensToCredits } from '@/billing/engine/token-converter';
+import { calculateAnthropicCost } from '@/billing/engine/token-converter';
+import { classifyMessageCost } from '@/billing/engine/flat-credit-classifier';
 import { SUB_AGENT_TOOLS, DIRECT_TOOLS } from './tools';
 import type { ChatRequest, AssistantResponse, ToolCallResult, BineeContext } from '@/types/ai';
 import { createClient } from '@supabase/supabase-js';
@@ -404,13 +405,18 @@ export async function handleChat(
     }
   }
 
-  // 8. Deduct credits (token-based)
-  const conversion = tokensToCredits({
+  // 8. Flat credit billing — charge based on what happened, not tokens
+  const subAgentCallCount = allToolCalls.filter(tc => SUB_AGENT_NAMES.has(tc.tool_name)).length;
+  const isSetupRequest = allToolCalls.some(tc => tc.tool_name === 'setupper');
+  const messageCost = classifyMessageCost(subAgentCallCount, isSetupRequest);
+  const creditCost = messageCost.creditsToCharge;
+
+  // Analytics only — track actual Anthropic cost for margin monitoring
+  const anthropicCost = calculateAnthropicCost({
     input_tokens: totalInputTokens,
     output_tokens: totalOutputTokens,
     model: 'sonnet',
   });
-  const creditCost = Math.round(conversion.creditsConsumed * 10000) / 10000;
 
   let billingResult = null;
   try {
@@ -421,10 +427,11 @@ export async function handleChat(
       p_description: 'Chat: master_agent',
       p_message_id: null,
       p_metadata: {
+        credit_tier: messageCost.tier,
         model: MASTER_MODEL,
         input_tokens: totalInputTokens,
         output_tokens: totalOutputTokens,
-        anthropic_cost_cents: conversion.totalCostCents,
+        anthropic_cost_cents: anthropicCost.totalCostCents,
       },
     });
     if (deductError) {
@@ -445,8 +452,9 @@ export async function handleChat(
       model_used: 'sonnet',
       input_tokens: totalInputTokens,
       output_tokens: totalOutputTokens,
-      anthropic_cost_cents: conversion.totalCostCents,
+      anthropic_cost_cents: anthropicCost.totalCostCents,
       credits_deducted: creditCost,
+      credit_tier: messageCost.tier,
     });
   } catch (err) {
     console.error('[chat-handler] usage tracking insert failed:', err);
