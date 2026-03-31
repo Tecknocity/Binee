@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, PartyPopper } from 'lucide-react';
+import { Check, Loader2, PartyPopper } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
 import { ClickUpConnectStep } from './ClickUpConnectStep';
@@ -21,9 +21,9 @@ export default function SetupWizard() {
   const router = useRouter();
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Step indicator */}
-      <div className="flex items-center justify-center gap-0 pt-8 pb-6">
+      <div className="flex items-center justify-center gap-0 pt-6 pb-4 shrink-0">
         {STEPS.map((step, i) => {
           const isActive = setup.currentStep === step.number;
           const isDone = setup.currentStep > step.number;
@@ -60,7 +60,7 @@ export default function SetupWizard() {
       </div>
 
       {/* Step content */}
-      <div className="flex-1 px-4 pb-8">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {setup.currentStep === 0 && (
           <ClickUpConnectStep
             connected={setup.clickUpConnected}
@@ -81,13 +81,20 @@ export default function SetupWizard() {
           />
         )}
 
-        {setup.currentStep === 2 && setup.proposedPlan && (
-          <StructurePreview
-            plan={setup.proposedPlan}
-            onApprove={setup.approvePlan}
-            onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
-            onReject={setup.restartSetup}
-          />
+        {setup.currentStep === 2 && (
+          setup.proposedPlan ? (
+            <StructurePreview
+              plan={setup.proposedPlan}
+              onApprove={setup.approvePlan}
+              onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
+              onReject={setup.restartSetup}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <Loader2 className="w-8 h-8 text-accent animate-spin" />
+              <p className="text-sm text-text-secondary">Generating your workspace structure...</p>
+            </div>
+          )
         )}
 
         {setup.currentStep === 3 && (

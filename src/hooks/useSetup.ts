@@ -453,6 +453,20 @@ export function useSetup(): UseSetupReturn {
     }
   }, [clickUp.connected, clickUp.loading, currentStep]);
 
+  // Fallback: if stuck on Review (step 2) without a plan for 15s, go back to Describe
+  useEffect(() => {
+    if (currentStep === 2 && !proposedPlan && !isSending) {
+      const timer = setTimeout(() => {
+        setCurrentStep(1);
+        addMessage(
+          'assistant',
+          "I wasn't able to generate the workspace structure. Let's try again — tell me more about your business or click **\"Generate Structure\"** when ready."
+        );
+      }, 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep, proposedPlan, isSending, addMessage]);
+
   // Derive business profile from messages — no effect needed
   const businessProfile = useMemo(
     () => extractProfileFromMessages(chatMessages),

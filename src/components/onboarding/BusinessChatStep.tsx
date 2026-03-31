@@ -156,9 +156,9 @@ export function BusinessChatStep({
   };
 
   return (
-    <div className="flex-1 flex max-w-5xl mx-auto w-full px-4 pb-6 gap-4">
+    <div className="flex-1 flex max-w-5xl mx-auto w-full px-4 pb-4 gap-4 min-h-0 overflow-hidden">
       {/* Main chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Chat messages */}
         <div className="flex-1 overflow-y-auto py-4 space-y-4 min-h-0">
           {messages.map((msg) => (

@@ -7,8 +7,6 @@ import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
   MessageSquare,
-
-  Wrench,
   Settings,
   LogOut,
   Menu,
@@ -33,10 +31,7 @@ import { BineeLogo } from '@/components/BineeLogo';
 import { useTheme } from 'next-themes';
 import { WARNING_THRESHOLDS } from '@/billing/config';
 
-const navSections = [
-  { href: '/chats', label: 'Chats', icon: MessageSquare },
-  { href: '/setup', label: 'Setup', icon: Wrench },
-];
+// Navigation sections removed — sidebar now uses Workspace Setup button + All Chats link + Recents
 
 function getCreditColor(balance: number) {
   const display = Math.floor(balance);
@@ -325,6 +320,20 @@ export default function Sidebar() {
               <Plus className="w-4 h-4" />
             </button>
 
+            {/* All Chats */}
+            <Link
+              href="/chats"
+              className={cn(
+                'p-2 rounded-lg transition-colors',
+                pathname === '/chats' || pathname.startsWith('/chats/')
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+              )}
+              title="All Chats"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </Link>
+
             {/* Search */}
             <button
               onClick={() => setSearchOpen(true)}
@@ -333,32 +342,6 @@ export default function Sidebar() {
             >
               <Search className="w-4 h-4" />
             </button>
-
-            {/* Divider */}
-            <div className="w-6 my-1.5 border-t border-border/50" />
-
-            {/* Navigation sections */}
-            <nav className="space-y-1">
-              {navSections.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      'flex items-center justify-center p-2 rounded-lg transition-colors',
-                      isActive
-                        ? 'bg-accent/15 text-accent'
-                        : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                    )}
-                    title={item.label}
-                  >
-                    <Icon className="w-4 h-4" />
-                  </Link>
-                );
-              })}
-            </nav>
 
             {/* Spacer */}
             <div className="flex-1" />
@@ -500,8 +483,8 @@ export default function Sidebar() {
               <span className="font-medium text-accent">Workspace Setup</span>
             </Link>
 
-            {/* New chat + Search */}
-            <div className="px-3 pt-2 pb-1 space-y-1">
+            {/* New chat + All Chats + Search */}
+            <div className="px-3 pt-2 pb-1 space-y-0.5">
               <button
                 onClick={handleNewChat}
                 className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
@@ -509,6 +492,19 @@ export default function Sidebar() {
                 <Plus className="w-4 h-4" />
                 New chat
               </button>
+              <Link
+                href="/chats"
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  'flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors',
+                  pathname === '/chats' || pathname.startsWith('/chats/')
+                    ? 'bg-accent/15 text-accent'
+                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                )}
+              >
+                <MessageSquare className="w-4 h-4" />
+                All Chats
+              </Link>
               <button
                 onClick={() => setSearchOpen(true)}
                 className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
@@ -517,33 +513,6 @@ export default function Sidebar() {
                 Search
               </button>
             </div>
-
-            {/* Divider */}
-            <div className="mx-3 my-1.5 border-t border-border/50" />
-
-            {/* Navigation sections */}
-            <nav className="px-3 space-y-0.5">
-              {navSections.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className={cn(
-                      'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
-                      isActive
-                        ? 'bg-accent/15 text-accent'
-                        : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                    )}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
 
             {/* Divider */}
             <div className="mx-3 my-1.5 border-t border-border/50" />
