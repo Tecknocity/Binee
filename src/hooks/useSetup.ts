@@ -141,7 +141,13 @@ const NUMERIC_TO_WIZARD_STEP: Record<SetupStep, SetupWizardStep> = {
 // B-079: Session persistence helpers
 // ---------------------------------------------------------------------------
 
-const supabase = createBrowserClient();
+// Lazy singleton — avoid calling createBrowserClient() at module scope
+// because it throws when NEXT_PUBLIC_SUPABASE_URL is missing during SSG prerender.
+let _supabase: ReturnType<typeof createBrowserClient> | null = null;
+function getSupabase() {
+  if (!_supabase) _supabase = createBrowserClient();
+  return _supabase;
+}
 
 async function saveSessionState(
   workspaceId: string,
@@ -150,7 +156,7 @@ async function saveSessionState(
   state: Partial<SetupSessionState>
 ): Promise<void> {
   try {
-    await supabase.from('setup_sessions').upsert(
+    await getSupabase().from('setup_sessions').upsert(
       {
         workspace_id: workspaceId,
         user_id: userId,
@@ -179,7 +185,7 @@ async function loadSessionState(
   userId: string
 ): Promise<SetupSessionState | null> {
   try {
-    const { data } = await supabase
+    const { data } = await getSupabase()
       .from('setup_sessions')
       .select('*')
       .eq('workspace_id', workspaceId)
@@ -735,7 +741,7 @@ export function useSetup(): UseSetupReturn {
 
     // Mark previous session as abandoned
     if (workspace_id && user?.id) {
-      supabase
+      getSupabase()
         .from('setup_sessions')
         .update({ status: 'abandoned', updated_at: new Date().toISOString() })
         .eq('workspace_id', workspace_id)

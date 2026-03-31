@@ -138,7 +138,18 @@ interface CachedList {
 // Real data fetchers — query Supabase cached tables
 // ---------------------------------------------------------------------------
 
-const supabase = createBrowserClient();
+// Lazy singleton — avoid calling createBrowserClient() at module scope
+// because it throws when NEXT_PUBLIC_SUPABASE_URL is missing during SSG prerender.
+let _supabase: ReturnType<typeof createBrowserClient> | null = null;
+function getSupabase() {
+  if (!_supabase) _supabase = createBrowserClient();
+  return _supabase;
+}
+const supabase = new Proxy({} as ReturnType<typeof createBrowserClient>, {
+  get(_target, prop) {
+    return (getSupabase() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Shared cached fetchers — all widget hooks share these instead of each
