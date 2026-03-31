@@ -56,14 +56,6 @@ export interface ActionConfirmationData {
   confirmed: boolean | null; // null = pending
 }
 
-export interface DashboardChoiceData {
-  id: string;
-  type: 'new_dashboard' | 'existing_dashboard';
-  label: string;
-  dashboardName?: string;
-  dashboardId?: string;
-}
-
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -72,8 +64,6 @@ export interface ChatMessage {
   creditsConsumed?: number;
   toolCalls?: ToolCallDisplay[];
   actionConfirmation?: ActionConfirmationData;
-  dashboardChoices?: DashboardChoiceData[];
-  selectedDashboardChoice?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -787,17 +777,6 @@ export function useChat(conversationId: string | null) {
     [confirmAction],
   );
 
-  const selectDashboardChoice = useCallback((messageId: string, choiceId: string) => {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id === messageId) {
-          return { ...msg, selectedDashboardChoice: choiceId };
-        }
-        return msg;
-      }),
-    );
-  }, []);
-
   return {
     messages,
     isLoading,
@@ -806,7 +785,6 @@ export function useChat(conversationId: string | null) {
     sendMessage,
     confirmAction,
     alwaysAllowAction,
-    selectDashboardChoice,
     loadConversation,
     totalCreditsConsumed: totalCredits.current,
   };

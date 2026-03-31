@@ -22,7 +22,7 @@ export interface CreditTransaction {
 export interface CreditUsage {
   id: string;
   user_id: string;
-  action_type: 'chat' | 'health_check' | 'setup' | 'dashboard' | 'briefing';
+  action_type: 'chat' | 'health_check' | 'setup' | 'briefing';
   session_id: string;
   model_used: 'haiku' | 'sonnet' | 'opus';
   input_tokens: number;

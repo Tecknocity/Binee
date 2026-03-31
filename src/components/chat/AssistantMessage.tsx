@@ -2,17 +2,15 @@
 
 import React, { useMemo } from 'react';
 import Image from 'next/image';
-import type { ChatMessage, DashboardChoiceData } from '@/hooks/useChat';
+import type { ChatMessage } from '@/hooks/useChat';
 import ToolCallIndicator from './ToolCallIndicator';
 import ActionConfirmation from './ActionConfirmation';
-import DashboardChoiceButtons from './DashboardChoiceButtons';
 
 interface AssistantMessageProps {
   message: ChatMessage;
   onConfirmAction?: (id: string) => void;
   onCancelAction?: (id: string) => void;
   onAlwaysAllowAction?: (id: string, toolName: string) => void;
-  onDashboardChoice?: (messageId: string, choice: DashboardChoiceData) => void;
 }
 
 function formatTimestamp(date: Date): string {
@@ -241,7 +239,6 @@ export default function AssistantMessage({
   onConfirmAction,
   onCancelAction,
   onAlwaysAllowAction,
-  onDashboardChoice,
 }: AssistantMessageProps) {
   // Memoize markdown parsing — it's expensive (regex, DOM tree construction)
   // and the message content never changes after render.
@@ -264,15 +261,6 @@ export default function AssistantMessage({
         <div className="bg-surface border border-border px-4 py-3 rounded-2xl rounded-bl-md">
           {renderedContent}
         </div>
-
-        {/* Dashboard choice buttons */}
-        {message.dashboardChoices && message.dashboardChoices.length > 0 && (
-          <DashboardChoiceButtons
-            choices={message.dashboardChoices}
-            selected={message.selectedDashboardChoice}
-            onSelect={(choice) => onDashboardChoice?.(message.id, choice)}
-          />
-        )}
 
         {/* Action confirmation */}
         {message.actionConfirmation && onConfirmAction && onCancelAction && (

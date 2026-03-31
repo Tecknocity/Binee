@@ -1,13 +1,18 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { SetupPlan as SessionSetupPlan, ExecutionProgress, ExecutionResult, ManualStep } from '@/lib/setup/session';
-import { executeSetupPlan } from '@/lib/setup/session';
-import { generateDefaultPlan, parseAIResponseToPlan } from '@/lib/setup/planner';
-import type { SetupPlan as TypedSetupPlan, SetupWizardStep, SetupSessionState, ExecutionStep } from '@/lib/setup/types';
-
-// Both plan formats are used — session.ts (legacy) and types.ts (new B-073)
-type SetupPlan = SessionSetupPlan | TypedSetupPlan;
+import type {
+  SetupPlan,
+  SetupWizardStep,
+  SetupSessionState,
+  ExecutionStep,
+  ExecutionProgress,
+  ExecutionResult,
+  ManualStep,
+} from '@/lib/setup/types';
+import { executeSetupPlan } from '@/lib/setup/executor';
+import type { ExecutionResult as ExecutorResult } from '@/lib/setup/executor';
+import { generateSetupPlan } from '@/lib/setup/planner';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -373,8 +378,9 @@ export function useSetup(): UseSetupReturn {
       if (saved.executionResult) {
         setExecutionResult({
           success: saved.executionResult.success,
-          itemsCreated: saved.executionResult.successCount,
-          itemsTotal: saved.executionResult.totalItems,
+          spacesCreated: 0,
+          foldersCreated: 0,
+          listsCreated: saved.executionResult.successCount,
           errors: [],
         });
       }
@@ -418,9 +424,9 @@ export function useSetup(): UseSetupReturn {
         executionResult: executionResult
           ? {
               success: executionResult.success,
-              totalItems: executionResult.itemsTotal,
-              successCount: executionResult.itemsCreated,
-              errorCount: executionResult.itemsTotal - executionResult.itemsCreated,
+              totalItems: executionResult.spacesCreated + executionResult.foldersCreated + executionResult.listsCreated + executionResult.errors.length,
+              successCount: executionResult.spacesCreated + executionResult.foldersCreated + executionResult.listsCreated,
+              errorCount: executionResult.errors.length,
             }
           : null,
         manualStepsCompleted: manualSteps
@@ -557,30 +563,31 @@ export function useSetup(): UseSetupReturn {
         if (response.ok) {
           const data = await response.json();
           if (data.content) {
-            const parsedPlan = parseAIResponseToPlan(data.content);
-            setProposedPlan(parsedPlan);
-            setManualSteps(parsedPlan.manualSteps);
-            addMessage(
-              'assistant',
-              `I've created a workspace structure tailored for your ${template} business. It includes **${parsedPlan.spaces.length} spaces** with organized folders, lists, and starter tasks.\n\nLet me show you the full structure for review.`
-            );
-            setIsSending(false);
-            setCurrentStep(2);
-            return;
+            addMessage('assistant', data.content);
           }
         }
       } catch {
-        // Fall through to local default plan
+        // Fall through to AI plan generation
       }
 
-      // Fallback: generate a default plan locally
-      const legacyPlan = generateDefaultPlan(template);
-      setProposedPlan(legacyPlan);
-      setManualSteps(legacyPlan.manualSteps);
-      addMessage(
-        'assistant',
-        `I've created a workspace structure tailored for your ${template} business. It includes **${legacyPlan.spaces.length} spaces** with organized folders, lists, and starter tasks.\n\nLet me show you the full structure for review.`
-      );
+      // Generate a plan using the AI planner
+      try {
+        const plan = await generateSetupPlan({
+          businessDescription: description,
+          teamSize: null,
+          departments: null,
+          tools: null,
+          workflows: null,
+          painPoints: null,
+        });
+        setProposedPlan(plan);
+        addMessage(
+          'assistant',
+          `I've created a workspace structure tailored for your ${template} business. It includes **${plan.spaces.length} spaces** with organized folders and lists.\n\nLet me show you the full structure for review.`
+        );
+      } catch {
+        addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try describing your business manually.');
+      }
       setIsSending(false);
       setCurrentStep(2);
     },
@@ -590,61 +597,27 @@ export function useSetup(): UseSetupReturn {
   const generateStructure = useCallback(async () => {
     setIsSending(true);
 
-    // Call the standalone Setupper brain for structure generation
+    // Generate plan using AI planner
     try {
-      const response = await fetch('/api/setup/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace_id,
-          conversation_id: conversationId,
-          message: `Please set up my ClickUp workspace now. Create the full structure — Spaces, Folders, Lists, and statuses — based on what I've told you about my business: ${businessDescription}`,
-        }),
+      const plan = await generateSetupPlan({
+        businessDescription,
+        teamSize: businessProfile.teamSize,
+        departments: businessProfile.departments,
+        tools: businessProfile.tools,
+        workflows: businessProfile.workflows,
+        painPoints: businessProfile.painPoints,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.content) {
-          // Try to parse the AI response as a plan
-          const parsedPlan = parseAIResponseToPlan(data.content);
-          setProposedPlan(parsedPlan);
-          setManualSteps(parsedPlan.manualSteps);
-          addMessage(
-            'assistant',
-            `I've designed your workspace structure with **${parsedPlan.spaces.length} spaces**, organized folders, lists, and starter tasks.\n\nTake a look and let me know if you'd like any changes.`
-          );
-          setIsSending(false);
-          setCurrentStep(2);
-          return;
-        }
-      }
+      setProposedPlan(plan);
+      addMessage(
+        'assistant',
+        `I've designed your workspace structure with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`
+      );
+      setCurrentStep(2);
     } catch {
-      // Fall through to default plan
+      addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');
     }
-
-    // Fallback: generate a default plan based on keyword matching
-    const description = businessDescription.toLowerCase();
-    let planType = 'agency';
-    if (description.includes('saas') || description.includes('software as a service')) {
-      planType = 'saas';
-    } else if (description.includes('startup') || description.includes('product')) {
-      planType = 'startup';
-    } else if (description.includes('ecommerce') || description.includes('e-commerce') || description.includes('store') || description.includes('shop')) {
-      planType = 'ecommerce';
-    } else if (description.includes('consulting') || description.includes('consult')) {
-      planType = 'consulting';
-    }
-
-    const legacyPlan = generateDefaultPlan(planType);
-    setProposedPlan(legacyPlan);
-    setManualSteps(legacyPlan.manualSteps);
-    addMessage(
-      'assistant',
-      `I've designed your workspace structure with **${legacyPlan.spaces.length} spaces**, organized folders, lists, and starter tasks.\n\nTake a look and let me know if you'd like any changes.`
-    );
     setIsSending(false);
-    setCurrentStep(2);
-  }, [addMessage, businessDescription, workspace_id, user, conversationId]);
+  }, [addMessage, businessDescription, businessProfile, workspace_id, user, conversationId]);
 
   // Expose generateStructure via sendMessage when enough context gathered
   const enhancedSendMessage = useCallback(
@@ -663,14 +636,31 @@ export function useSetup(): UseSetupReturn {
     setCurrentStep(3);
     setIsExecuting(true);
 
-    const result = await executeSetupPlan(workspace_id || 'mock-workspace-id', proposedPlan as SessionSetupPlan, (progress) => {
-      setExecutionProgress({ ...progress });
-    });
+    const executorResult = await executeSetupPlan(
+      proposedPlan as SetupPlan,
+      workspace_id || '',
+      '', // access token resolved server-side by ClickUpClient
+      (completedItem, progress) => {
+        setExecutionProgress({
+          phase: completedItem.type === 'space' ? 'creating_spaces' : completedItem.type === 'folder' ? 'creating_folders' : 'creating_lists',
+          current: progress.completed,
+          total: progress.total,
+          currentItem: completedItem.name,
+          errors: completedItem.status === 'error' && completedItem.error ? [completedItem.error] : [],
+        });
+      },
+    );
 
-    setExecutionResult(result);
+    setExecutionResult({
+      success: executorResult.success,
+      spacesCreated: executorResult.items.filter((i) => i.type === 'space' && i.status === 'success').length,
+      foldersCreated: executorResult.items.filter((i) => i.type === 'folder' && i.status === 'success').length,
+      listsCreated: executorResult.items.filter((i) => i.type === 'list' && i.status === 'success').length,
+      errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
+    });
     setIsExecuting(false);
 
-    // Auto-advance to manual steps after brief pause
+    // Auto-advance to finish after brief pause
     setTimeout(() => {
       setCurrentStep(4);
     }, 1500);
@@ -755,12 +745,6 @@ export function useSetup(): UseSetupReturn {
     window.location.href = '/';
   }, []);
 
-  // Convert legacy plan to B-073 SetupPlan format for StructurePreview
-  const proposedPlanConverted = useMemo<SetupPlan | null>(() => {
-    if (!proposedPlan) return null;
-    return legacyToSetupPlan(proposedPlan as SessionSetupPlan);
-  }, [proposedPlan]);
-
   return {
     currentStep,
     wizardStep,
@@ -769,7 +753,7 @@ export function useSetup(): UseSetupReturn {
     businessDescription,
     businessProfile,
     chatMessages,
-    proposedPlan: proposedPlanConverted,
+    proposedPlan,
     executionProgress,
     executionResult,
     executionSteps,
@@ -786,50 +770,5 @@ export function useSetup(): UseSetupReturn {
     markStepComplete,
     restartSetup,
     goToDashboard,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Legacy → B-073 conversion
-// ---------------------------------------------------------------------------
-
-function legacyToSetupPlan(legacy: SessionSetupPlan): TypedSetupPlan {
-  const defaultStatuses = [
-    { name: 'To Do', color: '#d3d3d3', type: 'open' as const },
-    { name: 'In Progress', color: '#4194f6', type: 'active' as const },
-    { name: 'Review', color: '#f7c948', type: 'active' as const },
-    { name: 'Done', color: '#6bc950', type: 'done' as const },
-    { name: 'Closed', color: '#6b6b80', type: 'closed' as const },
-  ];
-
-  return {
-    business_type: 'general',
-    matched_template: 'default',
-    spaces: legacy.spaces.map((space) => ({
-      name: space.name,
-      folders: [
-        ...space.folders.map((folder) => ({
-          name: folder.name,
-          lists: folder.lists.map((list) => ({
-            name: list.name,
-            statuses: defaultStatuses,
-          })),
-        })),
-        // Convert folderless lists into a "General" folder if they exist
-        ...(space.folderlessLists.length > 0
-          ? [
-              {
-                name: 'General',
-                lists: space.folderlessLists.map((list) => ({
-                  name: list.name,
-                  statuses: defaultStatuses,
-                })),
-              },
-            ]
-          : []),
-      ],
-    })),
-    recommended_clickapps: [],
-    reasoning: '',
   };
 }

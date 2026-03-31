@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSharedConversations } from '@/contexts/ConversationsContext';
 import { useChat } from '@/hooks/useChat';
-import type { DashboardChoiceData } from '@/hooks/useChat';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import MessageThread from './MessageThread';
@@ -274,7 +273,6 @@ export default function ChatPage() {
     sendMessage,
     confirmAction,
     alwaysAllowAction,
-    selectDashboardChoice,
   } = useChat(effectiveConversationId);
 
   // When ?new=1 is in URL, clear the active conversation so we show the welcome screen
@@ -342,18 +340,6 @@ export default function ChatPage() {
     [alwaysAllowAction],
   );
 
-  const handleDashboardChoice = useCallback(
-    (messageId: string, choice: DashboardChoiceData) => {
-      selectDashboardChoice(messageId, choice.id);
-      if (choice.type === 'new_dashboard') {
-        handleSend('Create a new dashboard for this.');
-      } else if (choice.dashboardName) {
-        handleSend(`Add it to the "${choice.dashboardName}" dashboard.`);
-      }
-    },
-    [selectDashboardChoice, handleSend],
-  );
-
   const handleRename = useCallback(
     (newTitle: string) => {
       if (activeConversationId) {
@@ -418,7 +404,6 @@ export default function ChatPage() {
               onConfirmAction={handleConfirmAction}
               onCancelAction={handleCancelAction}
               onAlwaysAllowAction={handleAlwaysAllowAction}
-              onDashboardChoice={handleDashboardChoice}
             />
             {/* B-083: Show suggestion cards after the welcome message */}
             {isWelcomeConversation && (

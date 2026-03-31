@@ -1,5 +1,3 @@
-import type { SetupPlan as LegacySetupPlan } from '@/lib/setup/session';
-
 // ---------------------------------------------------------------------------
 // B-073: AI Setup Planner types
 // ---------------------------------------------------------------------------
@@ -99,7 +97,7 @@ export interface SetupSessionState {
     workflows: string[] | null;
     painPoints: string[] | null;
   };
-  plan: SetupPlan | LegacySetupPlan | null;
+  plan: SetupPlan | null;
   executionSteps: ExecutionStep[];
   executionResult: {
     success: boolean;
@@ -111,6 +109,39 @@ export interface SetupSessionState {
   conversationId: string;
   startedAt: string;
   updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Manual step (post-creation guidance)
+// ---------------------------------------------------------------------------
+
+export interface ManualStep {
+  title: string;
+  description: string;
+  instructions: string[];
+  category: 'automation' | 'view' | 'setting' | 'custom_field' | 'dashboard';
+  clickupLink?: string;
+  completed: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Execution progress tracking (used by useSetup and ExecutionProgress UI)
+// ---------------------------------------------------------------------------
+
+export interface ExecutionProgress {
+  phase: string;
+  current: number;
+  total: number;
+  currentItem: string;
+  errors: string[];
+}
+
+export interface ExecutionResult {
+  success: boolean;
+  spacesCreated: number;
+  foldersCreated: number;
+  listsCreated: number;
+  errors: string[];
 }
 
 // ---------------------------------------------------------------------------
