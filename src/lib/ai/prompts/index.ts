@@ -1,8 +1,6 @@
-// Prompt exports — new architecture
-export { MASTER_AGENT_PROMPT } from '@/lib/ai/prompts/master-agent';
-export {
-  TASK_MANAGER_PROMPT,
-  WORKSPACE_ANALYST_PROMPT,
-  SETUPPER_PROMPT,
-  DASHBOARD_BUILDER_PROMPT,
-} from '@/lib/ai/prompts/sub-agents';
+// New prompt system
+export { buildRouterPrompt } from './router-prompt';
+export { buildBrainPrompt } from './brain-prompt';
+export { TASK_MANAGER_PROMPT } from './task-manager-prompt';
+export { WORKSPACE_ANALYST_PROMPT } from './workspace-analyst-prompt';
+export { buildSetupperPrompt } from './setupper-prompt';

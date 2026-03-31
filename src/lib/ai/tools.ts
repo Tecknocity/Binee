@@ -415,7 +415,7 @@ export const SUB_AGENT_TOOLS: Anthropic.Tool[] = [
 - Add time entries or manage time tracking
 - Perform bulk operations on multiple tasks
 
-DO NOT use this for: workspace structure changes (use setupper), dashboard creation (use dashboard_builder), or workspace analysis (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
+DO NOT use this for: workspace structure changes (use setupper) or workspace analysis (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -438,7 +438,7 @@ DO NOT use this for: workspace structure changes (use setupper), dashboard creat
 - Get recommendations for workspace improvements
 - Run a full workspace scan (for the Setup flow)
 
-DO NOT use this for: creating or modifying workspace structure (use setupper), managing tasks (use task_manager), or building dashboards (use dashboard_builder).`,
+DO NOT use this for: creating or modifying workspace structure (use setupper) or managing tasks (use task_manager).`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -466,7 +466,7 @@ DO NOT use this for: creating or modifying workspace structure (use setupper), m
 - Apply industry-specific workspace templates
 - Improve their current workspace structure based on analysis
 
-DO NOT use this for: analyzing workspace health (use workspace_analyst first, then setupper to act on findings), managing individual tasks (use task_manager), or building dashboards (use dashboard_builder). The Setupper NEVER deletes existing structures — it only creates new ones alongside existing ones.`,
+DO NOT use this for: analyzing workspace health (use workspace_analyst first, then setupper to act on findings) or managing individual tasks (use task_manager). The Setupper NEVER deletes existing structures — it only creates new ones alongside existing ones.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -477,28 +477,6 @@ DO NOT use this for: analyzing workspace health (use workspace_analyst first, th
         analyst_snapshot: {
           type: 'string',
           description: 'Optional: JSON snapshot from the Workspace Analyst if a scan was run first.',
-        },
-      },
-      required: ['request'],
-    },
-  },
-  {
-    name: 'dashboard_builder',
-    description: `Delegate to the Dashboard Builder sub-agent for creating, modifying, or managing dashboards and widgets. Use this when the user wants to:
-- Create a new dashboard
-- Add widgets to a dashboard (charts, tables, summary cards, etc.)
-- Modify existing widget configurations (filters, grouping, time range)
-- Remove widgets from a dashboard
-- Get suggestions for dashboard layouts based on their needs
-- Build specific dashboard types (project overview, team performance, sprint, client)
-
-DO NOT use this for: analyzing workspace data outside of dashboards (use workspace_analyst), managing tasks (use task_manager), or modifying workspace structure (use setupper).`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        request: {
-          type: 'string',
-          description: 'Natural language description of what the user wants on their dashboard.',
         },
       },
       required: ['request'],

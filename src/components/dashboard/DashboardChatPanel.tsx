@@ -158,7 +158,7 @@ export default function DashboardChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Stable conversation ID per dashboard — persists across messages so the
-  // dashboard_builder sub-agent can maintain context within a session.
+  // AI can maintain context within a session.
   const conversationId = useMemo(
     () => `dashboard-builder-${dashboardId}-${Date.now()}`,
     [dashboardId],

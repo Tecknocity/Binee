@@ -10,7 +10,7 @@ export type TaskType =
   | 'strategy'
   | 'troubleshooting';
 
-export type SubAgentName = 'task_manager' | 'workspace_analyst' | 'setupper' | 'dashboard_builder';
+export type SubAgentName = 'task_manager' | 'workspace_analyst' | 'setupper';
 
 export type ModelTier = 'haiku' | 'sonnet';
 
