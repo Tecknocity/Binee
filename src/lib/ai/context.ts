@@ -697,3 +697,112 @@ async function fetchActiveDashboard(
     }),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Slim Context — lightweight context for the new Router → Sub-Agent → Brain
+// pipeline. Called for every message. Keeps queries minimal.
+// ---------------------------------------------------------------------------
+
+export interface SlimContext {
+  workspaceStructure: string;  // For router: space/folder/list names only
+  userContext: string;          // For brain: Tier 0 compact (user name, workspace status, key metrics)
+  conversationSummary: string;  // From conversations.summary column
+  conversationHistory: string;  // Last 2 messages formatted
+  recentMessages: string;       // Last 2 messages as brief context for router
+}
+
+export async function buildSlimContext(
+  workspaceId: string,
+  userId: string,
+  conversationId: string,
+): Promise<SlimContext> {
+  const supabase = getSupabaseAdmin();
+
+  const [
+    workspaceResult,
+    memberResult,
+    listsResult,
+    compactState,
+    convResult,
+    messagesResult,
+  ] = await Promise.all([
+    supabase
+      .from('workspaces')
+      .select('id, name, clickup_connected, clickup_plan_tier, credit_balance, last_sync_at')
+      .eq('id', workspaceId)
+      .single(),
+    supabase
+      .from('workspace_members')
+      .select('user_id, role, email, display_name')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', userId)
+      .single(),
+    // Workspace structure: just space/folder/list names for the router
+    supabase
+      .from('cached_lists')
+      .select('name, space_id, folder_id')
+      .eq('workspace_id', workspaceId)
+      .limit(100),
+    // Compact business state for brain context
+    buildCompactBusinessState(workspaceId),
+    // Conversation summary
+    supabase
+      .from('conversations')
+      .select('summary')
+      .eq('id', conversationId)
+      .single(),
+    // Last 2 messages for history
+    supabase
+      .from('messages')
+      .select('role, content')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(2),
+  ]);
+
+  const workspace = workspaceResult.data;
+  const member = memberResult.data;
+  const lists = listsResult.data ?? [];
+
+  // Build workspace structure string (just list names for router)
+  const listNames = lists.map(l => l.name).filter(Boolean);
+  const workspaceStructure = listNames.length > 0
+    ? `Lists: ${listNames.join(', ')}`
+    : 'No lists found in workspace.';
+
+  // Build user context for brain (Tier 0 compact)
+  const userContext = [
+    `User: ${member?.display_name ?? 'Unknown'} (${member?.role ?? 'member'})`,
+    `Workspace: ${workspace?.name ?? 'Unknown'}`,
+    `ClickUp: ${workspace?.clickup_connected ? 'Connected' : 'Not connected'}`,
+    `Credits: ${workspace?.credit_balance ?? 0}`,
+    compactState.tasks.total > 0
+      ? `Tasks: ${compactState.tasks.total} total, ${compactState.tasks.overdue} overdue, ${compactState.tasks.unassigned} unassigned`
+      : '',
+    compactState.team.total_members > 0
+      ? `Team: ${compactState.team.total_members} members`
+      : '',
+  ].filter(Boolean).join('\n');
+
+  // Conversation summary
+  const conversationSummary = convResult.data?.summary ?? '';
+
+  // Format last 2 messages
+  const recentMsgs = (messagesResult.data ?? []).reverse();
+  const conversationHistory = recentMsgs
+    .map(m => `${(m.role as string).toUpperCase()}: ${(m.content as string).slice(0, 200)}`)
+    .join('\n');
+
+  // Brief context for router (even shorter)
+  const recentMessages = recentMsgs
+    .map(m => `${(m.role as string)}: ${(m.content as string).slice(0, 100)}`)
+    .join('\n');
+
+  return {
+    workspaceStructure,
+    userContext,
+    conversationSummary,
+    conversationHistory,
+    recentMessages,
+  };
+}
