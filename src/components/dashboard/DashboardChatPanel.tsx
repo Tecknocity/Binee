@@ -214,7 +214,7 @@ export default function DashboardChatPanel({
           workspace_id: workspace_id ?? '',
           user_id: user?.id ?? '',
           conversation_id: conversationId,
-          message: content,
+          message: `I'm on the "${dashboardName}" dashboard. ${content}`,
         }),
       });
 
