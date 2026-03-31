@@ -4,6 +4,7 @@
 import { orchestrate } from '@/lib/ai/orchestrator';
 import { buildSlimContext } from '@/lib/ai/context';
 import { checkSufficientCredits } from './billing';
+import { maybeSummarizeConversation } from '@/lib/ai/conversation-summary';
 import { calculateAnthropicCost } from '@/billing/engine/token-converter';
 import type { ChatRequest, AssistantResponse, ToolCallResult } from '@/types/ai';
 import { createClient } from '@supabase/supabase-js';
@@ -186,6 +187,11 @@ export async function handleChat(
     result.totalInputTokens,
     result.totalOutputTokens,
     toolCalls.length > 0 ? toolCalls : null,
+  );
+
+  // Fire-and-forget: summarize if needed (don't block response)
+  maybeSummarizeConversation(conversation_id, workspace_id).catch(err =>
+    console.error('[chat-handler] Background summarization error:', err),
   );
 
   return {
