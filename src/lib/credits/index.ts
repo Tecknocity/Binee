@@ -1,24 +1,13 @@
-import { createBrowserClient } from '@/lib/supabase/client';
-import type { CreditTransaction, DeductCreditsResult, AddCreditsResult } from '@/types/database';
-import { PLAN_TIERS, getTierConfig } from '@/lib/credits/tiers';
+// Credit system barrel export
+// The old free/starter/pro tiers have been replaced by the credit-based plans
+// in src/billing/config.ts (100/150/250/500/750/1000/2000 credits)
 
-// Re-export tier configuration
-export { PLAN_TIERS, getTierConfig } from '@/lib/credits/tiers';
+export { PLAN_TIERS, type PlanTier } from '@/billing/config';
+export { MESSAGE_CREDIT_TIERS, type MessageTier } from '@/billing/config';
 export { grantSubscriptionCredits } from '@/lib/credits/grants';
 
-// Plan credit allocations (derived from centralized tiers for backwards compatibility)
-export const PLAN_CREDITS: Record<string, number> = {
-  free: PLAN_TIERS.free.credits_signup,
-  starter: PLAN_TIERS.starter.credits_monthly,
-  pro: PLAN_TIERS.pro.credits_monthly,
-};
-
-// Plan limits (derived from centralized tiers for backwards compatibility)
-export const PLAN_LIMITS: Record<string, { maxMembers: number | null; maxDashboards: number | null; canSetup: boolean }> = {
-  free: { maxMembers: PLAN_TIERS.free.max_members, maxDashboards: PLAN_TIERS.free.max_dashboards, canSetup: PLAN_TIERS.free.can_setup },
-  starter: { maxMembers: PLAN_TIERS.starter.max_members, maxDashboards: PLAN_TIERS.starter.max_dashboards, canSetup: PLAN_TIERS.starter.can_setup },
-  pro: { maxMembers: PLAN_TIERS.pro.max_members, maxDashboards: PLAN_TIERS.pro.max_dashboards, canSetup: PLAN_TIERS.pro.can_setup },
-};
+import { createBrowserClient } from '@/lib/supabase/client';
+import type { CreditTransaction, DeductCreditsResult, AddCreditsResult } from '@/types/database';
 
 export async function deductCredits(
   workspaceId: string,
@@ -100,49 +89,4 @@ export async function getCreditHistory(
 
   if (error || !data) return [];
   return data as CreditTransaction[];
-}
-
-export async function checkPlanLimit(
-  workspaceId: string,
-  feature: 'members' | 'dashboards' | 'setup',
-): Promise<{ allowed: boolean; reason?: string }> {
-  const supabase = createBrowserClient();
-
-  const { data: workspace } = await supabase
-    .from('workspaces')
-    .select('plan')
-    .eq('id', workspaceId)
-    .single();
-
-  if (!workspace) return { allowed: false, reason: 'Workspace not found' };
-
-  const limits = PLAN_LIMITS[workspace.plan] ?? PLAN_LIMITS.free;
-
-  if (feature === 'setup' && !limits.canSetup) {
-    return { allowed: false, reason: 'AI workspace setup requires the Starter plan or higher.' };
-  }
-
-  if (feature === 'members' && limits.maxMembers !== null) {
-    const { count } = await supabase
-      .from('workspace_members')
-      .select('id', { count: 'exact', head: true })
-      .eq('workspace_id', workspaceId);
-
-    if ((count ?? 0) >= limits.maxMembers) {
-      return { allowed: false, reason: `Your ${workspace.plan} plan allows up to ${limits.maxMembers} members. Upgrade to add more.` };
-    }
-  }
-
-  if (feature === 'dashboards' && limits.maxDashboards !== null) {
-    const { count } = await supabase
-      .from('dashboards')
-      .select('id', { count: 'exact', head: true })
-      .eq('workspace_id', workspaceId);
-
-    if ((count ?? 0) >= limits.maxDashboards) {
-      return { allowed: false, reason: `Your ${workspace.plan} plan allows up to ${limits.maxDashboards} dashboards. Upgrade for more.` };
-    }
-  }
-
-  return { allowed: true };
 }

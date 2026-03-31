@@ -122,7 +122,7 @@ function PanelMessage({ message }: { message: ChatMessage }) {
         {message.creditsConsumed != null && message.creditsConsumed > 0 && (
           <span className="inline-flex items-center gap-1 text-[10px] text-text-muted bg-navy-dark/40 px-1.5 py-0.5 rounded-full">
             <Coins className="w-2.5 h-2.5" />
-            {message.creditsConsumed}
+            {Number.isInteger(message.creditsConsumed) ? message.creditsConsumed : message.creditsConsumed.toFixed(1)}
           </span>
         )}
       </div>
