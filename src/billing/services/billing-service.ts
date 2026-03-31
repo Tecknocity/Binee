@@ -1,4 +1,5 @@
-import { tokensToCredits } from '../engine/token-converter';
+import { calculateAnthropicCost } from '../engine/token-converter';
+import { classifyMessageCost } from '../engine/flat-credit-classifier';
 import { checkCreditWarnings } from '../engine/warning-checker';
 import { createClient } from '@supabase/supabase-js';
 
@@ -27,7 +28,7 @@ interface ProcessAIUsageParams {
   userId: string;
   actionType: 'chat' | 'health_check' | 'setup' | 'dashboard' | 'briefing';
   sessionId: string;
-  model: 'haiku' | 'sonnet' | 'opus';
+  model: 'haiku' | 'sonnet';
   inputTokens: number;
   outputTokens: number;
 }
@@ -56,8 +57,14 @@ interface ProcessAIUsageResult {
 export async function processAIUsage(
   params: ProcessAIUsageParams,
 ): Promise<ProcessAIUsageResult> {
-  // Step 1: Convert tokens to credits
-  const conversion = tokensToCredits({
+  // Step 1: Flat credit billing — classify based on action type
+  const isSetup = params.actionType === 'setup';
+  // Sub-agent count not available here; default to simple tier for non-setup.
+  // Phase 3 will wire the orchestrator to pass sub-agent counts directly.
+  const classification = classifyMessageCost(0, isSetup);
+
+  // Analytics only — track actual Anthropic cost
+  const anthropicCost = calculateAnthropicCost({
     input_tokens: params.inputTokens,
     output_tokens: params.outputTokens,
     model: params.model,
@@ -67,13 +74,13 @@ export async function processAIUsage(
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.rpc('deduct_user_credits', {
     p_user_id: params.userId,
-    p_credits_to_deduct: conversion.creditsConsumed,
+    p_credits_to_deduct: classification.creditsToCharge,
     p_action_type: params.actionType,
     p_session_id: params.sessionId,
     p_model_used: params.model,
     p_input_tokens: params.inputTokens,
     p_output_tokens: params.outputTokens,
-    p_anthropic_cost_cents: conversion.totalCostCents,
+    p_anthropic_cost_cents: anthropicCost.totalCostCents,
   });
 
   if (error || !data?.success) {
@@ -92,7 +99,7 @@ export async function processAIUsage(
 
   return {
     blocked: false,
-    creditsDeducted: conversion.creditsConsumed,
+    creditsDeducted: classification.creditsToCharge,
     newDisplayBalance: data.new_display_balance,
     warning: warning
       ? { warning_type: warning.warning_type, message: warning.message }

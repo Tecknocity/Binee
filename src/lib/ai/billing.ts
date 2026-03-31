@@ -20,8 +20,8 @@ const COMPLEX_TASK_TYPES: Set<TaskType> = new Set([
 
 /**
  * Calculate the credit cost for an AI interaction based on task type and model.
- * Note: The new master agent architecture uses token-based costing via
- * tokensToCredits(). This function is kept for backward compatibility.
+ * Note: The new architecture uses flat credit tiers via classifyMessageCost().
+ * This function is kept for backward compatibility.
  */
 export function calculateCreditCost(
   taskType: TaskType,
