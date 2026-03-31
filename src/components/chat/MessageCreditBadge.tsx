@@ -13,7 +13,7 @@ export default function CreditBadge({ creditsConsumed }: CreditBadgeProps) {
   return (
     <span className="inline-flex items-center gap-1 text-xs text-text-muted bg-navy-dark/40 px-2 py-0.5 rounded-full">
       <Coins className="w-3 h-3" />
-      {creditsConsumed} credit{creditsConsumed !== 1 ? 's' : ''}
+      {Number.isInteger(creditsConsumed) ? creditsConsumed : creditsConsumed.toFixed(1)} credit{creditsConsumed !== 1 ? 's' : ''}
     </span>
   );
 }

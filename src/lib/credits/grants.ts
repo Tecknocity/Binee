@@ -3,7 +3,7 @@
 // Called by Stripe webhook on subscription renewal (B-090) or manually.
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { getTierConfig, isPaidPlan } from '@/lib/credits/tiers';
+import { PLAN_TIERS, type PlanTier } from '@/billing/config';
 
 interface GrantResult {
   success: boolean;
@@ -44,14 +44,14 @@ export async function grantSubscriptionCredits(
   }
 
   const plan = options?.planOverride ?? workspace.plan;
-  const tier = getTierConfig(plan);
+  const tierConfig = PLAN_TIERS[plan as PlanTier];
 
-  // Free tier does not get monthly credit grants
-  if (!isPaidPlan(plan)) {
-    return { success: false, error: 'Free tier does not receive monthly credit grants' };
+  // Only subscription tiers get monthly credit grants
+  if (!tierConfig) {
+    return { success: false, error: 'No subscription plan — monthly credit grants are not available' };
   }
 
-  const monthlyCredits = tier.credits_monthly;
+  const monthlyCredits = tierConfig.credits;
 
   // Reset balance to plan amount (no rollover)
   const { error: updateError } = await supabase

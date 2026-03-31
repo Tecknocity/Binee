@@ -23,6 +23,7 @@ import {
   AlertCircle,
   PanelLeftClose,
   PanelLeftOpen,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSharedConversations } from '@/contexts/ConversationsContext';
@@ -307,6 +308,15 @@ export default function Sidebar() {
               <PanelLeftOpen className="w-4 h-4" />
             </button>
 
+            {/* Setup */}
+            <Link
+              href="/setup"
+              className="p-2 rounded-lg text-accent hover:bg-accent/15 transition-colors"
+              title="Workspace Setup"
+            >
+              <Sparkles className="w-4 h-4" />
+            </Link>
+
             {/* New chat */}
             <button
               onClick={handleNewChat}
@@ -480,6 +490,16 @@ export default function Sidebar() {
                 <PanelLeftClose className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Setup button — prominent, at the top */}
+            <Link
+              href="/setup"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-2 p-3 mx-3 mt-3 mb-2 rounded-lg bg-accent/10 hover:bg-accent/20 border border-accent/20 transition-colors"
+            >
+              <Sparkles className="w-5 h-5 text-accent" />
+              <span className="font-medium text-accent">Workspace Setup</span>
+            </Link>
 
             {/* New chat + Search */}
             <div className="px-3 pt-2 pb-1 space-y-1">

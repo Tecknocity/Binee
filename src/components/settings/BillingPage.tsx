@@ -479,7 +479,7 @@ export default function BillingPage() {
   const [subscriptionBalance, setSubscriptionBalance] = useState(0);
   const [subscriptionPlanCredits, setSubscriptionPlanCredits] = useState(0);
   const [paygoBalance, setPaygoBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [billingLoading, setBillingLoading] = useState(true);
   const [showManageModal, setShowManageModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
 
@@ -494,7 +494,7 @@ export default function BillingPage() {
         setPaygoBalance(summary.credits.paygo ?? 0);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => setBillingLoading(false));
   }, []);
 
   const status: SubscriptionStatus = subscription?.status ?? 'none';
@@ -559,7 +559,7 @@ export default function BillingPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Left: Current Plan */}
         <div className="bg-surface border border-border rounded-xl p-6">
-          {loading ? (
+          {billingLoading ? (
             <div className="flex items-center justify-center h-[140px]">
               <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
             </div>
@@ -630,7 +630,7 @@ export default function BillingPage() {
 
         {/* Right: Credits Remaining */}
         <div className="bg-surface border border-border rounded-xl p-6">
-          {loading ? (
+          {billingLoading ? (
             <div className="flex items-center justify-center h-[140px]">
               <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
             </div>
@@ -692,13 +692,7 @@ export default function BillingPage() {
           Plan Cards: Monthly Subscription + Pay-as-you-go
           ═══════════════════════════════════════════════════════════ */}
       <div className="mb-2">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-5 h-5 text-text-muted animate-spin" />
-          </div>
-        ) : (
-          <PlanSelector subscription={subscription} />
-        )}
+        <PlanSelector subscription={subscription} />
       </div>
 
       {/* ═══════════════════════════════════════════════════════════
