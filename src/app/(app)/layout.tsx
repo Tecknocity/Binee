@@ -4,11 +4,9 @@ import { Suspense } from 'react';
 import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppLayout from '@/components/layout/AppLayout';
-import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { ConversationsProvider } from '@/contexts/ConversationsContext';
 import { ChatCacheProvider } from '@/contexts/ChatCacheContext';
-import { DashboardProvider } from '@/contexts/DashboardContext';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -35,12 +33,9 @@ export default function AppRouteLayout({ children }: { children: React.ReactNode
         <SidebarProvider>
           <ConversationsProvider>
             <ChatCacheProvider>
-              <DashboardProvider>
                 <Suspense fallback={<AppLoadingFallback />}>
-                  <OnboardingFlow />
                   <AppLayout>{children}</AppLayout>
                 </Suspense>
-              </DashboardProvider>
             </ChatCacheProvider>
           </ConversationsProvider>
         </SidebarProvider>

@@ -23,7 +23,6 @@ export type TrustTier = 'low' | 'medium' | 'high';
 /** Low risk — safe, additive operations. Eligible for "Always Allow". */
 const LOW_RISK_OPERATIONS = new Set([
   'create_task',
-  'create_dashboard_widget',
 ]);
 
 /** Medium risk — modify existing data. Eligible for "Always Allow". */
@@ -31,12 +30,10 @@ const MEDIUM_RISK_OPERATIONS = new Set([
   'update_task',
   'assign_task',
   'move_task',
-  'update_dashboard_widget',
 ]);
 
 /** High risk — destructive operations. Always require confirmation, never auto-approve. */
-const HIGH_RISK_OPERATIONS = new Set([
-  'delete_dashboard_widget',
+const HIGH_RISK_OPERATIONS = new Set<string>([
 ]);
 
 /**
@@ -70,8 +67,7 @@ const WRITE_TOOLS = new Set([
 ]);
 
 /** Blocked tools (high risk deletions — never execute) */
-const BLOCKED_TOOLS = new Set([
-  'delete_dashboard_widget',
+const BLOCKED_TOOLS = new Set<string>([
 ]);
 
 /**
@@ -156,25 +152,6 @@ export function describeAction(
         details: formatDetails({
           'Task ID': toolInput.task_id,
           'Target list': toolInput.target_list_name,
-        }),
-      };
-
-    case 'create_dashboard_widget':
-      return {
-        description: `Create dashboard widget "${toolInput.title ?? toolInput.widget_type}"`,
-        details: formatDetails({
-          Type: toolInput.widget_type,
-          ...(toolInput.title ? { Title: toolInput.title } : {}),
-          ...(toolInput.dashboard_id ? { Dashboard: toolInput.dashboard_id } : {}),
-        }),
-      };
-
-    case 'update_dashboard_widget':
-      return {
-        description: `Update dashboard widget ${toolInput.widget_id}`,
-        details: formatDetails({
-          'Widget ID': toolInput.widget_id,
-          ...(toolInput.title ? { 'New title': toolInput.title } : {}),
         }),
       };
 

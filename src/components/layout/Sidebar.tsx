@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useAuth } from '@/components/auth/AuthProvider';
 import {
   MessageSquare,
-  LayoutDashboard,
+
   Wrench,
   Settings,
   LogOut,
@@ -35,7 +35,6 @@ import { WARNING_THRESHOLDS } from '@/billing/config';
 
 const navSections = [
   { href: '/chats', label: 'Chats', icon: MessageSquare },
-  { href: '/dashboards', label: 'Dashboards', icon: LayoutDashboard },
   { href: '/setup', label: 'Setup', icon: Wrench },
 ];
 

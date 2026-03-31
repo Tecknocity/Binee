@@ -1,13 +1,12 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { Check, PartyPopper } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
 import { ClickUpConnectStep } from './ClickUpConnectStep';
 import { BusinessChatStep } from './BusinessChatStep';
 import { StructurePreview } from './StructurePreview';
 import { ExecutionProgress } from './ExecutionProgress';
-import { ManualStepsGuide } from './ManualStepsGuide';
-import { SetupComplete } from './SetupComplete';
 
 const STEPS = [
   { label: 'Connect', number: 0 },
@@ -19,63 +18,49 @@ const STEPS = [
 
 export default function SetupWizard() {
   const setup = useSetup();
-
-  const allManualDone =
-    setup.manualSteps.length > 0 && setup.manualSteps.every((s) => s.completed);
-
-  const showComplete = setup.currentStep === 4 && allManualDone;
+  const router = useRouter();
 
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col">
       {/* Step indicator */}
-      <div className="w-full max-w-3xl mx-auto px-6 pt-8 pb-4">
-        <div className="flex items-center justify-between">
-          {STEPS.map((step, i) => {
-            const isActive = setup.currentStep === step.number;
-            const isDone = setup.currentStep > step.number;
-
-            return (
-              <div key={step.number} className="flex items-center flex-1 last:flex-none">
-                {/* Circle */}
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`
-                      w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold
-                      transition-all duration-300
-                      ${isDone ? 'bg-accent text-white' : ''}
-                      ${isActive ? 'bg-accent text-white ring-4 ring-accent/20' : ''}
-                      ${!isActive && !isDone ? 'bg-surface border border-border text-text-muted' : ''}
-                    `}
-                  >
-                    {isDone ? <Check className="w-4 h-4" /> : step.number + 1}
-                  </div>
-                  <span
-                    className={`mt-1.5 text-xs font-medium ${
-                      isActive ? 'text-accent' : isDone ? 'text-text-secondary' : 'text-text-muted'
-                    }`}
-                  >
-                    {step.label}
-                  </span>
+      <div className="flex items-center justify-center gap-0 pt-8 pb-6">
+        {STEPS.map((step, i) => {
+          const isActive = setup.currentStep === step.number;
+          const isDone = setup.currentStep > step.number;
+          return (
+            <div key={step.label} className="flex items-center">
+              {i > 0 && (
+                <div
+                  className={`w-16 h-0.5 ${isDone ? 'bg-accent' : 'bg-border'}`}
+                />
+              )}
+              <div className="flex flex-col items-center gap-1.5">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-colors ${
+                    isDone
+                      ? 'bg-accent border-accent text-white'
+                      : isActive
+                        ? 'bg-accent border-accent text-white'
+                        : 'bg-surface border-border text-text-secondary'
+                  }`}
+                >
+                  {isDone ? <Check className="w-5 h-5" /> : step.number + 1}
                 </div>
-
-                {/* Connector line */}
-                {i < STEPS.length - 1 && (
-                  <div className="flex-1 mx-3 mb-5">
-                    <div
-                      className={`h-0.5 rounded-full transition-colors duration-300 ${
-                        isDone ? 'bg-accent' : 'bg-border'
-                      }`}
-                    />
-                  </div>
-                )}
+                <span
+                  className={`text-xs font-medium ${
+                    isActive || isDone ? 'text-text-primary' : 'text-text-muted'
+                  }`}
+                >
+                  {step.label}
+                </span>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Step content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 px-4 pb-8">
         {setup.currentStep === 0 && (
           <ClickUpConnectStep
             connected={setup.clickUpConnected}
@@ -113,26 +98,25 @@ export default function SetupWizard() {
           />
         )}
 
-        {setup.currentStep === 4 && !showComplete && (
-          <ManualStepsGuide
-            steps={setup.manualSteps}
-            executionResult={setup.executionResult}
-            onMarkComplete={setup.markStepComplete}
-            onDone={setup.goToDashboard}
-            onSkipAll={setup.goToDashboard}
-          />
-        )}
-
-        {showComplete && (
-          <SetupComplete
-            executionResult={setup.executionResult}
-            manualStepsCount={setup.manualSteps.length}
-            plan={setup.proposedPlan}
-            onViewManualSteps={() => {
-              // Allow user to go back and review manual steps
-              // (they can re-complete them and return here)
-            }}
-          />
+        {setup.currentStep === 4 && (
+          <div className="max-w-lg mx-auto text-center py-16">
+            <div className="w-16 h-16 rounded-full bg-accent/15 flex items-center justify-center mx-auto mb-6">
+              <PartyPopper className="w-8 h-8 text-accent" />
+            </div>
+            <h2 className="text-2xl font-semibold text-text-primary mb-3">
+              Workspace Ready!
+            </h2>
+            <p className="text-text-secondary mb-8">
+              Your ClickUp workspace has been set up. You can now start chatting
+              with Binee to manage your tasks and projects.
+            </p>
+            <button
+              onClick={() => router.push('/chat')}
+              className="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl font-medium transition-colors"
+            >
+              Start Chatting
+            </button>
+          </div>
         )}
       </div>
     </div>

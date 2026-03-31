@@ -12,12 +12,8 @@ import {
   List,
   Sparkles,
 } from 'lucide-react';
-import type { ExecutionProgress as ExecutionProgressType, ExecutionResult } from '@/lib/setup/session';
+import type { ExecutionProgress as ExecutionProgressType, ExecutionResult, SetupPlan } from '@/lib/setup/types';
 import type { ExecutionItem } from '@/lib/setup/executor';
-import type { SetupPlan as TypedSetupPlan } from '@/lib/setup/types';
-import type { SetupPlan as LegacySetupPlan } from '@/lib/setup/session';
-
-type SetupPlan = TypedSetupPlan | LegacySetupPlan;
 
 // ---------------------------------------------------------------------------
 // Types

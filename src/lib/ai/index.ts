@@ -37,12 +37,6 @@ export {
 export type { ActionPreference } from '@/lib/ai/action-preferences';
 
 // Prompts
-export { MASTER_AGENT_PROMPT } from '@/lib/ai/prompts/master-agent';
-export {
-  TASK_MANAGER_PROMPT,
-  WORKSPACE_ANALYST_PROMPT,
-  SETUPPER_PROMPT,
-} from '@/lib/ai/prompts/sub-agents';
 export { buildRouterPrompt } from '@/lib/ai/prompts/router-prompt';
 export { buildBrainPrompt } from '@/lib/ai/prompts/brain-prompt';
 export { TASK_MANAGER_TOOLS_NAMES } from '@/lib/ai/prompts/task-manager-prompt';

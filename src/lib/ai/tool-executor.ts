@@ -7,13 +7,7 @@ import {
   moveTask as clickupMoveTask,
 } from '@/lib/clickup/operations';
 import type { CreateTaskParams, UpdateTaskParams } from '@/types/clickup';
-import {
-  handleCreateDashboardWidget,
-  handleUpdateDashboardWidget,
-  handleDeleteDashboardWidget,
-  handleListDashboards,
-  handleListDashboardWidgets,
-} from '@/lib/ai/tools/dashboard-tools';
+
 
 // ---------------------------------------------------------------------------
 // Supabase admin client (server-side only)
@@ -63,16 +57,6 @@ export async function executeTool(
         return await handleGetTeamActivity(toolInput, workspaceId);
       case 'get_time_tracking_summary':
         return await handleGetTimeTrackingSummary(toolInput, workspaceId);
-      case 'create_dashboard_widget':
-        return await handleCreateDashboardWidget(toolInput, workspaceId);
-      case 'update_dashboard_widget':
-        return await handleUpdateDashboardWidget(toolInput, workspaceId);
-      case 'delete_dashboard_widget':
-        return await handleDeleteDashboardWidget(toolInput, workspaceId);
-      case 'list_dashboards':
-        return await handleListDashboards(workspaceId);
-      case 'list_dashboard_widgets':
-        return await handleListDashboardWidgets(toolInput, workspaceId);
       default:
         return { error: `Unknown tool: ${toolName}`, success: false };
     }
