@@ -481,17 +481,15 @@ export function useSetup(): UseSetupReturn {
       const idx = messageCount;
       setMessageCount((c) => c + 1);
 
-      // Attempt real AI call via /api/chat — the master agent routes
-      // setup-related requests to the setupper sub-agent automatically.
+      // Call the standalone Setupper brain API
       try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/setup/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workspace_id,
-            user_id: user?.id ?? 'anonymous',
             conversation_id: conversationId,
-            message: `I'm setting up my ClickUp workspace. ${msg}`,
+            message: msg,
           }),
         });
 
@@ -538,14 +536,13 @@ export function useSetup(): UseSetupReturn {
       setBusinessDescription(description);
       setIsSending(true);
 
-      // Attempt AI-powered plan generation via master agent → setupper
+      // Call the standalone Setupper brain for template-based plan generation
       try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/setup/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workspace_id,
-            user_id: user?.id ?? 'anonymous',
             conversation_id: conversationId,
             message: `Please set up my ClickUp workspace. ${description} Create the full structure — Spaces, Folders, Lists, and statuses — tailored for a ${template} business.`,
           }),
@@ -587,14 +584,13 @@ export function useSetup(): UseSetupReturn {
   const generateStructure = useCallback(async () => {
     setIsSending(true);
 
-    // AI-powered structure generation via master agent → setupper sub-agent
+    // Call the standalone Setupper brain for structure generation
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/api/setup/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           workspace_id,
-          user_id: user?.id ?? 'anonymous',
           conversation_id: conversationId,
           message: `Please set up my ClickUp workspace now. Create the full structure — Spaces, Folders, Lists, and statuses — based on what I've told you about my business: ${businessDescription}`,
         }),
@@ -680,14 +676,13 @@ export function useSetup(): UseSetupReturn {
       addMessage('user', feedback);
       setIsSending(true);
 
-      // AI-powered revision via master agent → setupper sub-agent
+      // Call the standalone Setupper brain for structure revision
       try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/setup/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workspace_id,
-            user_id: user?.id ?? 'anonymous',
             conversation_id: conversationId,
             message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}`,
           }),

@@ -1,0 +1,132 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { handleSetupMessage } from '@/lib/setup/setupper-brain';
+import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from '@/lib/rate-limit';
+
+export const maxDuration = 60;
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createServerClient();
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    if (authError || !authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const rl = rateLimit(`setup:${authUser.id}`, 10, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json({ error: 'Too many requests.' }, { status: 429 });
+    }
+
+    const body = await request.json();
+    const { workspace_id, conversation_id, message } = body;
+
+    if (!workspace_id || !conversation_id || !message?.trim()) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Load templates from knowledge base
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+
+    const { data: templateModules } = await adminClient
+      .from('ai_knowledge_base')
+      .select('content')
+      .like('module_key', 'clickup-templates-database%');
+
+    const templates = templateModules?.map(m => m.content).join('\n\n') || '';
+
+    // Load conversation history for this setup session
+    const { data: historyMessages } = await adminClient
+      .from('messages')
+      .select('role, content')
+      .eq('conversation_id', conversation_id)
+      .order('created_at', { ascending: true })
+      .limit(20);
+
+    const conversationHistory = (historyMessages || []).map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    // Run setupper brain
+    const result = await handleSetupMessage({
+      userMessage: message.trim(),
+      workspaceId: workspace_id,
+      userId: authUser.id,
+      conversationId: conversation_id,
+      conversationHistory,
+      templates,
+    });
+
+    // Deduct credits
+    const { error: deductError } = await adminClient.rpc('deduct_credits', {
+      p_workspace_id: workspace_id,
+      p_user_id: authUser.id,
+      p_amount: result.creditsToCharge,
+      p_description: 'Setup: workspace configuration',
+      p_message_id: null,
+      p_metadata: {
+        credit_tier: 'complex',
+        source: 'setup',
+        input_tokens: result.totalInputTokens,
+        output_tokens: result.totalOutputTokens,
+        anthropic_cost_cents: result.anthropicCostCents,
+        tool_calls: result.toolCalls,
+      },
+    });
+
+    if (deductError) {
+      console.error('[setup/chat] Credit deduction failed:', deductError);
+    }
+
+    // Save messages
+    await adminClient.from('messages').insert([
+      {
+        workspace_id,
+        conversation_id,
+        role: 'user',
+        content: message.trim(),
+        credits_used: 0,
+      },
+      {
+        workspace_id,
+        conversation_id,
+        role: 'assistant',
+        content: result.content,
+        credits_used: result.creditsToCharge,
+        metadata: {
+          source: 'setup',
+          tool_calls: result.toolCalls,
+          anthropic_cost_cents: result.anthropicCostCents,
+        },
+      },
+    ]);
+
+    // Update setup session credits_used
+    await adminClient
+      .from('setup_sessions')
+      .update({
+        credits_used: adminClient.rpc('add_setup_credits', {
+          p_conversation_id: conversation_id,
+          p_amount: result.creditsToCharge,
+        }),
+      })
+      .eq('conversation_id', conversation_id);
+
+    return NextResponse.json({
+      content: result.content,
+      credits_consumed: result.creditsToCharge,
+      tool_calls: result.toolCalls,
+    });
+  } catch (error) {
+    console.error('[POST /api/setup/chat] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Setup error' },
+      { status: 500 },
+    );
+  }
+}
