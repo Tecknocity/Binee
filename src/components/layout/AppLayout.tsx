@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 
 // Pages that need full-height edge-to-edge layout (no padding)
-const FULL_BLEED_PAGES = ['/chat'];
+const FULL_BLEED_PAGES = ['/chat', '/setup'];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
