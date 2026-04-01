@@ -72,7 +72,7 @@ export function useConversations() {
     refetch,
   } = useQuery({
     queryKey: workspaceId && userId ? queryKeys.conversations(workspaceId, userId) : ['conversations', 'none'],
-    queryFn: async () => {
+    queryFn: async ({ queryKey }) => {
       const { data, error } = await supabase
         .from('conversations')
         .select('id, title, summary, updated_at, created_at')
@@ -86,7 +86,20 @@ export function useConversations() {
         throw error;
       }
 
-      return (data ?? []).map(mapRow);
+      const mapped = (data ?? []).map(mapRow);
+
+      // Stale-while-revalidate guard: if the DB returned empty but we have
+      // cached conversations, keep the cache. This prevents RLS from silently
+      // returning [] with a stale/expired token and wiping the conversation list.
+      if (mapped.length === 0) {
+        const cached = queryClient.getQueryData<Conversation[]>(queryKey) ?? [];
+        if (cached.length > 0) {
+          console.warn('[useConversations] DB returned empty but cache has conversations — keeping cache');
+          return cached;
+        }
+      }
+
+      return mapped;
     },
     enabled: !!workspaceId && !!userId,
     // Keep conversations cached for 30 min after navigating away from chat

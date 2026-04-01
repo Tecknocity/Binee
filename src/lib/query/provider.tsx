@@ -11,7 +11,11 @@ import { useState, type ReactNode } from 'react';
  *   This means navigating away and back shows cached data instantly.
  * - refetchOnWindowFocus OFF: we handle focus recovery ourselves in
  *   useSessionKeepalive (token-first ordering — validate token before refetching).
- * - refetchOnReconnect: refetch when network comes back.
+ * - refetchOnReconnect OFF: we handle reconnection ourselves in
+ *   useSessionKeepalive (token-first ordering — validate token before refetching).
+ *   Letting React Query refetch on reconnect races with the keepalive handler
+ *   and fires queries with stale/expired tokens, causing RLS to silently return
+ *   empty results that overwrite valid cached data.
  * - retry 1: one automatic retry on failure with exponential backoff.
  */
 function makeQueryClient() {
@@ -21,7 +25,7 @@ function makeQueryClient() {
         staleTime: 2 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
         refetchOnWindowFocus: false,
-        refetchOnReconnect: true,
+        refetchOnReconnect: false,
         retry: 1,
         retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
       },

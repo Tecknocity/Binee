@@ -63,6 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const queryClient = useQueryClient();
 
+  // Keep a ref to current workspaces so loadWorkspaces can guard against
+  // wiping valid state on transient empty results (stale RLS / token gap).
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
+
   // Lazy-initialize the Supabase client. During SSR (server-side rendering),
   // typeof window === 'undefined' so we skip creation. The client is only
   // needed in useEffect/callbacks which run on the client.
@@ -259,7 +264,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return apiResult.workspaces;
     }
 
-    // Neither path found workspaces
+    // Neither path found workspaces. If we already have valid workspace data
+    // in state, keep it — this is likely a transient RLS failure caused by a
+    // stale/expired token during tab recovery. Wiping state here would cause
+    // ProtectedRoute to unmount the entire app tree (loading spinner, blank pages).
+    if (workspacesRef.current && workspacesRef.current.length > 0) {
+      console.warn('[AuthProvider] loadWorkspaces returned empty but valid state exists — keeping current workspace data');
+      return workspacesRef.current;
+    }
     setWorkspaces([]);
     setWorkspace(null);
     setMembership(null);
