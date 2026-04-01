@@ -6,8 +6,13 @@ import { Camera, Save, Loader2 } from 'lucide-react';
 
 export default function ProfileSettings() {
   const { user } = useAuth();
-  const [displayName, setDisplayName] = useState(user?.display_name || '');
-  const [email] = useState(user?.email || '');
+  // Track local edits separately. When null, we display the value from
+  // the user context (which stays in sync after session recovery).
+  const [localDisplayName, setLocalDisplayName] = useState<string | null>(null);
+
+  // Use local edit if user has typed, otherwise derive from user context
+  const displayName = localDisplayName ?? user?.display_name ?? '';
+  const email = user?.email ?? '';
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -61,7 +66,7 @@ export default function ProfileSettings() {
             <input
               type="text"
               value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              onChange={(e) => setLocalDisplayName(e.target.value)}
               className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
             />
           </div>

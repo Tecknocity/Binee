@@ -36,10 +36,10 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const { user, workspace, membership, loading: authLoading, refreshWorkspace } = useAuth();
+  const { user, workspace, membership, loading: authLoading, refreshWorkspace, authGeneration } = useAuth();
 
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
+  const [, setMembersLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Separate credit balance state — updated locally from realtime events
   // without creating a new workspace object reference. This prevents
@@ -215,20 +215,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
   }, [refreshWorkspace, workspace?.id, fetchMembers]);
 
-  // Reconnect realtime + refetch when Supabase refreshes the auth token.
-  // After a token refresh, old realtime subscriptions use stale credentials.
+  // Reconnect realtime + refetch when AuthProvider signals a token refresh
+  // or sign-in via authGeneration. This replaces a direct onAuthStateChange
+  // subscription, ensuring ordered recovery: auth first, then children.
+  const authGenRef = useRef(authGeneration);
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
-        refreshWorkspace();
-        if (workspace?.id) fetchMembers(workspace.id);
-        // Force realtime channel re-subscription with new credentials
-        setRealtimeGeneration((g: number) => g + 1);
-      }
-    });
-    return () => subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace?.id used for member fetch, not for subscription identity
-  }, [refreshWorkspace, workspace?.id, fetchMembers]);
+    // Skip the initial mount — only react to actual changes
+    if (authGenRef.current === authGeneration) return;
+    authGenRef.current = authGeneration;
+
+    refreshWorkspace();
+    if (workspace?.id) fetchMembers(workspace.id);
+    // Force realtime channel re-subscription with new credentials
+    setRealtimeGeneration((g: number) => g + 1);
+  }, [authGeneration, refreshWorkspace, workspace?.id, fetchMembers]);
 
   // Re-subscribe realtime channel + refresh when tab becomes visible
   useEffect(() => {
