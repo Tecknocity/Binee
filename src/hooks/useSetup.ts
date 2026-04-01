@@ -397,8 +397,14 @@ export function useSetup(): UseSetupReturn {
       }
 
       // Restore chat messages (Fix 2b)
+      // Timestamps are serialized as strings in JSON — convert back to Date objects
       if (saved.chatMessages && saved.chatMessages.length > 0) {
-        setChatMessages(saved.chatMessages as SetupChatMessage[]);
+        setChatMessages(
+          saved.chatMessages.map((msg) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp),
+          })) as SetupChatMessage[]
+        );
       }
 
       // Queue manual step completion indices for application after steps are generated (Fix 2a)
@@ -436,11 +442,11 @@ export function useSetup(): UseSetupReturn {
         wizardStep,
         businessProfile: {
           businessDescription: businessDescription || null,
-          teamSize: null,
-          departments: null,
-          tools: null,
-          workflows: null,
-          painPoints: null,
+          teamSize: businessProfile.teamSize,
+          departments: businessProfile.departments,
+          tools: businessProfile.tools,
+          workflows: businessProfile.workflows,
+          painPoints: businessProfile.painPoints,
         },
         plan: proposedPlan,
         executionSteps,
@@ -468,7 +474,7 @@ export function useSetup(): UseSetupReturn {
         clearTimeout(persistTimeoutRef.current);
       }
     };
-  }, [wizardStep, proposedPlan, executionSteps, executionResult, businessDescription, manualSteps, chatMessages, workspace_id, user?.id, conversationId, isRestored]);
+  }, [wizardStep, proposedPlan, executionSteps, executionResult, businessDescription, businessProfile, manualSteps, chatMessages, workspace_id, user?.id, conversationId, isRestored]);
 
   // Fix 2a: Apply restored manual step completion indices once manualSteps are generated
   useEffect(() => {
