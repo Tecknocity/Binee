@@ -332,20 +332,21 @@ export function useChat(conversationId: string | null) {
     loadConversation(conversationId);
   }, [conversationId, loadConversation]);
 
-  // Reload messages when the tab regains focus (user returns from another app/tab).
-  // React Query handles refetching for queries, but useChat uses local state
-  // for messages, so we reload from the DB on focus to pick up any changes.
+  // Reload messages when the tab regains focus. React Query handles refetch
+  // for its own queries, but useChat uses local state for messages.
+  // The QueryProvider's focusManager already refreshes the Supabase token
+  // before React Query refetches, so the token is fresh by the time this fires.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleFocus = () => {
-      if (conversationId) {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && conversationId) {
         loadConversation(conversationId);
       }
     };
 
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [conversationId, loadConversation]);
 
   // Helper: update messages state AND write through to React Query cache
