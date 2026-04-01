@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query';
 import { useState, useEffect, type ReactNode } from 'react';
 import { createBrowserClient } from '@/lib/supabase/client';
+import { invalidateBillingCache } from '@/billing/hooks/billing-cache';
 
 function makeQueryClient() {
   return new QueryClient({
@@ -10,8 +11,8 @@ function makeQueryClient() {
       queries: {
         staleTime: 2 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
-        refetchOnWindowFocus: true,
-        refetchOnReconnect: true,
+        refetchOnWindowFocus: 'always',
+        refetchOnReconnect: 'always',
         retry: 1,
         retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
       },
@@ -19,50 +20,66 @@ function makeQueryClient() {
   });
 }
 
+let setupDone = false;
+
 /**
- * Ensures the Supabase session is fresh BEFORE React Query refetches.
+ * Refresh the Supabase token, then notify React Query that focus/online changed.
  *
- * Without this, refetchOnWindowFocus fires queries with an expired JWT.
- * Supabase RLS silently returns empty arrays (not errors) for expired tokens,
- * so React Query overwrites the cache with empty data — blanking the UI.
- *
- * By calling getUser() first (which auto-refreshes the token), we guarantee
- * queries always run with a valid JWT.
+ * Why: Supabase RLS returns empty arrays (not errors) for expired JWTs.
+ * If React Query refetches before the token is refreshed, the empty result
+ * overwrites the cache and blanks the UI. By awaiting getUser() first
+ * (which auto-refreshes if expired), queries always run with a valid token.
  */
-function setupFocusRefresh() {
-  if (typeof window === 'undefined') return;
+function setupRefreshBeforeRefetch() {
+  if (typeof window === 'undefined' || setupDone) return;
+  setupDone = true;
 
   const supabase = createBrowserClient();
 
-  focusManager.setEventListener((handleFocus) => {
-    const onFocus = async () => {
+  async function ensureFreshToken() {
+    try {
       await supabase.auth.getUser();
-      handleFocus(true);
+    } catch {
+      // Token refresh failed — still notify React Query so it can retry
+    }
+    // Invalidate billing cache (it's outside React Query)
+    invalidateBillingCache();
+  }
+
+  // Override React Query's default focus listener.
+  // Default only listens to visibilitychange; we add window.focus too,
+  // and refresh the Supabase token before triggering refetches.
+  focusManager.setEventListener((handleFocus) => {
+    const onVisible = () => {
+      ensureFreshToken().then(() => handleFocus(true));
     };
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        onFocus();
+        onVisible();
       } else {
         handleFocus(false);
       }
     };
 
-    window.addEventListener('visibilitychange', onVisibilityChange, false);
+    document.addEventListener('visibilitychange', onVisibilityChange, false);
+    window.addEventListener('focus', onVisible, false);
+
     return () => {
-      window.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onVisible);
     };
   });
 
   onlineManager.setEventListener((setOnline) => {
-    const onOnline = async () => {
-      await supabase.auth.getUser();
-      setOnline(true);
+    const onOnline = () => {
+      ensureFreshToken().then(() => setOnline(true));
     };
     const onOffline = () => setOnline(false);
 
     window.addEventListener('online', onOnline, false);
     window.addEventListener('offline', onOffline, false);
+
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
@@ -74,7 +91,7 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(makeQueryClient);
 
   useEffect(() => {
-    setupFocusRefresh();
+    setupRefreshBeforeRefetch();
   }, []);
 
   return (

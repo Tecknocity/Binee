@@ -334,13 +334,14 @@ export function useChat(conversationId: string | null) {
 
   // Reload messages when the tab regains focus. React Query handles refetch
   // for its own queries, but useChat uses local state for messages.
-  // The QueryProvider's focusManager already refreshes the Supabase token
-  // before React Query refetches, so the token is fresh by the time this fires.
+  // We call getUser() first to ensure the token is fresh — without this,
+  // RLS silently returns empty arrays for expired JWTs.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && conversationId) {
+        try { await supabase.auth.getUser(); } catch {}
         loadConversation(conversationId);
       }
     };
