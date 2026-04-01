@@ -3,33 +3,34 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
+import { invalidateBillingCache } from '@/billing/hooks/billing-cache';
 
 /**
- * Interval between periodic session health checks (ms).
- * Checks run only when the tab is visible.
+ * Custom event dispatched AFTER the token has been validated/refreshed.
+ * All data hooks listen for this instead of running their own visibility handlers.
+ *
+ * Detail payload:
+ *   - reason: what triggered the recovery ('visibility-change' | 'network-online' | 'periodic')
  */
+export const SESSION_RECOVERED_EVENT = 'binee:session-recovered';
+
 const HEALTH_CHECK_INTERVAL = 3 * 60_000; // 3 minutes
-
-/**
- * Minimum time (ms) the tab must be hidden before we run a full
- * session validation + query invalidation on return. Quick alt-tabs
- * (<10s) skip the heavy recovery path.
- */
 const VISIBILITY_THRESHOLD = 10_000; // 10 seconds
 
 /**
- * Keeps the Supabase session alive and invalidates React Query caches
- * when the session recovers. This is the ONLY place that handles
- * visibility-change recovery — individual hooks no longer need their
- * own listeners.
+ * THE session recovery hook. This is the ONLY place that:
+ *   1. Listens to visibilitychange
+ *   2. Listens to online
+ *   3. Runs periodic health checks
  *
- * Flow on tab return (after threshold):
- *   1. Validate token via getUser() (server call — auto-refreshes if needed)
- *   2. If token was stale, call refreshSession() as fallback
- *   3. Invalidate all React Query caches → data hooks refetch with fresh token
+ * Recovery flow (sequential, not parallel):
+ *   1. Validate token via getUser() — this is a server call that auto-refreshes
+ *   2. If getUser() fails, explicitly call refreshSession()
+ *   3. If token is now valid: invalidate billing cache + React Query caches
+ *   4. Dispatch SESSION_RECOVERED_EVENT so hooks that use direct state (not RQ)
+ *      can reload their data (AuthProvider workspace state, useChat messages)
  *
- * This ordering (token first, then refetch) is critical. If we refetched
- * first, the stale token would cause RLS to return empty rows.
+ * No other hook should listen to visibilitychange or online for auth recovery.
  */
 export function useSessionKeepalive() {
   const supabaseRef = useRef(
@@ -39,30 +40,40 @@ export function useSessionKeepalive() {
   const lastHiddenRef = useRef<number>(0);
   const checkingRef = useRef(false);
 
-  const validateAndInvalidate = useCallback(async (reason: string) => {
+  const validateAndRecover = useCallback(async (reason: string) => {
     const supabase = supabaseRef.current;
     if (!supabase || checkingRef.current) return;
 
     checkingRef.current = true;
     try {
-      // getUser() makes a server call that validates AND refreshes the token,
-      // unlike getSession() which only returns the cached (possibly stale) value.
+      // Step 1: Validate token (server call — auto-refreshes if stale)
       const { data: { user }, error } = await supabase.auth.getUser();
 
       if (error || !user) {
-        // Token is invalid — attempt explicit refresh
+        // Step 2: Explicit refresh as fallback
         const { error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError) {
-          console.warn(`[keepalive] ${reason}: refresh failed`, refreshError.message);
-          return;
+          console.warn(`[keepalive] ${reason}: session refresh failed — user may need to re-login`);
+          return; // Don't dispatch recovery if we can't get a valid token
         }
-        console.info(`[keepalive] ${reason}: session refreshed`);
       }
 
-      // Token is now valid — invalidate all caches so hooks refetch with fresh token
+      // Step 3: Token is now valid. Invalidate all caches.
+      // Billing uses its own cache outside React Query — invalidate it first.
+      invalidateBillingCache();
+      // React Query invalidation triggers all useQuery hooks to refetch
+      // with the now-valid token.
       queryClient.invalidateQueries();
+
+      // Step 4: Dispatch event for non-React-Query state holders.
+      // AuthProvider needs to reload workspace state (plain useState).
+      // useChat needs to reload messages for the active conversation.
+      // WorkspaceContext/useConversations need to reconnect realtime channels.
+      window.dispatchEvent(
+        new CustomEvent(SESSION_RECOVERED_EVENT, { detail: { reason } }),
+      );
     } catch (err) {
-      console.warn(`[keepalive] ${reason}: check failed`, err);
+      console.warn(`[keepalive] ${reason}: recovery failed`, err);
     } finally {
       checkingRef.current = false;
     }
@@ -71,27 +82,24 @@ export function useSessionKeepalive() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // --- Visibility change: validate token + invalidate caches ---
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         lastHiddenRef.current = Date.now();
       } else if (document.visibilityState === 'visible') {
         const awayMs = Date.now() - lastHiddenRef.current;
         if (awayMs >= VISIBILITY_THRESHOLD) {
-          validateAndInvalidate('visibility-change');
+          validateAndRecover('visibility-change');
         }
       }
     };
 
-    // --- Online: validate when network returns ---
     const handleOnline = () => {
-      validateAndInvalidate('network-online');
+      validateAndRecover('network-online');
     };
 
-    // --- Periodic: health check every 3 minutes ---
     const intervalId = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        validateAndInvalidate('periodic');
+        validateAndRecover('periodic');
       }
     }, HEALTH_CHECK_INTERVAL);
 
@@ -103,5 +111,5 @@ export function useSessionKeepalive() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
     };
-  }, [validateAndInvalidate]);
+  }, [validateAndRecover]);
 }

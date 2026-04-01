@@ -436,32 +436,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
   }, [supabase, ensureAndLoad]);
 
-  // Reload workspace data when tab becomes visible after extended absence.
-  // React Query's invalidateQueries (fired by keepalive) handles data hooks,
-  // but AuthProvider's workspace/user state is plain useState — we need to
-  // refresh it explicitly.
-  const lastHiddenAuthRef = useRef<number>(0);
+  // Listen for session recovery events from useSessionKeepalive.
+  // The keepalive hook has already validated/refreshed the token by the time
+  // this event fires, so we can safely reload workspace data.
   useEffect(() => {
     if (typeof window === 'undefined' || !supabase) return;
 
-    const handleVisibility = async () => {
-      if (document.visibilityState === 'hidden') {
-        lastHiddenAuthRef.current = Date.now();
-      } else if (document.visibilityState === 'visible') {
-        const awayMs = Date.now() - lastHiddenAuthRef.current;
-        if (awayMs > 10_000) {
-          // Validate session and reload workspace if user exists
-          const { data: { user: freshUser } } = await supabase.auth.getUser();
-          if (freshUser) {
-            setUser(mapSupabaseUser(freshUser));
-            await loadWorkspaces(freshUser.id);
-          }
-        }
+    const handleSessionRecovered = async () => {
+      // Token is already valid (keepalive validated it before dispatching).
+      // Reload user metadata and workspace data.
+      const { data: { user: freshUser } } = await supabase.auth.getUser();
+      if (freshUser) {
+        setUser(mapSupabaseUser(freshUser));
+        await loadWorkspaces(freshUser.id);
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('binee:session-recovered', handleSessionRecovered);
+    return () => window.removeEventListener('binee:session-recovered', handleSessionRecovered);
   }, [supabase, loadWorkspaces]);
 
   const signIn = async (email: string, password: string) => {

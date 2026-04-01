@@ -16,6 +16,7 @@ import { cn, formatDate } from '@/lib/utils';
 import { PLAN_TIERS, PAYGO_PRICE_PER_CREDIT_CENTS } from '@/billing/config';
 import type { UserSubscription, BillingPeriod, SubscriptionStatus, PlanTier } from '@/billing/types/subscriptions';
 import { fetchBillingSummary } from '@/billing/hooks/billing-cache';
+import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 import PlanSelector from '@/components/billing/PlanSelector';
 import WeeklyUsageSummary from '@/components/billing/WeeklyUsageSummary';
 import MemberUsageTable from '@/components/settings/MemberUsageTable';
@@ -495,6 +496,29 @@ export default function BillingPage() {
       })
       .catch(() => {})
       .finally(() => setBillingLoading(false));
+  }, []);
+
+  // Refetch billing data after session recovery (token has been refreshed
+  // by keepalive, and billing cache has been invalidated).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleRecovery = () => {
+      setBillingLoading(true);
+      fetchBillingSummary()
+        .then((summary) => {
+          setSubscription(summary.subscription);
+          setBalance(summary.credits.displayBalance ?? 0);
+          setSubscriptionBalance(summary.credits.subscription ?? 0);
+          setSubscriptionPlanCredits(summary.credits.subscriptionPlanCredits ?? 0);
+          setPaygoBalance(summary.credits.paygo ?? 0);
+        })
+        .catch(() => {})
+        .finally(() => setBillingLoading(false));
+    };
+
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovery);
+    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovery);
   }, []);
 
   const status: SubscriptionStatus = subscription?.status ?? 'none';
