@@ -3,29 +3,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 
-/**
- * Creates a QueryClient with defaults tuned for a Supabase-backed SPA:
- *
- * - staleTime 2 min: data is considered fresh for 2 minutes (no refetch on re-mount).
- * - gcTime 10 min: inactive query data stays in cache for 10 minutes.
- *   This means navigating away and back shows cached data instantly.
- * - refetchOnWindowFocus OFF: we handle focus recovery ourselves in
- *   useSessionKeepalive (token-first ordering — validate token before refetching).
- * - refetchOnReconnect OFF: we handle reconnection ourselves in
- *   useSessionKeepalive (token-first ordering — validate token before refetching).
- *   Letting React Query refetch on reconnect races with the keepalive handler
- *   and fires queries with stale/expired tokens, causing RLS to silently return
- *   empty results that overwrite valid cached data.
- * - retry 1: one automatic retry on failure with exponential backoff.
- */
 function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
         staleTime: 2 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
-        refetchOnWindowFocus: false,
-        refetchOnReconnect: false,
+        refetchOnWindowFocus: true,
+        refetchOnReconnect: true,
         retry: 1,
         retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
       },

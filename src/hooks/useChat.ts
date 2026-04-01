@@ -10,7 +10,6 @@ import {
   shouldAutoApprove,
   setActionPreference,
 } from '@/lib/ai/action-preferences';
-import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 
 // ---------------------------------------------------------------------------
 // Helper: generate a short title from the first user message
@@ -299,16 +298,6 @@ export function useChat(conversationId: string | null) {
           .map((row) => mapDbMessage(row as DbMessageRow))
           .filter((m): m is ChatMessage => m !== null);
 
-        // STALE-WHILE-REVALIDATE GUARD: If we already had messages (from cache
-        // or previous load) but the DB returned empty, keep the existing data.
-        // This happens when Supabase's auth token is briefly stale during a tab
-        // switch — RLS silently returns zero rows instead of an error. Without
-        // this guard, setMessages([]) would wipe the screen.
-        if (mapped.length === 0 && cached.length > 0) {
-          console.warn('[useChat] DB returned empty but cache has messages — keeping cached data (likely transient auth gap)');
-          return;
-        }
-
         // Sum up credits from loaded messages
         totalCredits.current = mapped.reduce(
           (sum, m) => sum + (m.creditsConsumed ?? 0),
@@ -343,18 +332,20 @@ export function useChat(conversationId: string | null) {
     loadConversation(conversationId);
   }, [conversationId, loadConversation]);
 
-  // Reload messages when session recovers (token validated by keepalive first).
+  // Reload messages when the tab regains focus (user returns from another app/tab).
+  // React Query handles refetching for queries, but useChat uses local state
+  // for messages, so we reload from the DB on focus to pick up any changes.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleSessionRecovered = () => {
+    const handleFocus = () => {
       if (conversationId) {
         loadConversation(conversationId);
       }
     };
 
-    window.addEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
-    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [conversationId, loadConversation]);
 
   // Helper: update messages state AND write through to React Query cache
@@ -432,11 +423,6 @@ export function useChat(conversationId: string | null) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
   }, [conversationId, workspaceId, subscribeToMessages]);
-
-  // Supabase Realtime auto-reconnects WebSocket channels after tab
-  // suspension. Manual reconnection was removed — it caused channel
-  // teardown/rebuild that raced with message reload from the other
-  // SESSION_RECOVERED listener above.
 
   // -------------------------------------------------------------------------
   // Send a message via the AI chat API

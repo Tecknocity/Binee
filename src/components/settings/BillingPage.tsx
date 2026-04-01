@@ -497,10 +497,6 @@ export default function BillingPage() {
       .finally(() => setBillingLoading(false));
   }, []);
 
-  // Billing cache (30s TTL) is invalidated by useSessionKeepalive on
-  // recovery. The data refreshes naturally on next access. Manual
-  // SESSION_RECOVERED listener was removed — it set billingLoading=true
-  // which flashed a spinner on every tab return.
 
   const status: SubscriptionStatus = subscription?.status ?? 'none';
   const planTier = subscription?.plan_tier;

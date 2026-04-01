@@ -199,10 +199,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, [workspaceId, supabase, subscribeToWorkspace]);
 
-  // Supabase Realtime auto-reconnects WebSocket channels after tab
-  // suspension. Manual reconnection was removed — it caused channel
-  // teardown/rebuild storms that raced with React Query refetches.
-
   // -------------------------------------------------------------------------
   // Refetch helper
   // -------------------------------------------------------------------------
