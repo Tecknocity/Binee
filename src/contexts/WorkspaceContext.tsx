@@ -7,6 +7,7 @@ import {
   useState,
   useCallback,
   useRef,
+  useMemo,
   type ReactNode,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,7 +15,6 @@ import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { queryKeys } from '@/lib/query/keys';
 import type { Workspace, WorkspaceMember } from '@/types/database';
-import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 
 interface WorkspaceContextValue {
   workspace: Workspace | null;
@@ -199,19 +199,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, [workspaceId, supabase, subscribeToWorkspace]);
 
-  // Reconnect workspace realtime channel after session recovery.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleReconnect = () => {
-      if (workspaceId) {
-        subscribeToWorkspace(workspaceId);
-      }
-    };
-
-    window.addEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-  }, [workspaceId, subscribeToWorkspace]);
+  // Supabase Realtime auto-reconnects WebSocket channels after tab
+  // suspension. Manual reconnection was removed — it caused channel
+  // teardown/rebuild storms that raced with React Query refetches.
 
   // -------------------------------------------------------------------------
   // Refetch helper
@@ -233,7 +223,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const loading = authLoading;
 
-  const value: WorkspaceContextValue = {
+  // Memoize context value so consumers only re-render when actual values
+  // change. Without this, every AuthProvider state change cascades through
+  // WorkspaceProvider to ALL consumers (ChatPage, settings, sidebar, etc.)
+  // even when workspace data hasn't changed.
+  const value = useMemo<WorkspaceContextValue>(() => ({
     workspace,
     workspace_id: workspaceId,
     plan_tier: workspace?.plan ?? null,
@@ -243,7 +237,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     refetch,
-  };
+  }), [workspace, workspaceId, creditOverride, members, membership, loading, error, refetch]);
 
   return (
     <WorkspaceContext.Provider value={value}>

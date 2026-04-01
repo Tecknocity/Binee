@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { queryKeys } from '@/lib/query/keys';
-import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -203,19 +202,10 @@ export function useConversations() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
   }, [workspaceId, userId, subscribeToConversations]);
 
-  // Reconnect conversations realtime channel after session recovery.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleReconnect = () => {
-      if (workspaceId && userId) {
-        subscribeToConversations(workspaceId, userId);
-      }
-    };
-
-    window.addEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-  }, [workspaceId, userId, subscribeToConversations]);
+  // Supabase Realtime auto-reconnects WebSocket channels after tab
+  // suspension. React Query data is refreshed via invalidateQueries()
+  // in useSessionKeepalive. Manual reconnection was removed — it caused
+  // channel teardown/rebuild storms that raced with cache invalidation.
 
   // -------------------------------------------------------------------------
   // Mutations (optimistic updates via query cache)
