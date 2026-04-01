@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
-import { useSessionKeepalive } from '@/hooks/useSessionKeepalive';
 import type { Workspace, WorkspaceMember } from '@/types/database';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -63,11 +62,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const queryClient = useQueryClient();
 
-  // Keep a ref to current workspaces so loadWorkspaces can guard against
-  // wiping valid state on transient empty results (stale RLS / token gap).
-  const workspacesRef = useRef(workspaces);
-  workspacesRef.current = workspaces;
-
   // Lazy-initialize the Supabase client. During SSR (server-side rendering),
   // typeof window === 'undefined' so we skip creation. The client is only
   // needed in useEffect/callbacks which run on the client.
@@ -90,9 +84,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initAuthDone = useRef(false);
   // Guard: prevent concurrent initAuth execution (e.g. rapid remounts)
   const initializingRef = useRef(false);
-
-  // Mount session keepalive: periodic health checks + visibility change recovery
-  useSessionKeepalive();
 
   /**
    * Calls /api/workspace/ensure-owner exactly once per browser session.
@@ -264,14 +255,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return apiResult.workspaces;
     }
 
-    // Neither path found workspaces. If we already have valid workspace data
-    // in state, keep it — this is likely a transient RLS failure caused by a
-    // stale/expired token during tab recovery. Wiping state here would cause
-    // ProtectedRoute to unmount the entire app tree (loading spinner, blank pages).
-    if (workspacesRef.current && workspacesRef.current.length > 0) {
-      console.warn('[AuthProvider] loadWorkspaces returned empty but valid state exists — keeping current workspace data');
-      return workspacesRef.current;
-    }
     setWorkspaces([]);
     setWorkspace(null);
     setMembership(null);
@@ -418,13 +401,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             queryClient.invalidateQueries();
             setLoading(false);
           } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-            // Token was auto-refreshed by Supabase. ONLY update user metadata.
-            // Do NOT call loadWorkspaces() or invalidateQueries() here —
-            // useSessionKeepalive is the single owner of recovery orchestration.
-            // If we also did recovery work here, two parallel paths would race:
-            // TOKEN_REFRESHED fires mid-getUser() in keepalive, before the
-            // keepalive dispatches SESSION_RECOVERED_EVENT, causing duplicate
-            // loadWorkspaces() calls that can overwrite each other's results.
             setUser(mapSupabaseUser(session.user));
           } else if (event === 'SIGNED_OUT') {
             setUser(null);
@@ -447,15 +423,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
   }, [supabase, ensureAndLoad]);
-
-  // Session recovery is handled by useSessionKeepalive:
-  //   1. Validates/refreshes the token (getUser → refreshSession fallback)
-  //   2. Invalidates React Query caches (queries refetch with fresh token)
-  //   3. TOKEN_REFRESHED fires → updates user metadata (setUser above)
-  // Workspace data does NOT change during a tab switch, so we do NOT reload
-  // it here. Previous implementations called loadWorkspaces() on recovery,
-  // which caused 4+ cascading setState calls → unmemoized context changes →
-  // full tree re-renders that could race with React Query refetches.
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
