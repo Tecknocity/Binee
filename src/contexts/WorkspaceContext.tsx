@@ -48,11 +48,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // Counter to force realtime channel re-subscription on visibility recovery
   const [realtimeGeneration, setRealtimeGeneration] = useState(0);
 
-  // Use a stable ref for the Supabase client — calling createBrowserClient()
-  // in the render body returns the same singleton, but using a ref makes the
-  // stability explicit and avoids lint warnings about unstable deps.
-  const supabaseRef = useRef(createBrowserClient());
-  const supabase = supabaseRef.current;
+  // createBrowserClient() is a true singleton — always returns the same
+  // instance, so calling it directly is safe and stable across renders.
+  const supabase = createBrowserClient();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Fetch workspace members when workspace changes.

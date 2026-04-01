@@ -14,7 +14,23 @@ export function createBrowserClient() {
     );
   }
   if (!_browserClient) {
-    _browserClient = createBrowserSupabaseClient(supabaseUrl, supabaseAnonKey);
+    _browserClient = createBrowserSupabaseClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        flowType: 'pkce',
+        // Bypass the Web Locks API to prevent lock contention.
+        // With a singleton client there's only one instance — no cross-instance
+        // coordination needed. The lock was causing "Lock not released within
+        // 5000ms" → AbortError when multiple components called auth methods
+        // concurrently.
+        lock: async <R>(
+          _name: string,
+          _acquireTimeout: number,
+          fn: () => Promise<R>,
+        ): Promise<R> => {
+          return await fn();
+        },
+      },
+    });
   }
   return _browserClient;
 }
