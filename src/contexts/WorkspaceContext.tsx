@@ -215,6 +215,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
   }, [refreshWorkspace, workspace?.id, fetchMembers]);
 
+  // Reconnect realtime + refetch when Supabase refreshes the auth token.
+  // After a token refresh, old realtime subscriptions use stale credentials.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        refreshWorkspace();
+        if (workspace?.id) fetchMembers(workspace.id);
+        // Force realtime channel re-subscription with new credentials
+        setRealtimeGeneration((g: number) => g + 1);
+      }
+    });
+    return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace?.id used for member fetch, not for subscription identity
+  }, [refreshWorkspace, workspace?.id, fetchMembers]);
+
   // Re-subscribe realtime channel + refresh when tab becomes visible
   useEffect(() => {
     if (typeof window === 'undefined') return;

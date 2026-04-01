@@ -85,6 +85,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Guard: prevent initAuth and onAuthStateChange from racing
   const initAuthDone = useRef(false);
+  // Guard: prevent concurrent initAuth execution (e.g. rapid remounts)
+  const initializingRef = useRef(false);
 
   // Mount session keepalive: periodic health checks + visibility change recovery
   useSessionKeepalive();
@@ -341,6 +343,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     const initAuth = async () => {
+      if (initializingRef.current) return;
+      initializingRef.current = true;
       try {
         const { data: { session } } = await supabase.auth.getSession();
 
@@ -354,6 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error('Auth initialization error:', error);
       } finally {
+        initializingRef.current = false;
         if (!cancelled) {
           initAuthDone.current = true;
           setLoading(false);

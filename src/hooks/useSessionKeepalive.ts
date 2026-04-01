@@ -102,11 +102,11 @@ export function useSessionKeepalive() {
         // internal auth state can become stale during token auto-refresh
         // in background tabs, causing RLS queries to return empty results.
         if (elapsed > 5_000) {
-          dispatchVisibilityRecovered();
-        }
-        // Full session validation (getUser server call) after 1 minute
-        if (elapsed > 60_000) {
+          // Always validate & refresh the session when returning from background.
+          // Without this, data refetches triggered by visibility recovery would
+          // use a stale token and silently fail (RLS returns empty rows).
           validateSession('visibility-change');
+          dispatchVisibilityRecovered();
         }
       }
     };
