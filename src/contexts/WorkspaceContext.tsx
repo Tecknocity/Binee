@@ -36,7 +36,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [creditOverride, setCreditOverride] = useState<number | null>(null);
 
-  const supabase = createBrowserClient();
+  const supabaseRef = useRef(createBrowserClient());
+  const supabase = supabaseRef.current;
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const workspaceId = workspace?.id ?? null;
