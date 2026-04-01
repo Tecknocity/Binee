@@ -7,7 +7,7 @@ import { Camera, Save, Loader2 } from 'lucide-react';
 export default function ProfileSettings() {
   const { user } = useAuth();
   // Track local edits separately. When null, we display the value from
-  // the user context (which stays in sync after session recovery).
+  // the user context.
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(null);
 
   // Use local edit if user has typed, otherwise derive from user context

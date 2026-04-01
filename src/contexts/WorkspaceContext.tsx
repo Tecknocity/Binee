@@ -143,8 +143,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   refreshWorkspaceRef.current = refreshWorkspace;
 
   // Shared helper: tears down any existing channel and creates a new one.
-  // Called by both the main effect (mount/dep-change) and the recovery
-  // listener. One function, one channelRef, no cleanup conflicts.
   const subscribeToWorkspace = useCallback((wsId: string) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);

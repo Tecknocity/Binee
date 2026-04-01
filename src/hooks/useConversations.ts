@@ -98,8 +98,6 @@ export function useConversations() {
   // -------------------------------------------------------------------------
 
   // Shared helper: tears down any existing channel and creates a new one.
-  // Called by both the main effect (mount/dep-change) and the recovery
-  // listener. One function, one channelRef, no cleanup conflicts.
   const subscribeToConversations = useCallback((wsId: string, uid: string) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);

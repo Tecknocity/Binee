@@ -368,10 +368,6 @@ export function useChat(conversationId: string | null) {
   // -------------------------------------------------------------------------
 
   // Shared helper: tears down any existing channel and creates a new one.
-  // Called by both the main subscription effect (on mount/dep-change) and
-  // the session recovery listener (when WebSocket may have died during
-  // tab suspension). Using one function + one channelRef eliminates the
-  // cleanup conflicts that occurred with two separate effects.
   const subscribeToMessages = useCallback((convId: string) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
