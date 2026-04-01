@@ -156,11 +156,12 @@ export function BusinessChatStep({
   };
 
   return (
-    <div className="flex-1 flex max-w-5xl mx-auto w-full px-4 pb-4 gap-4 min-h-0 overflow-hidden">
-      {/* Main chat area */}
+    <div className="flex-1 flex max-w-5xl mx-auto w-full px-4 pb-4 gap-6 min-h-0 overflow-hidden">
+      {/* Main chat area — ~70% width when sidebar visible */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Chat messages */}
-        <div className="flex-1 overflow-y-auto py-4 space-y-4 min-h-0">
+        {/* Chat messages — flex-grow with bottom-anchored messages */}
+        <div className="flex-1 overflow-y-auto py-4 min-h-0 flex flex-col justify-end">
+          <div className="space-y-4">
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -207,11 +208,12 @@ export function BusinessChatStep({
           )}
 
           <div ref={messagesEndRef} />
+          </div>
         </div>
 
         {/* Quick-start templates — shown only before first message */}
         {messageCount === 0 && (
-          <div className="py-3">
+          <div className="py-3 shrink-0">
             <p className="text-xs text-text-muted mb-2.5 text-center">
               Quick start — pick a template or describe your business below
             </p>
@@ -238,7 +240,7 @@ export function BusinessChatStep({
 
         {/* Generate Structure button */}
         {canGenerate && !isSending && (
-          <div className="flex justify-center py-3">
+          <div className="flex justify-center py-3 shrink-0">
             <button
               onClick={() => onSendMessage('__generate_structure__')}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white font-medium text-sm
@@ -250,8 +252,8 @@ export function BusinessChatStep({
           </div>
         )}
 
-        {/* Input bar */}
-        <div className="flex items-end gap-2 bg-surface border border-border rounded-xl px-3 py-2">
+        {/* Input bar — pinned to bottom */}
+        <div className="flex items-end gap-2 bg-surface border border-border rounded-xl px-3 py-2 shrink-0">
           <textarea
             ref={textareaRef}
             value={input}
@@ -293,7 +295,7 @@ export function BusinessChatStep({
 
       {/* Profile progress sidebar — visible once conversation starts */}
       {messageCount > 0 && (
-        <div className="hidden lg:flex flex-col w-56 shrink-0">
+        <div className="hidden lg:flex flex-col w-64 shrink-0">
           <div className="sticky top-4 bg-surface border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <MessageSquare className="w-4 h-4 text-accent" />

@@ -61,6 +61,8 @@ export interface UseSetupReturn {
   manualSteps: ManualStep[];
   isExecuting: boolean;
   isSending: boolean;
+  /** Whether workspace is being analyzed after ClickUp connect */
+  isAnalyzing: boolean;
   /** Whether session state has been restored from persistence */
   isRestored: boolean;
   handleClickUpConnect: () => void;
@@ -345,6 +347,8 @@ export function useSetup(): UseSetupReturn {
   const [manualSteps, setManualSteps] = useState<ManualStep[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [workspaceAnalysis, setWorkspaceAnalysis] = useState<string | null>(null);
   const [messageCount, setMessageCount] = useState(0);
 
   // B-079: Named wizard step, execution steps, and restoration state
@@ -446,12 +450,45 @@ export function useSetup(): UseSetupReturn {
   }, [wizardStep, proposedPlan, executionSteps, executionResult, businessDescription, manualSteps, workspace_id, user?.id, conversationId, isRestored]);
 
   // Auto-advance from step 0 to step 1 once ClickUp is connected
+  // Run workspace analyzer before transitioning
   useEffect(() => {
     if (!clickUp.loading && clickUp.connected && currentStep === 0) {
-      const timer = setTimeout(() => setCurrentStep(1), 1200);
-      return () => clearTimeout(timer);
+      let cancelled = false;
+
+      const advanceWithAnalysis = async () => {
+        setIsAnalyzing(true);
+        try {
+          if (workspace_id) {
+            const res = await fetch('/api/setup/analyze', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ workspace_id }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (!cancelled && data.summary) {
+                setWorkspaceAnalysis(data.summary);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[useSetup] Workspace analysis failed:', err);
+          // Continue anyway — don't block the flow
+        }
+        if (!cancelled) {
+          setIsAnalyzing(false);
+          setCurrentStep(1);
+        }
+      };
+
+      // Small delay for the connect animation to settle
+      const timer = setTimeout(advanceWithAnalysis, 800);
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
     }
-  }, [clickUp.connected, clickUp.loading, currentStep]);
+  }, [clickUp.connected, clickUp.loading, currentStep, workspace_id]);
 
   // Derive business profile from messages — no effect needed
   const businessProfile = useMemo(
@@ -586,26 +623,31 @@ export function useSetup(): UseSetupReturn {
 
       // Generate a plan using the AI planner
       try {
-        const plan = await generateSetupPlan({
-          businessDescription: description,
-          teamSize: null,
-          departments: null,
-          tools: null,
-          workflows: null,
-          painPoints: null,
-        });
+        const plan = await generateSetupPlan(
+          {
+            businessDescription: description,
+            teamSize: null,
+            departments: null,
+            tools: null,
+            workflows: null,
+            painPoints: null,
+          },
+          workspaceAnalysis ?? undefined,
+        );
         setProposedPlan(plan);
         addMessage(
           'assistant',
           `I've created a workspace structure tailored for your ${template} business. It includes **${plan.spaces.length} spaces** with organized folders and lists.\n\nLet me show you the full structure for review.`
         );
+        setIsSending(false);
+        setCurrentStep(2);
       } catch {
         addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try describing your business manually.');
+        setIsSending(false);
+        // Stay on step 1 — don't advance to Review without a plan
       }
-      setIsSending(false);
-      setCurrentStep(2);
     },
-    [addMessage, workspace_id, user, conversationId]
+    [addMessage, workspace_id, user, conversationId, workspaceAnalysis]
   );
 
   const generateStructure = useCallback(async () => {
@@ -613,14 +655,17 @@ export function useSetup(): UseSetupReturn {
 
     // Generate plan using AI planner
     try {
-      const plan = await generateSetupPlan({
-        businessDescription,
-        teamSize: businessProfile.teamSize,
-        departments: businessProfile.departments,
-        tools: businessProfile.tools,
-        workflows: businessProfile.workflows,
-        painPoints: businessProfile.painPoints,
-      });
+      const plan = await generateSetupPlan(
+        {
+          businessDescription,
+          teamSize: businessProfile.teamSize,
+          departments: businessProfile.departments,
+          tools: businessProfile.tools,
+          workflows: businessProfile.workflows,
+          painPoints: businessProfile.painPoints,
+        },
+        workspaceAnalysis ?? undefined,
+      );
       setProposedPlan(plan);
       addMessage(
         'assistant',
@@ -631,7 +676,7 @@ export function useSetup(): UseSetupReturn {
       addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');
     }
     setIsSending(false);
-  }, [addMessage, businessDescription, businessProfile, workspace_id, user, conversationId]);
+  }, [addMessage, businessDescription, businessProfile, workspace_id, user, conversationId, workspaceAnalysis]);
 
   // Expose generateStructure via sendMessage when enough context gathered
   const enhancedSendMessage = useCallback(
@@ -737,6 +782,8 @@ export function useSetup(): UseSetupReturn {
     setManualSteps([]);
     setIsExecuting(false);
     setIsSending(false);
+    setIsAnalyzing(false);
+    setWorkspaceAnalysis(null);
     setMessageCount(0);
     setWizardStep('business_chat');
     setExecutionSteps([]);
@@ -774,6 +821,7 @@ export function useSetup(): UseSetupReturn {
     manualSteps,
     isExecuting,
     isSending,
+    isAnalyzing,
     isRestored,
     handleClickUpConnect,
     refreshClickUpStatus,

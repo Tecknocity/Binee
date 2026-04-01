@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Loader2, PartyPopper } from 'lucide-react';
+import { Check, Loader2, PartyPopper, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
 import { ClickUpConnectStep } from './ClickUpConnectStep';
@@ -61,13 +61,21 @@ export default function SetupWizard() {
 
       {/* Step content */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {setup.currentStep === 0 && (
+        {setup.currentStep === 0 && !setup.isAnalyzing && (
           <ClickUpConnectStep
             connected={setup.clickUpConnected}
             loading={setup.clickUpLoading}
             onConnect={setup.handleClickUpConnect}
             onRefresh={setup.refreshClickUpStatus}
           />
+        )}
+
+        {setup.currentStep === 0 && setup.isAnalyzing && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+            <Loader2 className="w-8 h-8 text-accent animate-spin" />
+            <p className="text-sm text-text-secondary">Analyzing your current workspace structure...</p>
+            <p className="text-xs text-text-muted">This may take a few seconds</p>
+          </div>
         )}
 
         {setup.currentStep === 1 && (
@@ -89,10 +97,23 @@ export default function SetupWizard() {
               onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
               onReject={setup.restartSetup}
             />
-          ) : (
+          ) : setup.isSending ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4">
               <Loader2 className="w-8 h-8 text-accent animate-spin" />
               <p className="text-sm text-text-secondary">Generating your workspace structure...</p>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <p className="text-sm text-text-secondary">
+                No workspace structure available. Please go back and describe your business.
+              </p>
+              <button
+                onClick={setup.restartSetup}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-accent hover:text-accent-hover transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Go Back
+              </button>
             </div>
           )
         )}

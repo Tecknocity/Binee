@@ -33,24 +33,39 @@ async function getAnthropicClient(): Promise<Anthropic> {
  */
 export async function generateSetupPlan(
   businessProfile: BusinessProfile,
+  workspaceAnalysis?: string,
 ): Promise<SetupPlan> {
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = buildSystemPrompt(workspaceAnalysis);
   const userMessage = buildUserMessage(businessProfile);
 
-  const anthropic = await getAnthropicClient();
-  const response = await anthropic.messages.create({
-    model: SONNET_MODEL_ID,
-    max_tokens: MAX_TOKENS,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  let responseText: string;
+  try {
+    const anthropic = await getAnthropicClient();
+    const response = await anthropic.messages.create({
+      model: SONNET_MODEL_ID,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
 
-  const responseText = response.content
-    .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
-    .map((block) => block.text)
-    .join('');
+    responseText = response.content
+      .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+      .map((block) => block.text)
+      .join('');
+  } catch (err) {
+    console.error('[planner] AI call failed:', err);
+    console.error('[planner] Business profile:', JSON.stringify(businessProfile));
+    throw new Error('Failed to call AI for plan generation.');
+  }
 
-  const plan = parseSetupPlanResponse(responseText);
+  let plan: SetupPlan;
+  try {
+    plan = parseSetupPlanResponse(responseText);
+  } catch (err) {
+    console.error('[planner] Parse failed. Raw response:', responseText.slice(0, 500));
+    console.error('[planner] Business profile:', JSON.stringify(businessProfile));
+    throw err;
+  }
 
   const validation = validateSetupPlan(plan);
   if (!validation.valid) {
@@ -64,7 +79,7 @@ export async function generateSetupPlan(
 // Prompt construction
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(workspaceAnalysis?: string): string {
   const parts: string[] = [];
 
   parts.push(`You are Binee, an AI workspace intelligence assistant specializing in ClickUp workspace setup.
@@ -72,6 +87,11 @@ function buildSystemPrompt(): string {
 Your task is to analyze a business profile and generate a structured ClickUp workspace plan as JSON.
 
 IMPORTANT: Return ONLY valid JSON matching the schema below. No markdown, no explanation outside the JSON.`);
+
+  parts.push(`## CURRENT WORKSPACE ANALYSIS
+${workspaceAnalysis || 'No workspace data yet — this may be a fresh workspace.'}
+
+If the workspace already has structures, build AROUND them — do not recreate what already exists. Only add new spaces, folders, and lists that are missing.`);
 
   parts.push(`## OUTPUT SCHEMA
 Return a single JSON object with this exact structure:
@@ -148,14 +168,25 @@ function buildUserMessage(profile: BusinessProfile): string {
 // ---------------------------------------------------------------------------
 
 function parseSetupPlanResponse(responseText: string): SetupPlan {
-  const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const jsonStr = jsonMatch ? jsonMatch[1].trim() : responseText.trim();
+  // Strip markdown code fences if present
+  let jsonStr = responseText.trim();
+  if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+  }
+
+  // Also try regex extraction as fallback
+  if (!jsonStr.startsWith('{')) {
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+  }
 
   try {
     const parsed = JSON.parse(jsonStr);
     return normalizeSetupPlan(parsed);
   } catch {
-    console.error('[planner] Failed to parse AI response as JSON');
+    console.error('[planner] Failed to parse AI response as JSON. First 300 chars:', jsonStr.slice(0, 300));
     throw new Error(
       'Failed to parse workspace plan from AI response. The AI did not return valid JSON.',
     );
@@ -242,9 +273,17 @@ function normalizeStatus(status: Record<string, unknown>): {
   const validTypes = new Set(['open', 'active', 'done', 'closed']);
   const rawType = String(status.type ?? 'active');
 
+  // Auto-fix invalid hex colors instead of rejecting the plan
+  let color = String(status.color ?? '#808080');
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+    // Try to salvage: strip extra chars, pad if short
+    const hex = color.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+    color = hex.length === 6 ? `#${hex}` : '#808080';
+  }
+
   return {
     name: String(status.name ?? 'Unknown'),
-    color: String(status.color ?? '#808080'),
+    color,
     type: validTypes.has(rawType) ? (rawType as 'open' | 'active' | 'done' | 'closed') : 'active',
   };
 }
@@ -293,13 +332,7 @@ export function validateSetupPlan(plan: SetupPlan): SetupPlanValidationResult {
           errors.push(`List "${list.name}" is missing a "done" or "closed" type status`);
         }
 
-        for (const status of list.statuses) {
-          if (!/^#[0-9a-fA-F]{6}$/.test(status.color)) {
-            errors.push(
-              `Status "${status.name}" in list "${list.name}" has invalid color "${status.color}"`,
-            );
-          }
-        }
+        // Colors are auto-fixed during normalization, so no hard validation needed here
       }
     }
   }
