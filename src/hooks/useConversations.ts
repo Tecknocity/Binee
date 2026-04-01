@@ -61,6 +61,9 @@ export function useConversations() {
   const workspaceId = workspace?.id ?? null;
   const userId = user?.id ?? null;
 
+  // AbortController ref for cancelling stale in-flight fetches
+  const fetchControllerRef = useRef<AbortController | null>(null);
+
   // Fetch conversations from the database
   const fetchConversations = useCallback(async () => {
     if (!workspaceId || !userId) {
@@ -70,6 +73,13 @@ export function useConversations() {
       return;
     }
 
+    // Abort any in-flight fetch so stale responses don't overwrite fresh data
+    if (fetchControllerRef.current) {
+      fetchControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
+
     setIsLoading(true);
     try {
       const { data, error } = await supabase
@@ -78,7 +88,10 @@ export function useConversations() {
         .eq('workspace_id', workspaceId)
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
-        .limit(50);
+        .limit(50)
+        .abortSignal(controller.signal);
+
+      if (controller.signal.aborted) return;
 
       if (error) {
         console.error('Failed to fetch conversations:', error.message);
@@ -98,10 +111,14 @@ export function useConversations() {
         });
       }
     } catch {
-      // Keep existing conversations on error
-      setConversations((prev) => prev.length > 0 ? prev : []);
+      // Keep existing conversations on error (including AbortError)
+      if (!controller.signal.aborted) {
+        setConversations((prev) => prev.length > 0 ? prev : []);
+      }
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
   }, [workspaceId, userId, mapRow]);
@@ -117,6 +134,21 @@ export function useConversations() {
     const handleRecovered = () => { fetchConversations(); };
     window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
+  }, [fetchConversations]);
+
+  // Reconnect realtime + refetch when Supabase refreshes the auth token.
+  // After a token refresh, old realtime subscriptions use stale credentials
+  // and stop receiving updates — we must re-subscribe.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        fetchConversations();
+        // Force realtime channel re-subscription with new credentials
+        setRealtimeGeneration((g: number) => g + 1);
+      }
+    });
+    return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
   }, [fetchConversations]);
 
   // Re-subscribe realtime channels + refresh data when tab becomes visible
