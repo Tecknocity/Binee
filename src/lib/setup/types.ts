@@ -106,6 +106,12 @@ export interface SetupSessionState {
     errorCount: number;
   } | null;
   manualStepsCompleted: number[];
+  chatMessages?: Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: Date;
+  }>;
   conversationId: string;
   startedAt: string;
   updatedAt: string;
