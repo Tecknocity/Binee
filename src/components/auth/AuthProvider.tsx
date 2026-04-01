@@ -63,10 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const queryClient = useQueryClient();
 
-  // createBrowserClient() is a true singleton — always returns the same
-  // instance, so calling it in the render body is safe and produces a stable
-  // reference across renders without needing useRef.
-  const supabase = createBrowserClient();
+  // Lazy-initialize the Supabase client. During SSR (server-side rendering),
+  // typeof window === 'undefined' so we skip creation. The client is only
+  // needed in useEffect/callbacks which run on the client.
+  const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null);
+  if (!supabaseRef.current && typeof window !== 'undefined') {
+    supabaseRef.current = createBrowserClient();
+  }
+  const supabase = supabaseRef.current!;
 
   // Guard: ensure-owner is called at most once per browser session.
   // Uses sessionStorage so the guard persists across AuthProvider remounts
@@ -431,6 +435,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
   }, [supabase, ensureAndLoad]);
+
+  // Reload workspace data when tab becomes visible after extended absence.
+  // React Query's invalidateQueries (fired by keepalive) handles data hooks,
+  // but AuthProvider's workspace/user state is plain useState — we need to
+  // refresh it explicitly.
+  const lastHiddenAuthRef = useRef<number>(0);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !supabase) return;
+
+    const handleVisibility = async () => {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenAuthRef.current = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        const awayMs = Date.now() - lastHiddenAuthRef.current;
+        if (awayMs > 10_000) {
+          // Validate session and reload workspace if user exists
+          const { data: { user: freshUser } } = await supabase.auth.getUser();
+          if (freshUser) {
+            setUser(mapSupabaseUser(freshUser));
+            await loadWorkspaces(freshUser.id);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [supabase, loadWorkspaces]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
