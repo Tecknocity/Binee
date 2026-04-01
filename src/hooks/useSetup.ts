@@ -177,6 +177,7 @@ async function saveSessionState(
           executionSteps: state.executionSteps,
           executionResult: state.executionResult,
           manualStepsCompleted: state.manualStepsCompleted,
+          chatMessages: state.chatMessages,
         },
         updated_at: new Date().toISOString(),
       },
@@ -219,6 +220,7 @@ async function loadSessionState(
       executionSteps: (config.executionSteps as ExecutionStep[]) ?? [],
       executionResult: (config.executionResult as SetupSessionState['executionResult']) ?? null,
       manualStepsCompleted: (config.manualStepsCompleted as number[]) ?? [],
+      chatMessages: (config.chatMessages as SetupSessionState['chatMessages']) ?? undefined,
       conversationId: data.conversation_id ?? '',
       startedAt: data.created_at,
       updatedAt: data.updated_at,
@@ -355,12 +357,14 @@ export function useSetup(): UseSetupReturn {
   const [wizardStep, setWizardStep] = useState<SetupWizardStep>('business_chat');
   const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
   const [isRestored, setIsRestored] = useState(false);
-  const restoredRef = useRef(false);
+  const hasRestoredRef = useRef(false);
+  // Indices of completed manual steps restored from persistence — applied once manualSteps are generated
+  const [restoredCompletedIndices, setRestoredCompletedIndices] = useState<number[] | null>(null);
 
   // B-079: Restore session state on mount
   useEffect(() => {
-    if (!workspace_id || !user?.id || restoredRef.current) return;
-    restoredRef.current = true;
+    if (!workspace_id || !user?.id || hasRestoredRef.current) return;
+    hasRestoredRef.current = true;
 
     loadSessionState(workspace_id, user.id).then((saved) => {
       if (!saved) {
@@ -392,8 +396,23 @@ export function useSetup(): UseSetupReturn {
         setBusinessDescription(saved.businessProfile.businessDescription);
       }
 
+      // Restore chat messages (Fix 2b)
+      if (saved.chatMessages && saved.chatMessages.length > 0) {
+        setChatMessages(saved.chatMessages as SetupChatMessage[]);
+      }
+
+      // Queue manual step completion indices for application after steps are generated (Fix 2a)
+      if (saved.manualStepsCompleted && saved.manualStepsCompleted.length > 0) {
+        setRestoredCompletedIndices(saved.manualStepsCompleted);
+      }
+
       setIsRestored(true);
     });
+
+    return () => {
+      // Reset on unmount so restore runs again on next mount (Fix 2c)
+      hasRestoredRef.current = false;
+    };
   }, [workspace_id, user?.id]);
 
   // B-079: Keep wizardStep in sync with numeric currentStep changes
@@ -436,6 +455,8 @@ export function useSetup(): UseSetupReturn {
         manualStepsCompleted: manualSteps
           .map((s, i) => (s.completed ? i : -1))
           .filter((i) => i >= 0),
+        // Cap at last 30 messages to avoid bloating the JSONB column
+        chatMessages: chatMessages.slice(-30),
         conversationId,
         startedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -447,7 +468,20 @@ export function useSetup(): UseSetupReturn {
         clearTimeout(persistTimeoutRef.current);
       }
     };
-  }, [wizardStep, proposedPlan, executionSteps, executionResult, businessDescription, manualSteps, workspace_id, user?.id, conversationId, isRestored]);
+  }, [wizardStep, proposedPlan, executionSteps, executionResult, businessDescription, manualSteps, chatMessages, workspace_id, user?.id, conversationId, isRestored]);
+
+  // Fix 2a: Apply restored manual step completion indices once manualSteps are generated
+  useEffect(() => {
+    if (restoredCompletedIndices && manualSteps.length > 0) {
+      setManualSteps((prevSteps) =>
+        prevSteps.map((step, index) => ({
+          ...step,
+          completed: restoredCompletedIndices.includes(index),
+        }))
+      );
+      setRestoredCompletedIndices(null);
+    }
+  }, [restoredCompletedIndices, manualSteps.length]);
 
   // Auto-advance from step 0 to step 1 once ClickUp is connected
   // Run workspace analyzer before transitioning

@@ -100,17 +100,14 @@ export function useSessionKeepalive() {
     // and prevent Supabase's auto-refresh from running.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Always validate on tab return — even a brief tab switch can cause
-        // browsers to suspend WebSocket connections and stale the auth token.
-        // Debounce at 500ms to avoid rapid-fire calls when switching tabs quickly.
+        // Always validate on return — don't wait for a threshold.
+        // Clear any pending debounce to avoid duplicate calls.
         if (visibilityDebounceRef.current) {
           clearTimeout(visibilityDebounceRef.current);
-        }
-        visibilityDebounceRef.current = setTimeout(() => {
-          validateSession('visibility-change');
-          dispatchVisibilityRecovered();
           visibilityDebounceRef.current = null;
-        }, 500);
+        }
+        validateSession('visibility-change');
+        dispatchVisibilityRecovered();
       }
     };
 
