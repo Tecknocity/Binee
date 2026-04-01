@@ -406,14 +406,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             queryClient.invalidateQueries();
             setLoading(false);
           } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-            // Token was auto-refreshed by Supabase. Update user metadata
-            // AND reload workspaces — the old token may have caused RLS
-            // queries to return empty, leaving workspace data stale.
-            const mappedUser = mapSupabaseUser(session.user);
-            setUser(mappedUser);
-            await loadWorkspaces(session.user.id);
-            // Invalidate all React Query caches so child hooks refetch with fresh token
-            queryClient.invalidateQueries();
+            // Token was auto-refreshed by Supabase. ONLY update user metadata.
+            // Do NOT call loadWorkspaces() or invalidateQueries() here —
+            // useSessionKeepalive is the single owner of recovery orchestration.
+            // If we also did recovery work here, two parallel paths would race:
+            // TOKEN_REFRESHED fires mid-getUser() in keepalive, before the
+            // keepalive dispatches SESSION_RECOVERED_EVENT, causing duplicate
+            // loadWorkspaces() calls that can overwrite each other's results.
+            setUser(mapSupabaseUser(session.user));
           } else if (event === 'SIGNED_OUT') {
             setUser(null);
             setWorkspace(null);
@@ -439,16 +439,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Listen for session recovery events from useSessionKeepalive.
   // The keepalive hook has already validated/refreshed the token by the time
   // this event fires, so we can safely reload workspace data.
+  // IMPORTANT: Do NOT call getUser() here — keepalive already did that.
+  // Calling it again would make a redundant server call through the auth
+  // lock mutex, blocking loadWorkspaces() while it waits.
   useEffect(() => {
     if (typeof window === 'undefined' || !supabase) return;
 
     const handleSessionRecovered = async () => {
-      // Token is already valid (keepalive validated it before dispatching).
-      // Reload user metadata and workspace data.
-      const { data: { user: freshUser } } = await supabase.auth.getUser();
-      if (freshUser) {
-        setUser(mapSupabaseUser(freshUser));
-        await loadWorkspaces(freshUser.id);
+      // Token is already valid. Use getSession() (cached, no server call)
+      // just to read user metadata for setUser().
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(mapSupabaseUser(session.user));
+        await loadWorkspaces(session.user.id);
       }
     };
 

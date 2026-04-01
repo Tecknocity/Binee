@@ -98,25 +98,26 @@ export function useConversations() {
   // Realtime subscription — updates query cache directly
   // -------------------------------------------------------------------------
 
-  useEffect(() => {
-    if (!workspaceId || !userId) return;
-
+  // Shared helper: tears down any existing channel and creates a new one.
+  // Called by both the main effect (mount/dep-change) and the recovery
+  // listener. One function, one channelRef, no cleanup conflicts.
+  const subscribeToConversations = useCallback((wsId: string, uid: string) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
-    const key = queryKeys.conversations(workspaceId, userId);
+    const key = queryKeys.conversations(wsId, uid);
 
     const channel = supabase
-      .channel(`conversations-${workspaceId}-${userId}`)
+      .channel(`conversations-${wsId}-${uid}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
+          filter: `workspace_id=eq.${wsId},user_id=eq.${uid}`,
         },
         (payload) => {
           const row = payload.new as {
@@ -138,7 +139,7 @@ export function useConversations() {
           event: 'UPDATE',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
+          filter: `workspace_id=eq.${wsId},user_id=eq.${uid}`,
         },
         (payload) => {
           const row = payload.new as {
@@ -160,7 +161,7 @@ export function useConversations() {
           event: 'DELETE',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
+          filter: `workspace_id=eq.${wsId},user_id=eq.${uid}`,
         },
         (payload) => {
           const row = payload.old as { id: string };
@@ -172,98 +173,36 @@ export function useConversations() {
       .subscribe();
 
     channelRef.current = channel;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, queryClient]);
+
+  useEffect(() => {
+    if (!workspaceId || !userId) return;
+
+    subscribeToConversations(workspaceId, userId);
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-  }, [workspaceId, userId, queryClient]);
+  }, [workspaceId, userId, subscribeToConversations]);
 
   // Reconnect conversations realtime channel after session recovery.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleReconnect = () => {
-      if (!workspaceId || !userId) return;
-
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
+      if (workspaceId && userId) {
+        subscribeToConversations(workspaceId, userId);
       }
-
-      const key = queryKeys.conversations(workspaceId, userId);
-
-      const channel = supabase
-        .channel(`conversations-${workspaceId}-${userId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'conversations',
-            filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
-          },
-          (payload) => {
-            const row = payload.new as {
-              id: string;
-              title: string | null;
-              summary: string | null;
-              updated_at: string;
-              created_at: string;
-            };
-            queryClient.setQueryData<Conversation[]>(key, (prev = []) => {
-              if (prev.some((c) => c.id === row.id)) return prev;
-              return [mapRow(row), ...prev];
-            });
-          },
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'conversations',
-            filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
-          },
-          (payload) => {
-            const row = payload.new as {
-              id: string;
-              title: string | null;
-              summary: string | null;
-              updated_at: string;
-              created_at: string;
-            };
-            queryClient.setQueryData<Conversation[]>(key, (prev = []) => {
-              const updated = prev.map((c) => (c.id === row.id ? mapRow(row) : c));
-              return updated.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-            });
-          },
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'conversations',
-            filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
-          },
-          (payload) => {
-            const row = payload.old as { id: string };
-            queryClient.setQueryData<Conversation[]>(key, (prev = []) =>
-              prev.filter((c) => c.id !== row.id),
-            );
-          },
-        )
-        .subscribe();
-
-      channelRef.current = channel;
     };
 
     window.addEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, userId, queryClient]);
+  }, [workspaceId, userId, subscribeToConversations]);
 
   // -------------------------------------------------------------------------
   // Mutations (optimistic updates via query cache)

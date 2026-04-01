@@ -357,28 +357,43 @@ export function useChat(conversationId: string | null) {
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
   }, [conversationId, loadConversation]);
 
+  // Helper: update messages state AND write through to React Query cache
+  const updateMessages = useCallback(
+    (updater: (prev: ChatMessage[]) => ChatMessage[], convId?: string) => {
+      setMessages((prev) => {
+        const next = updater(prev);
+        const cacheId = convId || conversationId;
+        if (cacheId) queryClient.setQueryData(queryKeys.messages(cacheId), next);
+        return next;
+      });
+    },
+    [conversationId, queryClient],
+  );
+
   // -------------------------------------------------------------------------
   // Realtime subscription for new messages
   // -------------------------------------------------------------------------
 
-  useEffect(() => {
-    if (!conversationId || !workspace?.id) return;
-
-    // Clean up previous subscription
+  // Shared helper: tears down any existing channel and creates a new one.
+  // Called by both the main subscription effect (on mount/dep-change) and
+  // the session recovery listener (when WebSocket may have died during
+  // tab suspension). Using one function + one channelRef eliminates the
+  // cleanup conflicts that occurred with two separate effects.
+  const subscribeToMessages = useCallback((convId: string) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
     const channel = supabase
-      .channel(`messages-${conversationId}`)
+      .channel(`messages-${convId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter: `conversation_id=eq.${convId}`,
         },
         (payload) => {
           const row = payload.new as DbMessageRow;
@@ -386,9 +401,6 @@ export function useChat(conversationId: string | null) {
           if (!mapped) return;
 
           updateMessages((prev) => {
-            // Avoid duplicates — check DB ID, but also match optimistic
-            // messages (which use msg-* IDs) by content + role to prevent
-            // showing the same message twice.
             if (prev.some((m) =>
               m.id === mapped.id ||
               (m.role === mapped.role && m.content === mapped.content)
@@ -404,79 +416,39 @@ export function useChat(conversationId: string | null) {
       .subscribe();
 
     channelRef.current = channel;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, updateMessages]);
+
+  useEffect(() => {
+    if (!conversationId || !workspace?.id) return;
+
+    subscribeToMessages(conversationId);
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-  }, [conversationId, workspaceId]);
-
-  // Reconnect realtime channel after session recovery.
-  // The browser may have killed the WebSocket during tab suspension.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleReconnect = () => {
-      if (!conversationId || !workspaceId) return;
-
-      // Remove dead channel
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [conversationId, workspaceId, subscribeToMessages]);
 
-      // Re-subscribe (same logic as the main subscription effect)
-      const channel = supabase
-        .channel(`messages-${conversationId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `conversation_id=eq.${conversationId}`,
-          },
-          (payload) => {
-            const row = payload.new as DbMessageRow;
-            const mapped = mapDbMessage(row);
-            if (!mapped) return;
+  // Reconnect realtime channel after session recovery.
+  // The browser may have killed the WebSocket during tab suspension.
+  // Uses the same subscribeToMessages helper — no duplicate code, no
+  // conflicting cleanup.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
-            updateMessages((prev) => {
-              if (prev.some((m) =>
-                m.id === mapped.id ||
-                (m.role === mapped.role && m.content === mapped.content)
-              )) return prev;
-              return [...prev, mapped];
-            });
-
-            if (mapped.creditsConsumed) {
-              totalCredits.current += mapped.creditsConsumed;
-            }
-          },
-        )
-        .subscribe();
-
-      channelRef.current = channel;
+    const handleReconnect = () => {
+      if (conversationId && workspaceId) {
+        subscribeToMessages(conversationId);
+      }
     };
 
     window.addEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, workspaceId]);
-
-  // Helper: update messages state AND write through to React Query cache
-  const updateMessages = useCallback(
-    (updater: (prev: ChatMessage[]) => ChatMessage[], convId?: string) => {
-      setMessages((prev) => {
-        const next = updater(prev);
-        const cacheId = convId || conversationId;
-        if (cacheId) queryClient.setQueryData(queryKeys.messages(cacheId), next);
-        return next;
-      });
-    },
-    [conversationId, queryClient],
-  );
+  }, [conversationId, workspaceId, subscribeToMessages]);
 
   // -------------------------------------------------------------------------
   // Send a message via the AI chat API
