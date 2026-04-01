@@ -433,22 +433,10 @@ export function useChat(conversationId: string | null) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
   }, [conversationId, workspaceId, subscribeToMessages]);
 
-  // Reconnect realtime channel after session recovery.
-  // The browser may have killed the WebSocket during tab suspension.
-  // Uses the same subscribeToMessages helper — no duplicate code, no
-  // conflicting cleanup.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleReconnect = () => {
-      if (conversationId && workspaceId) {
-        subscribeToMessages(conversationId);
-      }
-    };
-
-    window.addEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-  }, [conversationId, workspaceId, subscribeToMessages]);
+  // Supabase Realtime auto-reconnects WebSocket channels after tab
+  // suspension. Manual reconnection was removed — it caused channel
+  // teardown/rebuild that raced with message reload from the other
+  // SESSION_RECOVERED listener above.
 
   // -------------------------------------------------------------------------
   // Send a message via the AI chat API

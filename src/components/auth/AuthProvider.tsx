@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useSessionKeepalive } from '@/hooks/useSessionKeepalive';
@@ -448,28 +448,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
   }, [supabase, ensureAndLoad]);
 
-  // Listen for session recovery events from useSessionKeepalive.
-  // The keepalive hook has already validated/refreshed the token by the time
-  // this event fires, so we can safely reload workspace data.
-  // IMPORTANT: Do NOT call getUser() here — keepalive already did that.
-  // Calling it again would make a redundant server call through the auth
-  // lock mutex, blocking loadWorkspaces() while it waits.
-  useEffect(() => {
-    if (typeof window === 'undefined' || !supabase) return;
-
-    const handleSessionRecovered = async () => {
-      // Token is already valid. Use getSession() (cached, no server call)
-      // just to read user metadata for setUser().
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUser(mapSupabaseUser(session.user));
-        await loadWorkspaces(session.user.id);
-      }
-    };
-
-    window.addEventListener('binee:session-recovered', handleSessionRecovered);
-    return () => window.removeEventListener('binee:session-recovered', handleSessionRecovered);
-  }, [supabase, loadWorkspaces]);
+  // Session recovery is handled by useSessionKeepalive:
+  //   1. Validates/refreshes the token (getUser → refreshSession fallback)
+  //   2. Invalidates React Query caches (queries refetch with fresh token)
+  //   3. TOKEN_REFRESHED fires → updates user metadata (setUser above)
+  // Workspace data does NOT change during a tab switch, so we do NOT reload
+  // it here. Previous implementations called loadWorkspaces() on recovery,
+  // which caused 4+ cascading setState calls → unmemoized context changes →
+  // full tree re-renders that could race with React Query refetches.
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -610,23 +596,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Memoize context value so consumers only re-render when actual state
+  // values change — not on every AuthProvider render. Without this, every
+  // setUser/setWorkspace call creates a new object reference, causing the
+  // entire component tree (ProtectedRoute → WorkspaceProvider → Sidebar →
+  // ChatPage → …) to re-render even when nothing meaningful changed.
+  const contextValue = useMemo(() => ({
+    user,
+    workspace,
+    workspaces,
+    membership,
+    loading,
+    signIn,
+    signUp,
+    signInWithGoogle,
+    signOut,
+    switchWorkspace,
+    refreshWorkspace,
+    updateUser,
+  }), [user, workspace, workspaces, membership, loading, signIn, signUp, signInWithGoogle, signOut, switchWorkspace, refreshWorkspace, updateUser]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        workspace,
-        workspaces,
-        membership,
-        loading,
-        signIn,
-        signUp,
-        signInWithGoogle,
-        signOut,
-        switchWorkspace,
-        refreshWorkspace,
-        updateUser,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
