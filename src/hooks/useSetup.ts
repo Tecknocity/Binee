@@ -13,8 +13,6 @@ import type {
 import { executeSetupPlan } from '@/lib/setup/executor';
 import type { ExecutionResult as ExecutorResult } from '@/lib/setup/executor';
 import { generateSetupPlan } from '@/lib/setup/planner';
-import { analyzeWorkspace } from '@/lib/setup/workspace-analyzer';
-import type { WorkspaceAnalysis } from '@/lib/setup/workspace-analyzer';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -350,7 +348,7 @@ export function useSetup(): UseSetupReturn {
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [workspaceAnalysis, setWorkspaceAnalysis] = useState<WorkspaceAnalysis | null>(null);
+  const [workspaceAnalysis, setWorkspaceAnalysis] = useState<string | null>(null);
   const [messageCount, setMessageCount] = useState(0);
 
   // B-079: Named wizard step, execution steps, and restoration state
@@ -461,9 +459,16 @@ export function useSetup(): UseSetupReturn {
         setIsAnalyzing(true);
         try {
           if (workspace_id) {
-            const analysis = await analyzeWorkspace(workspace_id);
-            if (!cancelled) {
-              setWorkspaceAnalysis(analysis);
+            const res = await fetch('/api/setup/analyze', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ workspace_id }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (!cancelled && data.summary) {
+                setWorkspaceAnalysis(data.summary);
+              }
             }
           }
         } catch (err) {
@@ -627,7 +632,7 @@ export function useSetup(): UseSetupReturn {
             workflows: null,
             painPoints: null,
           },
-          workspaceAnalysis?.summary,
+          workspaceAnalysis ?? undefined,
         );
         setProposedPlan(plan);
         addMessage(
@@ -659,7 +664,7 @@ export function useSetup(): UseSetupReturn {
           workflows: businessProfile.workflows,
           painPoints: businessProfile.painPoints,
         },
-        workspaceAnalysis?.summary,
+        workspaceAnalysis ?? undefined,
       );
       setProposedPlan(plan);
       addMessage(
