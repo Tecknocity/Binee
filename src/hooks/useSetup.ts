@@ -438,15 +438,17 @@ export function useSetup(): UseSetupReturn {
     }
 
     persistTimeoutRef.current = setTimeout(() => {
+      // Compute profile from current messages for persistence
+      const profile = extractProfileFromMessages(chatMessages);
       saveSessionState(workspace_id, user.id, conversationId, {
         wizardStep,
         businessProfile: {
           businessDescription: businessDescription || null,
-          teamSize: businessProfile.teamSize,
-          departments: businessProfile.departments,
-          tools: businessProfile.tools,
-          workflows: businessProfile.workflows,
-          painPoints: businessProfile.painPoints,
+          teamSize: profile.teamSize,
+          departments: profile.departments,
+          tools: profile.tools,
+          workflows: profile.workflows,
+          painPoints: profile.painPoints,
         },
         plan: proposedPlan,
         executionSteps,
@@ -474,7 +476,7 @@ export function useSetup(): UseSetupReturn {
         clearTimeout(persistTimeoutRef.current);
       }
     };
-  }, [wizardStep, proposedPlan, executionSteps, executionResult, businessDescription, businessProfile, manualSteps, chatMessages, workspace_id, user?.id, conversationId, isRestored]);
+  }, [wizardStep, proposedPlan, executionSteps, executionResult, businessDescription, manualSteps, chatMessages, workspace_id, user?.id, conversationId, isRestored]);
 
   // Fix 2a: Apply restored manual step completion indices once manualSteps are generated
   useEffect(() => {
