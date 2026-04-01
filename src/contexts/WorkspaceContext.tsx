@@ -9,64 +9,55 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { SESSION_RECOVERED_EVENT, VISIBILITY_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
+import { queryKeys } from '@/lib/query/keys';
 import type { Workspace, WorkspaceMember } from '@/types/database';
 
 interface WorkspaceContextValue {
-  /** The current active workspace */
   workspace: Workspace | null;
-  /** Convenience accessors */
   workspace_id: string | null;
   plan_tier: Workspace['plan'] | null;
   credit_balance: number;
-  /** All members of the current workspace */
   members: WorkspaceMember[];
-  /** The current user's membership record */
   membership: WorkspaceMember | null;
-  /** Loading state while workspace is being fetched */
   loading: boolean;
-  /** Error message if user has no workspace */
   error: string | null;
-  /** Re-fetch workspace data (e.g. after credit deduction) */
   refetch: () => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const { user, workspace, membership, loading: authLoading, refreshWorkspace, authGeneration } = useAuth();
+  const { user, workspace, membership, loading: authLoading, refreshWorkspace } = useAuth();
+  const queryClient = useQueryClient();
 
-  const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [, setMembersLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Separate credit balance state — updated locally from realtime events
-  // without creating a new workspace object reference. This prevents
-  // credit deductions from cascading re-renders across the entire app.
   const [creditOverride, setCreditOverride] = useState<number | null>(null);
-  // Counter to force realtime channel re-subscription on visibility recovery
-  const [realtimeGeneration, setRealtimeGeneration] = useState(0);
 
-  // createBrowserClient() is a true singleton — always returns the same
-  // instance, so calling it directly is safe and stable across renders.
   const supabase = createBrowserClient();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Fetch workspace members when workspace changes.
-  // Falls back to server API if direct query fails (RLS issues).
-  const fetchMembers = useCallback(async (workspaceId: string) => {
-    setMembersLoading(true);
-    try {
+  const workspaceId = workspace?.id ?? null;
+
+  // -------------------------------------------------------------------------
+  // React Query: fetch workspace members
+  // -------------------------------------------------------------------------
+
+  const {
+    data: members = [],
+  } = useQuery({
+    queryKey: workspaceId ? queryKeys.workspaceMembers(workspaceId) : ['workspaceMembers', 'none'],
+    queryFn: async () => {
       // Try direct Supabase query first (fast path)
-      // Try with status filter; if it fails (column missing), retry without it
       let directData: WorkspaceMember[] | null = null;
       let directError: { message: string } | null = null;
 
       const firstAttempt = await supabase
         .from('workspace_members')
         .select('*')
-        .eq('workspace_id', workspaceId)
+        .eq('workspace_id', workspaceId!)
         .eq('status', 'active');
 
       if (firstAttempt.error) {
@@ -74,7 +65,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const fallback = await supabase
           .from('workspace_members')
           .select('*')
-          .eq('workspace_id', workspaceId);
+          .eq('workspace_id', workspaceId!);
         directData = fallback.data as WorkspaceMember[] | null;
         directError = fallback.error;
       } else {
@@ -83,15 +74,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
 
       if (!directError && directData && directData.length > 0) {
-        setMembers(directData);
-        return;
+        return directData;
       }
 
       if (directError) {
         console.warn('fetchMembers: direct query failed, falling back to API', directError.message);
       }
 
-      // Fallback: use server API to load (bypasses RLS)
+      // Fallback: use server API (bypasses RLS)
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const headers: Record<string, string> = {};
@@ -101,7 +91,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const res = await fetch('/api/workspace/load', { method: 'POST', headers });
         if (res.ok) {
           const apiData = await res.json();
-          const wsMembers = (apiData.members ?? [])
+          return (apiData.members ?? [])
             .filter((m: { workspace_id: string }) => m.workspace_id === workspaceId)
             .map((m: Record<string, unknown>) => ({
               id: '',
@@ -116,50 +106,42 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
               joined_at: null,
               created_at: '',
               updated_at: '',
-            }));
-          setMembers(wsMembers as WorkspaceMember[]);
-          return;
+            })) as WorkspaceMember[];
         }
       } catch (apiErr) {
         console.error('fetchMembers: API fallback also failed', apiErr);
       }
 
-      // Both paths failed
-      setMembers(directData ?? []);
-    } finally {
-      setMembersLoading(false);
-    }
-  }, [supabase]);
+      return directData ?? [];
+    },
+    enabled: !!workspaceId,
+    gcTime: 10 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+  });
 
-  // Load members when workspace changes
+  // Set error when user has no workspace
   useEffect(() => {
-    if (workspace?.id) {
-      setError(null);
-      fetchMembers(workspace.id);
-    } else if (!authLoading && user && !workspace) {
-      // User is authenticated but has no workspace — shouldn't happen with B-009
+    if (!authLoading && user && !workspace) {
       setError('No workspace found. Please contact support.');
-      setMembers([]);
+    } else {
+      setError(null);
     }
-  }, [workspace?.id, authLoading, user, workspace, fetchMembers]);
+  }, [workspace, authLoading, user]);
 
-  // Subscribe to realtime changes on the current workspace row.
-  // IMPORTANT: Credit balance changes happen on every chat message. We handle
-  // them locally from the realtime payload to avoid a full refreshWorkspace()
-  // call that would create a new workspace object, cascading re-renders across
-  // the entire app (dashboards, health, chat all depend on workspace context).
+  // -------------------------------------------------------------------------
+  // Realtime: workspace row updates (credit balance, plan changes)
+  // -------------------------------------------------------------------------
+
   useEffect(() => {
-    if (!workspace?.id) return;
+    if (!workspaceId) return;
 
-    // Clean up previous subscription
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
-    const workspaceId = workspace.id;
     const channel = supabase
-      .channel(`workspace-${workspaceId}-${realtimeGeneration}`)
+      .channel(`workspace-${workspaceId}`)
       .on(
         'postgres_changes',
         {
@@ -170,10 +152,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         },
         (payload) => {
           const updated = payload.new as Record<string, unknown>;
-          // Only do a full refresh if something structural changed (name, plan,
-          // settings, clickup_connected, etc.). Credit balance and updated_at
-          // changes are applied locally without creating a new workspace object.
           const current = workspace;
+          if (!current) return;
+
           const creditOnly =
             updated.credit_balance !== current.credit_balance &&
             updated.name === current.name &&
@@ -183,10 +164,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             updated.clickup_connected === (current as any).clickup_connected;
 
           if (creditOnly) {
-            // Apply credit balance locally — no new object reference, no cascade
             setCreditOverride(typeof updated.credit_balance === 'number' ? updated.credit_balance : null);
           } else {
-            // Structural change — full refresh needed
             refreshWorkspace();
           }
         },
@@ -199,71 +178,33 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace object used for comparison, but we only want to re-subscribe on ID change; realtimeGeneration forces re-subscribe on visibility recovery
-  }, [workspace?.id, supabase, refreshWorkspace, realtimeGeneration]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, supabase, refreshWorkspace]);
 
-  // Re-fetch on session recovery (stale token was refreshed)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleRecovered = () => {
-      refreshWorkspace();
-      if (workspace?.id) fetchMembers(workspace.id);
-    };
-    window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
-    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
-  }, [refreshWorkspace, workspace?.id, fetchMembers]);
+  // -------------------------------------------------------------------------
+  // Refetch helper
+  // -------------------------------------------------------------------------
 
-  // Reconnect realtime + refetch when AuthProvider signals a token refresh
-  // or sign-in via authGeneration. This replaces a direct onAuthStateChange
-  // subscription, ensuring ordered recovery: auth first, then children.
-  const authGenRef = useRef(authGeneration);
-  useEffect(() => {
-    // Skip the initial mount — only react to actual changes
-    if (authGenRef.current === authGeneration) return;
-    authGenRef.current = authGeneration;
-
-    refreshWorkspace();
-    if (workspace?.id) fetchMembers(workspace.id);
-    // Force realtime channel re-subscription with new credentials
-    setRealtimeGeneration((g: number) => g + 1);
-  }, [authGeneration, refreshWorkspace, workspace?.id, fetchMembers]);
-
-  // Re-subscribe realtime channel + refresh when tab becomes visible
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleVisibility = () => {
-      setRealtimeGeneration((g: number) => g + 1);
-      refreshWorkspace();
-      if (workspace?.id) fetchMembers(workspace.id);
-    };
-    window.addEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
-    return () => window.removeEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
-  }, [refreshWorkspace, workspace?.id, fetchMembers]);
-
-  // Combined refetch: refresh workspace data + members
   const refetch = useCallback(async () => {
     await Promise.all([
       refreshWorkspace(),
-      workspace?.id ? fetchMembers(workspace.id) : Promise.resolve(),
+      workspaceId
+        ? queryClient.invalidateQueries({ queryKey: queryKeys.workspaceMembers(workspaceId) })
+        : Promise.resolve(),
     ]);
-  }, [refreshWorkspace, workspace?.id, fetchMembers]);
+  }, [refreshWorkspace, workspaceId, queryClient]);
 
-  // Only block rendering on auth loading, not member fetching.
-  // Members loading in the background prevents the "stuck skeleton" issue
-  // where pages wait for the full member list before showing any content.
-  const loading = authLoading;
-
-  // Reset credit override when the workspace object itself changes (full refresh)
+  // Reset credit override when workspace object changes (full refresh)
   useEffect(() => {
     setCreditOverride(null);
   }, [workspace]);
 
+  const loading = authLoading;
+
   const value: WorkspaceContextValue = {
     workspace,
-    workspace_id: workspace?.id ?? null,
+    workspace_id: workspaceId,
     plan_tier: workspace?.plan ?? null,
-    // Use local credit override when available (from realtime events),
-    // otherwise fall back to the workspace object's value.
     credit_balance: creditOverride ?? workspace?.credit_balance ?? 0,
     members,
     membership,

@@ -16,7 +16,7 @@ interface ConversationsContextValue {
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
   setActiveConversation: (id: string | null) => void;
-  refetch: () => Promise<void>;
+  refetch: () => Promise<unknown>;
 }
 
 const ConversationsContext = createContext<ConversationsContextValue | null>(null);

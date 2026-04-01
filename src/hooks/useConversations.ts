@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { SESSION_RECOVERED_EVENT, VISIBILITY_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
+import { queryKeys } from '@/lib/query/keys';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,177 +20,95 @@ export interface Conversation {
 }
 
 // ---------------------------------------------------------------------------
-// Hook
+// Helpers
 // ---------------------------------------------------------------------------
 
-// Stable module-level Supabase client reference — avoids dependency-array
-// churn that causes refetches and realtime channel re-subscriptions.
-// Lazy-initialized to avoid SSR/prerender crashes (env vars missing).
+function mapRow(c: {
+  id: string;
+  title: string | null;
+  summary: string | null;
+  updated_at: string;
+  created_at: string;
+}): Conversation {
+  return {
+    id: c.id,
+    title: c.title || 'New conversation',
+    lastMessage: c.summary || '',
+    messageCount: 0,
+    updatedAt: new Date(c.updated_at),
+    createdAt: new Date(c.created_at),
+  };
+}
+
+// Stable module-level Supabase client — avoids dependency-array churn.
 let _supabase: ReturnType<typeof createBrowserClient> | null = null;
 function getSupabase() {
   if (!_supabase) _supabase = createBrowserClient();
   return _supabase;
 }
 
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export function useConversations() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  // Counter to force realtime channel re-subscription when visibility recovers
-  const [realtimeGeneration, setRealtimeGeneration] = useState(0);
-  const { workspace, user, authGeneration } = useAuth();
-  // Use the stable module-level singleton — getSupabase() always returns
-  // the same object, so `supabase` is a stable reference across renders.
+  const { workspace, user } = useAuth();
   const supabase = getSupabase();
+  const queryClient = useQueryClient();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Map a database row to a Conversation object
-  const mapRow = useCallback(
-    (c: { id: string; title: string | null; summary: string | null; updated_at: string; created_at: string }) => ({
-      id: c.id,
-      title: c.title || 'New conversation',
-      lastMessage: c.summary || '',
-      messageCount: 0,
-      updatedAt: new Date(c.updated_at),
-      createdAt: new Date(c.created_at),
-    }),
-    [],
-  );
-
-  // Stable IDs for dependency arrays — avoids re-running effects when the
-  // workspace/user *object* reference changes but the ID hasn't.
   const workspaceId = workspace?.id ?? null;
   const userId = user?.id ?? null;
 
-  // AbortController ref for cancelling stale in-flight fetches
-  const fetchControllerRef = useRef<AbortController | null>(null);
-  // Guard to prevent infinite retry loops in the stale-while-revalidate path
-  const staleRetryPendingRef = useRef(false);
+  // -------------------------------------------------------------------------
+  // React Query: fetch conversations
+  // -------------------------------------------------------------------------
 
-  // Fetch conversations from the database
-  const fetchConversations = useCallback(async () => {
-    if (!workspaceId || !userId) {
-      // Don't clear existing conversations during transient null windows
-      // (e.g. workspace context refreshing). Only clear on first load.
-      setIsLoading(false);
-      return;
-    }
-
-    // Abort any in-flight fetch so stale responses don't overwrite fresh data
-    if (fetchControllerRef.current) {
-      fetchControllerRef.current.abort();
-    }
-    const controller = new AbortController();
-    fetchControllerRef.current = controller;
-
-    setIsLoading(true);
-    try {
+  const {
+    data: conversations = [],
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: workspaceId && userId ? queryKeys.conversations(workspaceId, userId) : ['conversations', 'none'],
+    queryFn: async () => {
       const { data, error } = await supabase
         .from('conversations')
         .select('id, title, summary, updated_at, created_at')
-        .eq('workspace_id', workspaceId)
-        .eq('user_id', userId)
+        .eq('workspace_id', workspaceId!)
+        .eq('user_id', userId!)
         .order('updated_at', { ascending: false })
-        .limit(50)
-        .abortSignal(controller.signal);
-
-      if (controller.signal.aborted) return;
+        .limit(50);
 
       if (error) {
         console.error('Failed to fetch conversations:', error.message);
-        // Keep existing conversations on error — don't wipe the sidebar
-        setConversations((prev) => prev.length > 0 ? prev : []);
-      } else {
-        const fetched = (data ?? []).map(mapRow);
-        // STALE-WHILE-REVALIDATE GUARD: If DB returned empty but we already
-        // have conversations, this likely means RLS silently returned zero rows
-        // due to a stale auth token. Keep existing data and force a session
-        // refresh which will trigger a retry via the recovery event listener.
-        setConversations((prev) => {
-          if (fetched.length === 0 && prev.length > 0) {
-            // Only retry once to avoid infinite loops
-            if (!staleRetryPendingRef.current) {
-              staleRetryPendingRef.current = true;
-              console.warn('[useConversations] Possible stale token — forcing session refresh');
-              supabase.auth.getUser().then(({ error: refreshErr }) => {
-                staleRetryPendingRef.current = false;
-                if (!refreshErr) {
-                  fetchConversations();
-                }
-              });
-            }
-            return prev; // Keep old data while retrying
-          }
-          // Successful non-empty fetch — reset the retry guard
-          staleRetryPendingRef.current = false;
-          return fetched;
-        });
+        throw error;
       }
-    } catch {
-      // Keep existing conversations on error (including AbortError)
-      if (!controller.signal.aborted) {
-        setConversations((prev) => prev.length > 0 ? prev : []);
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setIsLoading(false);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-  }, [workspaceId, userId, mapRow]);
 
-  // Initial fetch
-  useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+      return (data ?? []).map(mapRow);
+    },
+    enabled: !!workspaceId && !!userId,
+    // Keep conversations cached for 30 min after navigating away from chat
+    gcTime: 30 * 60 * 1000,
+    staleTime: 60 * 1000,
+  });
 
-  // Re-fetch on session recovery (stale token was refreshed)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleRecovered = () => { fetchConversations(); };
-    window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
-    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
-  }, [fetchConversations]);
+  // -------------------------------------------------------------------------
+  // Realtime subscription — updates query cache directly
+  // -------------------------------------------------------------------------
 
-  // Reconnect realtime + refetch when AuthProvider signals a token refresh
-  // or sign-in via authGeneration. This replaces a direct onAuthStateChange
-  // subscription, ensuring a single ordered sequence: auth refreshes first,
-  // then children react — no races between independent listeners.
-  const authGenRef = useRef(authGeneration);
-  useEffect(() => {
-    // Skip the initial mount — only react to actual changes
-    if (authGenRef.current === authGeneration) return;
-    authGenRef.current = authGeneration;
-
-    fetchConversations();
-    // Force realtime channel re-subscription with new credentials
-    setRealtimeGeneration((g: number) => g + 1);
-  }, [authGeneration, fetchConversations]);
-
-  // Re-subscribe realtime channels + refresh data when tab becomes visible
-  // after being hidden. Browsers kill WebSocket connections in background tabs.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleVisibility = () => {
-      setRealtimeGeneration((g: number) => g + 1);
-      fetchConversations();
-    };
-    window.addEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
-    return () => window.removeEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
-  }, [fetchConversations]);
-
-  // Real-time subscription for conversation changes
   useEffect(() => {
     if (!workspaceId || !userId) return;
 
-    // Clean up previous subscription
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
+    const key = queryKeys.conversations(workspaceId, userId);
+
     const channel = supabase
-      .channel(`conversations-${workspaceId}-${userId}-${realtimeGeneration}`)
+      .channel(`conversations-${workspaceId}-${userId}`)
       .on(
         'postgres_changes',
         {
@@ -199,9 +118,14 @@ export function useConversations() {
           filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
         },
         (payload) => {
-          const row = payload.new as { id: string; user_id: string; title: string | null; summary: string | null; updated_at: string; created_at: string };
-          setConversations((prev) => {
-            // Avoid duplicates (optimistic insert may already exist)
+          const row = payload.new as {
+            id: string;
+            title: string | null;
+            summary: string | null;
+            updated_at: string;
+            created_at: string;
+          };
+          queryClient.setQueryData<Conversation[]>(key, (prev = []) => {
             if (prev.some((c) => c.id === row.id)) return prev;
             return [mapRow(row), ...prev];
           });
@@ -216,10 +140,15 @@ export function useConversations() {
           filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
         },
         (payload) => {
-          const row = payload.new as { id: string; user_id: string; title: string | null; summary: string | null; updated_at: string; created_at: string };
-          setConversations((prev) => {
+          const row = payload.new as {
+            id: string;
+            title: string | null;
+            summary: string | null;
+            updated_at: string;
+            created_at: string;
+          };
+          queryClient.setQueryData<Conversation[]>(key, (prev = []) => {
             const updated = prev.map((c) => (c.id === row.id ? mapRow(row) : c));
-            // Re-sort by updated_at desc
             return updated.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
           });
         },
@@ -234,7 +163,9 @@ export function useConversations() {
         },
         (payload) => {
           const row = payload.old as { id: string };
-          setConversations((prev) => prev.filter((c) => c.id !== row.id));
+          queryClient.setQueryData<Conversation[]>(key, (prev = []) =>
+            prev.filter((c) => c.id !== row.id),
+          );
         },
       )
       .subscribe();
@@ -245,14 +176,16 @@ export function useConversations() {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton; realtimeGeneration forces re-subscribe on visibility recovery
-  }, [workspaceId, userId, mapRow, realtimeGeneration]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [workspaceId, userId, queryClient]);
 
-  // Create a new conversation in the database
+  // -------------------------------------------------------------------------
+  // Mutations (optimistic updates via query cache)
+  // -------------------------------------------------------------------------
+
   const createConversation = useCallback(async () => {
     if (!workspaceId || !userId) return `conv-${Date.now()}`;
 
-    // Optimistic local insert
     const tempId = `conv-${Date.now()}`;
     const optimistic: Conversation = {
       id: tempId,
@@ -262,7 +195,9 @@ export function useConversations() {
       updatedAt: new Date(),
       createdAt: new Date(),
     };
-    setConversations((prev) => [optimistic, ...prev]);
+
+    const key = queryKeys.conversations(workspaceId, userId);
+    queryClient.setQueryData<Conversation[]>(key, (prev = []) => [optimistic, ...prev]);
     setActiveConversationId(tempId);
 
     try {
@@ -282,9 +217,8 @@ export function useConversations() {
         return tempId;
       }
 
-      // Replace the optimistic entry with the real one
       const realConv = mapRow(data);
-      setConversations((prev) =>
+      queryClient.setQueryData<Conversation[]>(key, (prev = []) =>
         prev.map((c) => (c.id === tempId ? realConv : c)),
       );
       setActiveConversationId(realConv.id);
@@ -292,53 +226,56 @@ export function useConversations() {
     } catch {
       return tempId;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-  }, [workspaceId, userId, mapRow]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, userId, queryClient]);
 
-  // Delete a conversation from the database
   const deleteConversation = useCallback(
     async (id: string) => {
+      if (!workspaceId || !userId) return;
+
+      const key = queryKeys.conversations(workspaceId, userId);
+      const previous = queryClient.getQueryData<Conversation[]>(key);
+
       // Optimistic remove
-      setConversations((prev) => prev.filter((c) => c.id !== id));
+      queryClient.setQueryData<Conversation[]>(key, (prev = []) =>
+        prev.filter((c) => c.id !== id),
+      );
       if (activeConversationId === id) {
-        const remaining = conversations.filter((c) => c.id !== id);
+        const remaining = (previous ?? []).filter((c) => c.id !== id);
         setActiveConversationId(remaining[0]?.id ?? null);
       }
 
-      // Only delete from DB for real (non-temp) IDs
       if (!id.startsWith('conv-')) {
         try {
           const { error, count } = await supabase
             .from('conversations')
             .delete({ count: 'exact' })
             .eq('id', id);
-          if (error) {
-            console.error('Failed to delete conversation:', error.message, error.code);
-            // Re-fetch to restore state on failure
-            fetchConversations();
-          } else if (count === 0) {
-            // RLS blocked the delete — row still exists in DB
-            console.warn('Delete returned 0 rows — possible RLS policy issue for conversation:', id);
-            fetchConversations();
+          if (error || count === 0) {
+            if (error) console.error('Failed to delete conversation:', error.message);
+            if (count === 0) console.warn('Delete returned 0 rows — possible RLS issue:', id);
+            // Rollback
+            queryClient.setQueryData<Conversation[]>(key, previous);
           }
         } catch (err) {
           console.error('Delete conversation exception:', err);
-          fetchConversations();
+          queryClient.setQueryData<Conversation[]>(key, previous);
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-    [activeConversationId, conversations, fetchConversations],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workspaceId, userId, activeConversationId, queryClient],
   );
 
-  // Rename (update title of) a conversation
   const renameConversation = useCallback(
     async (id: string, title: string) => {
       const trimmed = title.trim();
-      if (!trimmed) return;
+      if (!trimmed || !workspaceId || !userId) return;
+
+      const key = queryKeys.conversations(workspaceId, userId);
 
       // Optimistic update
-      setConversations((prev) =>
+      queryClient.setQueryData<Conversation[]>(key, (prev = []) =>
         prev.map((c) => (c.id === id ? { ...c, title: trimmed } : c)),
       );
 
@@ -350,15 +287,15 @@ export function useConversations() {
             .eq('id', id);
           if (error) {
             console.error('Failed to rename conversation:', error.message);
-            fetchConversations();
+            refetch();
           }
         } catch {
-          fetchConversations();
+          refetch();
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-    [fetchConversations],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workspaceId, userId, queryClient, refetch],
   );
 
   const setActiveConversation = useCallback((id: string | null) => {
@@ -373,6 +310,6 @@ export function useConversations() {
     deleteConversation,
     renameConversation,
     setActiveConversation,
-    refetch: fetchConversations,
+    refetch,
   };
 }
