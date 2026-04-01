@@ -160,7 +160,9 @@ export function BusinessChatStep({
       {/* Main chat area — ~70% width when sidebar visible */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Chat messages — flex-grow with bottom-anchored messages */}
-        <div className="flex-1 overflow-y-auto py-4 min-h-0 flex flex-col justify-end">
+        <div className="flex-1 overflow-y-auto py-4 min-h-0 flex flex-col">
+          {/* Spacer pushes messages to bottom when few, collapses when many */}
+          <div className="flex-1" />
           <div className="space-y-4">
           {messages.map((msg) => (
             <div
