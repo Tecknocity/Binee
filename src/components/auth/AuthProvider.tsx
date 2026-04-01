@@ -450,6 +450,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const mappedUser = mapSupabaseUser(freshUser);
         setUser(mappedUser);
         await loadWorkspaces(freshUser.id);
+        // Increment authGeneration so ALL child contexts (including those
+        // that only watch authGeneration) know to re-fetch their data.
+        setAuthGeneration((prev) => prev + 1);
       }
     };
 
