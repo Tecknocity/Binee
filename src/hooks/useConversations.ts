@@ -37,7 +37,7 @@ export function useConversations() {
   const [isLoading, setIsLoading] = useState(true);
   // Counter to force realtime channel re-subscription when visibility recovers
   const [realtimeGeneration, setRealtimeGeneration] = useState(0);
-  const { workspace, user } = useAuth();
+  const { workspace, user, authGeneration } = useAuth();
   // Use the stable module-level singleton — getSupabase() always returns
   // the same object, so `supabase` is a stable reference across renders.
   const supabase = getSupabase();
@@ -63,6 +63,8 @@ export function useConversations() {
 
   // AbortController ref for cancelling stale in-flight fetches
   const fetchControllerRef = useRef<AbortController | null>(null);
+  // Guard to prevent infinite retry loops in the stale-while-revalidate path
+  const staleRetryPendingRef = useRef(false);
 
   // Fetch conversations from the database
   const fetchConversations = useCallback(async () => {
@@ -100,13 +102,26 @@ export function useConversations() {
       } else {
         const fetched = (data ?? []).map(mapRow);
         // STALE-WHILE-REVALIDATE GUARD: If DB returned empty but we already
-        // have conversations, keep them. RLS silently returns zero rows when
-        // the auth token is briefly stale during a tab switch.
+        // have conversations, this likely means RLS silently returned zero rows
+        // due to a stale auth token. Keep existing data and force a session
+        // refresh which will trigger a retry via the recovery event listener.
         setConversations((prev) => {
           if (fetched.length === 0 && prev.length > 0) {
-            console.warn('[useConversations] DB returned empty but state has data — keeping existing conversations');
-            return prev;
+            // Only retry once to avoid infinite loops
+            if (!staleRetryPendingRef.current) {
+              staleRetryPendingRef.current = true;
+              console.warn('[useConversations] Possible stale token — forcing session refresh');
+              supabase.auth.getUser().then(({ error: refreshErr }) => {
+                staleRetryPendingRef.current = false;
+                if (!refreshErr) {
+                  fetchConversations();
+                }
+              });
+            }
+            return prev; // Keep old data while retrying
           }
+          // Successful non-empty fetch — reset the retry guard
+          staleRetryPendingRef.current = false;
           return fetched;
         });
       }
@@ -136,20 +151,20 @@ export function useConversations() {
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
   }, [fetchConversations]);
 
-  // Reconnect realtime + refetch when Supabase refreshes the auth token.
-  // After a token refresh, old realtime subscriptions use stale credentials
-  // and stop receiving updates — we must re-subscribe.
+  // Reconnect realtime + refetch when AuthProvider signals a token refresh
+  // or sign-in via authGeneration. This replaces a direct onAuthStateChange
+  // subscription, ensuring a single ordered sequence: auth refreshes first,
+  // then children react — no races between independent listeners.
+  const authGenRef = useRef(authGeneration);
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
-        fetchConversations();
-        // Force realtime channel re-subscription with new credentials
-        setRealtimeGeneration((g: number) => g + 1);
-      }
-    });
-    return () => subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-  }, [fetchConversations]);
+    // Skip the initial mount — only react to actual changes
+    if (authGenRef.current === authGeneration) return;
+    authGenRef.current = authGeneration;
+
+    fetchConversations();
+    // Force realtime channel re-subscription with new credentials
+    setRealtimeGeneration((g: number) => g + 1);
+  }, [authGeneration, fetchConversations]);
 
   // Re-subscribe realtime channels + refresh data when tab becomes visible
   // after being hidden. Browsers kill WebSocket connections in background tabs.

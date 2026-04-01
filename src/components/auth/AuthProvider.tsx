@@ -19,6 +19,8 @@ interface AuthState {
   workspaces: Workspace[];
   membership: WorkspaceMember | null;
   loading: boolean;
+  /** Incremented on TOKEN_REFRESHED/SIGNED_IN — child contexts should react to this instead of registering their own onAuthStateChange listeners. */
+  authGeneration: number;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error?: string }>;
   signInWithGoogle: () => Promise<void>;
@@ -60,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [membership, setMembership] = useState<WorkspaceMember | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authGeneration, setAuthGeneration] = useState(0);
 
   // Stable ref for supabase client — avoid recreating on every render.
   // Without this, every render produces a new reference which invalidates
@@ -404,13 +407,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             await ensureAndLoad(session.user.id);
+            setAuthGeneration(prev => prev + 1);
             setLoading(false);
           } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-            // Token was auto-refreshed by Supabase. Update the user object
-            // in case metadata changed, but do NOT re-run ensureAndLoad —
-            // the workspace data is still valid.
+            // Token was auto-refreshed by Supabase. Update user metadata
+            // AND reload workspaces — the old token may have caused RLS
+            // queries to return empty, leaving workspace data stale.
             const mappedUser = mapSupabaseUser(session.user);
             setUser(mappedUser);
+            await loadWorkspaces(session.user.id);
+            // Signal child contexts to refetch their data
+            setAuthGeneration(prev => prev + 1);
           } else if (event === 'SIGNED_OUT') {
             setUser(null);
             setWorkspace(null);
@@ -597,6 +604,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         workspaces,
         membership,
         loading,
+        authGeneration,
         signIn,
         signUp,
         signInWithGoogle,

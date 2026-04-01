@@ -55,6 +55,10 @@ export function useSessionKeepalive() {
   const lastCheckRef = useRef(Date.now());
   const checkingRef = useRef(false);
 
+  // Debounce timer for visibility changes — prevents rapid-fire validation
+  // when the user switches back and forth quickly between tabs.
+  const visibilityDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const validateSession = useCallback(async (reason: string) => {
     const supabase = supabaseRef.current;
     if (!supabase || checkingRef.current) return;
@@ -96,18 +100,17 @@ export function useSessionKeepalive() {
     // and prevent Supabase's auto-refresh from running.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        const elapsed = Date.now() - lastCheckRef.current;
-        // Dispatch visibility recovery after just 5 seconds of being hidden.
-        // Browsers can start throttling tabs very quickly, and Supabase's
-        // internal auth state can become stale during token auto-refresh
-        // in background tabs, causing RLS queries to return empty results.
-        if (elapsed > 5_000) {
-          // Always validate & refresh the session when returning from background.
-          // Without this, data refetches triggered by visibility recovery would
-          // use a stale token and silently fail (RLS returns empty rows).
+        // Always validate on tab return — even a brief tab switch can cause
+        // browsers to suspend WebSocket connections and stale the auth token.
+        // Debounce at 500ms to avoid rapid-fire calls when switching tabs quickly.
+        if (visibilityDebounceRef.current) {
+          clearTimeout(visibilityDebounceRef.current);
+        }
+        visibilityDebounceRef.current = setTimeout(() => {
           validateSession('visibility-change');
           dispatchVisibilityRecovered();
-        }
+          visibilityDebounceRef.current = null;
+        }, 500);
       }
     };
 
@@ -130,6 +133,9 @@ export function useSessionKeepalive() {
 
     return () => {
       clearInterval(intervalId);
+      if (visibilityDebounceRef.current) {
+        clearTimeout(visibilityDebounceRef.current);
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
     };
