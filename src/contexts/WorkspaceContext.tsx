@@ -134,27 +134,36 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // Realtime: workspace row updates (credit balance, plan changes)
   // -------------------------------------------------------------------------
 
-  useEffect(() => {
-    if (!workspaceId) return;
+  // Use refs for values accessed inside the realtime callback so the
+  // callback always reads current state without needing to be recreated
+  // (which would tear down and re-subscribe the channel on every render).
+  const workspaceStateRef = useRef(workspace);
+  workspaceStateRef.current = workspace;
+  const refreshWorkspaceRef = useRef(refreshWorkspace);
+  refreshWorkspaceRef.current = refreshWorkspace;
 
+  // Shared helper: tears down any existing channel and creates a new one.
+  // Called by both the main effect (mount/dep-change) and the recovery
+  // listener. One function, one channelRef, no cleanup conflicts.
+  const subscribeToWorkspace = useCallback((wsId: string) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
     const channel = supabase
-      .channel(`workspace-${workspaceId}`)
+      .channel(`workspace-${wsId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'workspaces',
-          filter: `id=eq.${workspaceId}`,
+          filter: `id=eq.${wsId}`,
         },
         (payload) => {
           const updated = payload.new as Record<string, unknown>;
-          const current = workspace;
+          const current = workspaceStateRef.current;
           if (!current) return;
 
           const creditOnly =
@@ -168,73 +177,41 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           if (creditOnly) {
             setCreditOverride(typeof updated.credit_balance === 'number' ? updated.credit_balance : null);
           } else {
-            refreshWorkspace();
+            refreshWorkspaceRef.current();
           }
         },
       )
       .subscribe();
 
     channelRef.current = channel;
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+
+    subscribeToWorkspace(workspaceId);
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, supabase, refreshWorkspace]);
+  }, [workspaceId, supabase, subscribeToWorkspace]);
 
   // Reconnect workspace realtime channel after session recovery.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleReconnect = () => {
-      if (!workspaceId) return;
-
-      // Tear down potentially-dead channel and re-subscribe
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
+      if (workspaceId) {
+        subscribeToWorkspace(workspaceId);
       }
-
-      const channel = supabase
-        .channel(`workspace-${workspaceId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'workspaces',
-            filter: `id=eq.${workspaceId}`,
-          },
-          (payload) => {
-            const updated = payload.new as Record<string, unknown>;
-            const current = workspace;
-            if (!current) return;
-
-            const creditOnly =
-              updated.credit_balance !== current.credit_balance &&
-              updated.name === current.name &&
-              updated.plan === current.plan &&
-              updated.slug === current.slug &&
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              updated.clickup_connected === (current as any).clickup_connected;
-
-            if (creditOnly) {
-              setCreditOverride(typeof updated.credit_balance === 'number' ? updated.credit_balance : null);
-            } else {
-              refreshWorkspace();
-            }
-          },
-        )
-        .subscribe();
-
-      channelRef.current = channel;
     };
 
     window.addEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
     return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, supabase, refreshWorkspace]);
+  }, [workspaceId, subscribeToWorkspace]);
 
   // -------------------------------------------------------------------------
   // Refetch helper
