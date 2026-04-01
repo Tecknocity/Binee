@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { queryKeys } from '@/lib/query/keys';
+import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -177,6 +178,91 @@ export function useConversations() {
       channelRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [workspaceId, userId, queryClient]);
+
+  // Reconnect conversations realtime channel after session recovery.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleReconnect = () => {
+      if (!workspaceId || !userId) return;
+
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+
+      const key = queryKeys.conversations(workspaceId, userId);
+
+      const channel = supabase
+        .channel(`conversations-${workspaceId}-${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'conversations',
+            filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = payload.new as {
+              id: string;
+              title: string | null;
+              summary: string | null;
+              updated_at: string;
+              created_at: string;
+            };
+            queryClient.setQueryData<Conversation[]>(key, (prev = []) => {
+              if (prev.some((c) => c.id === row.id)) return prev;
+              return [mapRow(row), ...prev];
+            });
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'conversations',
+            filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = payload.new as {
+              id: string;
+              title: string | null;
+              summary: string | null;
+              updated_at: string;
+              created_at: string;
+            };
+            queryClient.setQueryData<Conversation[]>(key, (prev = []) => {
+              const updated = prev.map((c) => (c.id === row.id ? mapRow(row) : c));
+              return updated.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+            });
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'conversations',
+            filter: `workspace_id=eq.${workspaceId},user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const row = payload.old as { id: string };
+            queryClient.setQueryData<Conversation[]>(key, (prev = []) =>
+              prev.filter((c) => c.id !== row.id),
+            );
+          },
+        )
+        .subscribe();
+
+      channelRef.current = channel;
+    };
+
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
+    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, userId, queryClient]);
 
   // -------------------------------------------------------------------------

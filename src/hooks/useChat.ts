@@ -10,6 +10,7 @@ import {
   shouldAutoApprove,
   setActionPreference,
 } from '@/lib/ai/action-preferences';
+import { SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
 
 // ---------------------------------------------------------------------------
 // Helper: generate a short title from the first user message
@@ -342,24 +343,18 @@ export function useChat(conversationId: string | null) {
     loadConversation(conversationId);
   }, [conversationId, loadConversation]);
 
-  // Re-load messages when tab becomes visible (catches missed realtime events
-  // during backgrounding). Uses the standard visibilitychange API with a 10s
-  // threshold to avoid refetching on quick alt-tabs.
-  const lastHiddenRef = useRef<number>(0);
+  // Reload messages when session recovers (token validated by keepalive first).
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        lastHiddenRef.current = Date.now();
-      } else if (document.visibilityState === 'visible') {
-        const awayMs = Date.now() - lastHiddenRef.current;
-        if (awayMs > 10_000 && conversationId) {
-          loadConversation(conversationId);
-        }
+
+    const handleSessionRecovered = () => {
+      if (conversationId) {
+        loadConversation(conversationId);
       }
     };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
+    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
   }, [conversationId, loadConversation]);
 
   // -------------------------------------------------------------------------
@@ -415,6 +410,59 @@ export function useChat(conversationId: string | null) {
       channelRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [conversationId, workspaceId]);
+
+  // Reconnect realtime channel after session recovery.
+  // The browser may have killed the WebSocket during tab suspension.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleReconnect = () => {
+      if (!conversationId || !workspaceId) return;
+
+      // Remove dead channel
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+
+      // Re-subscribe (same logic as the main subscription effect)
+      const channel = supabase
+        .channel(`messages-${conversationId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          (payload) => {
+            const row = payload.new as DbMessageRow;
+            const mapped = mapDbMessage(row);
+            if (!mapped) return;
+
+            updateMessages((prev) => {
+              if (prev.some((m) =>
+                m.id === mapped.id ||
+                (m.role === mapped.role && m.content === mapped.content)
+              )) return prev;
+              return [...prev, mapped];
+            });
+
+            if (mapped.creditsConsumed) {
+              totalCredits.current += mapped.creditsConsumed;
+            }
+          },
+        )
+        .subscribe();
+
+      channelRef.current = channel;
+    };
+
+    window.addEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
+    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleReconnect);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, workspaceId]);
 
   // Helper: update messages state AND write through to React Query cache
