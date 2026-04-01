@@ -7,7 +7,6 @@ import AppLayout from '@/components/layout/AppLayout';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { ConversationsProvider } from '@/contexts/ConversationsContext';
 import { ChatCacheProvider } from '@/contexts/ChatCacheContext';
-import { SessionRefresher } from '@/components/layout/SessionRefresher';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -30,7 +29,6 @@ function AppLoadingFallback() {
 export default function AppRouteLayout({ children }: { children: React.ReactNode }) {
   return (
     <ProtectedRoute>
-      <SessionRefresher />
       <WorkspaceProvider>
         <SidebarProvider>
           <ConversationsProvider>
