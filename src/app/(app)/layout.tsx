@@ -6,7 +6,6 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppLayout from '@/components/layout/AppLayout';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { ConversationsProvider } from '@/contexts/ConversationsContext';
-import { ChatCacheProvider } from '@/contexts/ChatCacheContext';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -32,11 +31,9 @@ export default function AppRouteLayout({ children }: { children: React.ReactNode
       <WorkspaceProvider>
         <SidebarProvider>
           <ConversationsProvider>
-            <ChatCacheProvider>
-                <Suspense fallback={<AppLoadingFallback />}>
-                  <AppLayout>{children}</AppLayout>
-                </Suspense>
-            </ChatCacheProvider>
+            <Suspense fallback={<AppLoadingFallback />}>
+              <AppLayout>{children}</AppLayout>
+            </Suspense>
           </ConversationsProvider>
         </SidebarProvider>
       </WorkspaceProvider>

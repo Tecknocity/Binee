@@ -1,8 +1,9 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
-import { useSessionKeepalive, SESSION_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
+import { useSessionKeepalive } from '@/hooks/useSessionKeepalive';
 import type { Workspace, WorkspaceMember } from '@/types/database';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -19,8 +20,6 @@ interface AuthState {
   workspaces: Workspace[];
   membership: WorkspaceMember | null;
   loading: boolean;
-  /** Incremented on TOKEN_REFRESHED/SIGNED_IN — child contexts should react to this instead of registering their own onAuthStateChange listeners. */
-  authGeneration: number;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error?: string }>;
   signInWithGoogle: () => Promise<void>;
@@ -62,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [membership, setMembership] = useState<WorkspaceMember | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authGeneration, setAuthGeneration] = useState(0);
+  const queryClient = useQueryClient();
 
   // createBrowserClient() is a true singleton — always returns the same
   // instance, so calling it in the render body is safe and produces a stable
@@ -399,7 +398,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             await ensureAndLoad(session.user.id);
-            setAuthGeneration(prev => prev + 1);
+            // Invalidate all React Query caches so child hooks refetch
+            queryClient.invalidateQueries();
             setLoading(false);
           } else if (event === 'TOKEN_REFRESHED' && session?.user) {
             // Token was auto-refreshed by Supabase. Update user metadata
@@ -408,8 +408,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const mappedUser = mapSupabaseUser(session.user);
             setUser(mappedUser);
             await loadWorkspaces(session.user.id);
-            // Signal child contexts to refetch their data
-            setAuthGeneration(prev => prev + 1);
+            // Invalidate all React Query caches so child hooks refetch with fresh token
+            queryClient.invalidateQueries();
           } else if (event === 'SIGNED_OUT') {
             setUser(null);
             setWorkspace(null);
@@ -429,30 +429,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
   }, [supabase, ensureAndLoad]);
-
-  // Re-load workspace data when session is recovered after being stale
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleSessionRecovered = async () => {
-      if (!supabase) return;
-      const { data: { user: freshUser } } = await supabase.auth.getUser();
-      if (freshUser) {
-        const mappedUser = mapSupabaseUser(freshUser);
-        setUser(mappedUser);
-        await loadWorkspaces(freshUser.id);
-        // Increment authGeneration so ALL child contexts (including those
-        // that only watch authGeneration) know to re-fetch their data.
-        setAuthGeneration((prev) => prev + 1);
-      }
-    };
-
-    window.addEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
-    return () => {
-      window.removeEventListener(SESSION_RECOVERED_EVENT, handleSessionRecovered);
-    };
-  }, [supabase, loadWorkspaces]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -567,6 +545,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem('binee_ensure_owner_done');
     }
 
+    // Clear all cached data (conversations, messages, profile, etc.)
+    queryClient.clear();
     supabase.auth.signOut().catch(() => {});
 
     if (typeof window !== 'undefined') {
@@ -599,7 +579,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         workspaces,
         membership,
         loading,
-        authGeneration,
         signIn,
         signUp,
         signInWithGoogle,

@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { SESSION_RECOVERED_EVENT, VISIBILITY_RECOVERED_EVENT } from '@/hooks/useSessionKeepalive';
+import { queryKeys } from '@/lib/query/keys';
 import type { ToolCallResult } from '@/types/ai';
 import {
   shouldAutoApprove,
   setActionPreference,
 } from '@/lib/ai/action-preferences';
-import { useChatCache } from '@/contexts/ChatCacheContext';
 
 // ---------------------------------------------------------------------------
 // Helper: generate a short title from the first user message
@@ -226,11 +226,10 @@ export function useChat(conversationId: string | null) {
   // Prevents stale-closure bugs from overwriting the title on every message.
   const titleSetRef = useRef(false);
 
-  const chatCache = useChatCache();
-  // Counter to force realtime channel re-subscription when visibility recovers.
-  // Incrementing this value causes the realtime useEffect to re-run, tearing
-  // down the (possibly dead) channel and creating a fresh one.
-  const [realtimeGeneration, setRealtimeGeneration] = useState(0);
+  // Use React Query's queryClient as a persistent cache for messages.
+  // Messages survive navigation: on unmount they stay in the query cache,
+  // on remount we read them back instantly (no spinner).
+  const queryClient = useQueryClient();
 
   // Stable IDs for dependency arrays — avoids re-running effects when the
   // workspace/user *object* reference changes but the ID hasn't.
@@ -261,9 +260,9 @@ export function useChat(conversationId: string | null) {
         return;
       }
 
-      // Check cache first — show cached messages instantly (no spinner).
+      // Check React Query cache first — show cached messages instantly (no spinner).
       // Then refresh from DB in the background.
-      const cached = chatCache.get(id);
+      const cached = queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(id)) ?? [];
       if (cached.length > 0) {
         setMessages(cached);
         totalCredits.current = cached.reduce(
@@ -321,8 +320,8 @@ export function useChat(conversationId: string | null) {
         }
 
         setMessages(mapped);
-        // Write through to cache
-        if (id) chatCache.set(id, mapped);
+        // Write through to React Query cache (survives navigation)
+        if (id) queryClient.setQueryData(queryKeys.messages(id), mapped);
       } catch {
         if (cached.length === 0) {
           setMessages([]);
@@ -332,7 +331,7 @@ export function useChat(conversationId: string | null) {
         setIsLoadingHistory(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase and chatCache are stable module-level singletons
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
     [workspaceId, userId],
   );
 
@@ -343,29 +342,24 @@ export function useChat(conversationId: string | null) {
     loadConversation(conversationId);
   }, [conversationId, loadConversation]);
 
-  // Re-load conversation on session recovery (stale token was refreshed)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleRecovered = () => {
-      if (conversationId) loadConversation(conversationId);
-    };
-    window.addEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
-    return () => window.removeEventListener(SESSION_RECOVERED_EVENT, handleRecovered);
-  }, [conversationId, loadConversation]);
-
-  // Re-subscribe realtime channels + refresh data when tab becomes visible
-  // after being hidden. Browsers throttle background tabs, killing WebSocket
-  // connections even when the auth token is still valid.
+  // Re-load messages when tab becomes visible (catches missed realtime events
+  // during backgrounding). Uses the standard visibilitychange API with a 10s
+  // threshold to avoid refetching on quick alt-tabs.
+  const lastHiddenRef = useRef<number>(0);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleVisibility = () => {
-      // Bump generation to force the realtime effect to re-subscribe
-      setRealtimeGeneration((g: number) => g + 1);
-      // Also refresh messages from DB in case we missed realtime events
-      if (conversationId) loadConversation(conversationId);
+      if (document.visibilityState === 'hidden') {
+        lastHiddenRef.current = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        const awayMs = Date.now() - lastHiddenRef.current;
+        if (awayMs > 10_000 && conversationId) {
+          loadConversation(conversationId);
+        }
+      }
     };
-    window.addEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
-    return () => window.removeEventListener(VISIBILITY_RECOVERED_EVENT, handleVisibility);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [conversationId, loadConversation]);
 
   // -------------------------------------------------------------------------
@@ -382,7 +376,7 @@ export function useChat(conversationId: string | null) {
     }
 
     const channel = supabase
-      .channel(`messages-${conversationId}-${realtimeGeneration}`)
+      .channel(`messages-${conversationId}`)
       .on(
         'postgres_changes',
         {
@@ -420,21 +414,20 @@ export function useChat(conversationId: string | null) {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton; realtimeGeneration forces re-subscribe on visibility recovery
-  }, [conversationId, workspaceId, realtimeGeneration]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
+  }, [conversationId, workspaceId]);
 
-  // Helper: update messages state AND write through to cache
+  // Helper: update messages state AND write through to React Query cache
   const updateMessages = useCallback(
     (updater: (prev: ChatMessage[]) => ChatMessage[], convId?: string) => {
       setMessages((prev) => {
         const next = updater(prev);
         const cacheId = convId || conversationId;
-        if (cacheId) chatCache.set(cacheId, next);
+        if (cacheId) queryClient.setQueryData(queryKeys.messages(cacheId), next);
         return next;
       });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversationId],
+    [conversationId, queryClient],
   );
 
   // -------------------------------------------------------------------------
