@@ -332,23 +332,6 @@ export function useChat(conversationId: string | null) {
     loadConversation(conversationId);
   }, [conversationId, loadConversation]);
 
-  // Reload messages when the session recovery orchestrator confirms auth is
-  // ready after a tab return. This is the ONLY listener useChat needs —
-  // the SESSION_READY_EVENT is dispatched by QueryProvider AFTER auth has
-  // been verified, so we never hit RLS with an expired token.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleSessionReady = () => {
-      if (conversationId) {
-        loadConversation(conversationId);
-      }
-    };
-
-    window.addEventListener('binee:session-ready', handleSessionReady);
-    return () => window.removeEventListener('binee:session-ready', handleSessionReady);
-  }, [conversationId, loadConversation]);
-
   // Helper: update messages state AND write through to React Query cache
   const updateMessages = useCallback(
     (updater: (prev: ChatMessage[]) => ChatMessage[], convId?: string) => {
