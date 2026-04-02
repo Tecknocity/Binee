@@ -73,3 +73,12 @@ supabase/
 - Use the `@/` path alias for all imports
 - Use lucide-react for icons
 - No component libraries — bare Tailwind only
+
+## Debugging: Loading / Freeze Issues
+When the app gets stuck on "Loading conversation..." or any infinite loading state, check these in order:
+1. **Lock deadlocks** — `navigator.locks` (Web Locks API) or any custom mutex/promise-queue can deadlock when a browser tab goes to background and returns. The lock is held by the frozen tab and never released, blocking ALL subsequent Supabase queries. Fix: bypass locks entirely (token refresh is idempotent) or use timeouts.
+2. **Missing `.catch()` / `.finally()`** — Any `.then()` chain on a Supabase query without `.catch()` means a network failure leaves `setLoading(false)` unreachable, causing permanent loading spinners. Always use `.finally()` for loading state cleanup.
+3. **`getSession()` can hang** — Supabase's `getSession()` internally acquires the auth lock. If the lock is stuck, `getSession()` hangs forever, blocking any code that needs auth headers. Always wrap in try-catch.
+4. **Missing timeouts on fetch()** — API calls (`/api/workspace/load`, `/api/workspace/ensure-owner`) without AbortController timeouts can hang the entire auth flow if the server is slow.
+5. **Tab visibility** — Add `visibilitychange` listener to force-refresh the auth session when the tab becomes visible again (industry standard pattern).
+6. **useEffect early returns** — If a useEffect has `if (!workspace?.id) return` before async work, make sure `setLoading(false)` is still reachable when workspace eventually loads (i.e., the effect re-runs when workspace.id changes).
