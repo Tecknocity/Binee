@@ -229,7 +229,9 @@ export default function Sidebar() {
   };
 
   const handleSelectConversation = (id: string) => {
-    setActiveConversation(id);
+    // Only navigate — ChatConversationRoute's effect handles setActiveConversation.
+    // Calling both causes ChatPage to mount twice (once on /chat with context update,
+    // again on /chat/[id] when the URL changes), creating a double-load flash.
     router.push(`/chat/${id}`);
     setMobileOpen(false);
   };
