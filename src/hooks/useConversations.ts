@@ -68,7 +68,7 @@ export function useConversations() {
   const {
     data: conversations = [],
     isLoading,
-    refetch,
+    refetch: refetchQuery,
   } = useQuery({
     queryKey: workspaceId && userId ? queryKeys.conversations(workspaceId, userId) : ['conversations', 'none'],
     queryFn: async ({ queryKey }) => {
@@ -92,6 +92,12 @@ export function useConversations() {
     gcTime: 30 * 60 * 1000,
     staleTime: 60 * 1000,
   });
+
+  // Stable refetch wrapper — useQuery's refetch changes identity on every render,
+  // which would break useCallback dependency chains and cause cascading re-renders.
+  const refetchRef = useRef(refetchQuery);
+  refetchRef.current = refetchQuery;
+  const refetch = useCallback(() => refetchRef.current(), []);
 
   // -------------------------------------------------------------------------
   // Realtime subscription — updates query cache directly
