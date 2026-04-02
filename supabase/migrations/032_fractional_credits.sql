@@ -22,8 +22,15 @@ ALTER TABLE credit_transactions
   ALTER COLUMN balance_after TYPE numeric(12,4) USING balance_after::numeric(12,4);
 
 -- ============================================================
--- 3. Recreate deduct_credits with numeric types
+-- 3. Drop old integer-signature functions, then create numeric versions
+--    CREATE OR REPLACE only replaces when the signature matches.
+--    Since 005 created deduct_credits(...integer...), and we now
+--    need deduct_credits(...numeric...), we must DROP the old one
+--    first — otherwise PostgreSQL keeps BOTH (overloaded) and
+--    PostgREST may resolve to the wrong one.
 -- ============================================================
+DROP FUNCTION IF EXISTS deduct_credits(uuid, uuid, integer, text, uuid, jsonb);
+
 CREATE OR REPLACE FUNCTION deduct_credits(
   p_workspace_id uuid,
   p_user_id uuid,
@@ -88,8 +95,10 @@ END;
 $$;
 
 -- ============================================================
--- 4. Recreate add_credits with numeric types
+-- 4. Drop old integer-signature add_credits, then create numeric version
 -- ============================================================
+DROP FUNCTION IF EXISTS add_credits(uuid, uuid, integer, text, text, jsonb);
+
 CREATE OR REPLACE FUNCTION add_credits(
   p_workspace_id uuid,
   p_user_id uuid,
