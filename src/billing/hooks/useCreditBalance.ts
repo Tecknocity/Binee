@@ -74,17 +74,6 @@ export function useCreditBalance(): CreditBalanceData {
     return () => window.removeEventListener('binee:credit-change', handler);
   }, [fetchBalance]);
 
-  // Refresh billing data when the tab regains focus
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchBalance();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [fetchBalance]);
-
   return {
     balance,
     subscriptionBalance,
