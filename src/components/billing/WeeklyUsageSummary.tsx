@@ -18,26 +18,17 @@ interface WeeklyData {
   week: string;
   total: number;
   chat: number;
-  health_check: number;
   setup: number;
-  dashboard: number;
-  briefing: number;
 }
 
 const ACTION_COLORS: Record<string, string> = {
   chat: 'var(--color-accent)',
-  health_check: '#22c55e',
   setup: '#eab308',
-  dashboard: '#3b82f6',
-  briefing: '#f97316',
 };
 
 const ACTION_LABELS: Record<string, string> = {
   chat: 'Chat',
-  health_check: 'Health Check',
   setup: 'Setup',
-  dashboard: 'Dashboard',
-  briefing: 'Briefing',
 };
 
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey: string; value: number; color: string }>; label?: string }) {
@@ -116,10 +107,7 @@ export default function WeeklyUsageSummary() {
                 }),
                 total: 0,
                 chat: 0,
-                health_check: 0,
                 setup: 0,
-                dashboard: 0,
-                briefing: 0,
               };
               weekMap.set(weekKey, entry);
             }
@@ -200,10 +188,7 @@ export default function WeeklyUsageSummary() {
             />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="chat" stackId="usage" fill={ACTION_COLORS.chat} radius={[0, 0, 0, 0]} />
-            <Bar dataKey="health_check" stackId="usage" fill={ACTION_COLORS.health_check} />
-            <Bar dataKey="setup" stackId="usage" fill={ACTION_COLORS.setup} />
-            <Bar dataKey="dashboard" stackId="usage" fill={ACTION_COLORS.dashboard} />
-            <Bar dataKey="briefing" stackId="usage" fill={ACTION_COLORS.briefing} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="setup" stackId="usage" fill={ACTION_COLORS.setup} radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       )}

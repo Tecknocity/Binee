@@ -13,7 +13,6 @@ import {
   List,
   Pencil,
   Plus,
-  LayoutDashboard,
   UserCheck,
   ArrowRightLeft,
   CircleCheck,
@@ -47,9 +46,6 @@ const TOOL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
   update_task: Pencil,
   assign_task: UserCheck,
   move_task: ArrowRightLeft,
-  list_dashboards: LayoutDashboard,
-  create_dashboard_widget: Plus,
-  update_dashboard_widget: Pencil,
   write_operation: CircleCheck,
 };
 

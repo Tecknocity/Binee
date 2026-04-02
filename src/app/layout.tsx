@@ -7,7 +7,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Binee - AI Workspace Intelligence",
   description:
-    "Power up your ClickUp with AI. Setup, health monitoring, custom dashboards, and team workspace intelligence.",
+    "Power up your ClickUp with AI. Setup, sync, and team workspace intelligence.",
   icons: {
     icon: [
       { url: "/Binee__icon__white.svg", type: "image/svg+xml" },

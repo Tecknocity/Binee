@@ -77,7 +77,7 @@ export default function IntegrationsPage() {
             </div>
 
             <p className="text-sm text-text-secondary mb-4">
-              Connect your ClickUp workspace to enable AI-powered setup, health monitoring, and custom dashboards.
+              Connect your ClickUp workspace to enable AI-powered setup, sync, and workspace intelligence.
             </p>
 
             {isConnected ? (

@@ -189,8 +189,6 @@ const OPERATION_LABELS: Record<string, string> = {
   assign_task: 'Assign Task',
   move_task: 'Move Task',
   delete_task: 'Delete Task',
-  create_dashboard_widget: 'Create Widget',
-  update_dashboard_widget: 'Update Widget',
   write_operation: 'Write Operation',
 };
 

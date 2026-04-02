@@ -265,7 +265,7 @@ function useIntegrations(): Integration[] {
     {
       id: 'clickup',
       name: 'ClickUp',
-      description: 'Connect your ClickUp workspace for AI-powered project management, health monitoring, and custom dashboards.',
+      description: 'Connect your ClickUp workspace for AI-powered project management, sync, and workspace intelligence.',
       category: 'Project Management',
       status: isClickUpConnected ? 'connected' : 'not_connected',
       logo: <ClickUpLogo />,

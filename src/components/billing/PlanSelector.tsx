@@ -26,8 +26,8 @@ const SELECT_ARROW_SVG = `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.or
 
 const SHARED_FEATURES = [
   'All AI models (Haiku, Sonnet, Opus)',
-  'Full health monitoring',
-  'Custom dashboards',
+  'ClickUp workspace sync',
+  'AI-powered setup & analysis',
 ];
 
 // ── Monthly Subscription Card ──────────────────────────────

@@ -5,7 +5,6 @@ import {
   MessageSquare,
   Zap,
   Settings,
-  LayoutDashboard,
   BarChart3,
   Loader2,
 } from 'lucide-react';
@@ -39,11 +38,6 @@ const WELCOME_SUGGESTIONS = [
     text: 'Help me organize my workspace',
     icon: Settings,
     label: 'Set up workspace',
-  },
-  {
-    text: 'Create a dashboard for my team',
-    icon: LayoutDashboard,
-    label: 'Build dashboards',
   },
   {
     text: 'How is my workspace looking?',
