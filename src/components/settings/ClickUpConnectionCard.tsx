@@ -63,7 +63,6 @@ export function ClickUpConnectionCard() {
     webhookHealthy: null,
   });
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
@@ -105,6 +104,23 @@ export function ClickUpConnectionCard() {
     fetchStatus();
   }, [fetchStatus]);
 
+  // Poll for sync completion whenever status is "syncing"
+  useEffect(() => {
+    if (status.syncStatus !== 'syncing') return;
+
+    const pollInterval = setInterval(async () => {
+      await fetchStatus();
+    }, 3000);
+
+    // Safety cap: stop polling after 15 minutes
+    const timeout = setTimeout(() => clearInterval(pollInterval), 15 * 60 * 1000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(timeout);
+    };
+  }, [status.syncStatus, fetchStatus]);
+
   // -----------------------------------------------------------------------
   // Handlers
   // -----------------------------------------------------------------------
@@ -144,28 +160,22 @@ export function ClickUpConnectionCard() {
     }
   };
 
-  const handleResync = async () => {
+  const handleResync = () => {
     if (!workspace_id) return;
-    setSyncing(true);
-    try {
-      const res = await fetch('/api/clickup/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id }),
-      });
-      if (res.ok) {
-        setStatus((prev) => ({ ...prev, syncStatus: 'syncing' }));
-        // Poll for sync completion
-        const pollInterval = setInterval(async () => {
-          await fetchStatus();
-        }, 3000);
-        setTimeout(() => clearInterval(pollInterval), 300000);
-      }
-    } catch (err) {
+
+    // Optimistically set syncing state so polling starts immediately.
+    // The API route may take minutes to complete (awaits full sync with
+    // maxDuration=300s), so we fire-and-forget from the client side.
+    // The reactive polling effect will pick up completion/error status.
+    setStatus((prev) => ({ ...prev, syncStatus: 'syncing', syncError: null }));
+
+    fetch('/api/clickup/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace_id }),
+    }).catch((err) => {
       console.error('Failed to trigger re-sync:', err);
-    } finally {
-      setSyncing(false);
-    }
+    });
   };
 
   // -----------------------------------------------------------------------
@@ -386,19 +396,19 @@ export function ClickUpConnectionCard() {
               <div className="flex items-center gap-3 pt-1">
                 <button
                   onClick={handleResync}
-                  disabled={syncing || status.syncStatus === 'syncing'}
+                  disabled={status.syncStatus === 'syncing'}
                   className={cn(
                     'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
                     'bg-[#7B68EE] text-white hover:bg-[#6A5ACD]',
                     'disabled:cursor-not-allowed disabled:opacity-50',
                   )}
                 >
-                  {syncing || status.syncStatus === 'syncing' ? (
+                  {status.syncStatus === 'syncing' ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <RefreshCw className="h-4 w-4" />
                   )}
-                  {syncing || status.syncStatus === 'syncing'
+                  {status.syncStatus === 'syncing'
                     ? 'Syncing...'
                     : 'Re-sync data'}
                 </button>

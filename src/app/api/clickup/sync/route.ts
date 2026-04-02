@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 import { performInitialSync } from '@/lib/clickup/sync';
 import { createServerClient } from '@/lib/supabase/server';
 
+// Allow up to 5 minutes for large workspace syncs (spaces, folders, lists,
+// tasks, members, time entries). Without this, Vercel's default 10-60s timeout
+// kills the function mid-sync, leaving the status permanently stuck at "syncing".
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -36,7 +40,7 @@ export async function POST(request: Request) {
   // Check that ClickUp is connected
   const { data: workspace } = await supabase
     .from('workspaces')
-    .select('clickup_connected, clickup_team_id')
+    .select('clickup_connected, clickup_team_id, clickup_sync_status, clickup_sync_started_at')
     .eq('id', workspace_id)
     .single();
 
@@ -44,16 +48,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'ClickUp not connected' }, { status: 400 });
   }
 
-  // Mark sync as in progress
+  // Prevent duplicate syncs — if already syncing and started < 10 min ago, reject
+  if (workspace.clickup_sync_status === 'syncing' && workspace.clickup_sync_started_at) {
+    const startedAt = new Date(workspace.clickup_sync_started_at).getTime();
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    if (startedAt > tenMinutesAgo) {
+      return NextResponse.json({ error: 'Sync already in progress' }, { status: 409 });
+    }
+    // If older than 10 min, it's stale — allow re-sync
+  }
+
+  // Mark sync as in progress with a timestamp so we can detect stale syncs
   await supabase
     .from('workspaces')
     .update({
       clickup_sync_status: 'syncing',
       clickup_sync_error: null,
+      clickup_sync_started_at: new Date().toISOString(),
     })
     .eq('id', workspace_id);
 
   try {
+    // Await the full sync — maxDuration=300 gives us up to 5 minutes.
+    // The client doesn't block on this response; it polls /api/clickup/status instead.
     const result = await performInitialSync(workspace_id);
 
     // Mark sync as complete
@@ -64,6 +81,7 @@ export async function POST(request: Request) {
         clickup_sync_status: 'complete',
         clickup_last_synced_at: now,
         last_sync_at: now,
+        clickup_sync_started_at: null,
         clickup_sync_error: result.errors.length > 0 ? result.errors.join('; ') : null,
       })
       .eq('id', workspace_id);
@@ -76,6 +94,7 @@ export async function POST(request: Request) {
       .update({
         clickup_sync_status: 'error',
         clickup_sync_error: message,
+        clickup_sync_started_at: null,
       })
       .eq('id', workspace_id);
 

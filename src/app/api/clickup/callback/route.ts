@@ -10,6 +10,11 @@ import { ClickUpClient } from "@/lib/clickup/client";
 import { normalizePlanTier } from "@/lib/clickup/rate-limits";
 import { createClient } from "@supabase/supabase-js";
 
+// Allow enough time for OAuth token exchange + team info fetch + webhook
+// registration + initial sync start. The sync itself runs fire-and-forget
+// (background) since we redirect the user to settings immediately.
+export const maxDuration = 60;
+
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 /**
@@ -91,6 +96,7 @@ export async function GET(request: NextRequest) {
             clickup_team_name: teams[0].name,
             clickup_plan_tier: planTier,
             clickup_sync_status: "syncing",
+            clickup_sync_started_at: new Date().toISOString(),
           })
           .eq("id", workspaceId);
       }
@@ -139,6 +145,7 @@ export async function GET(request: NextRequest) {
             clickup_sync_status: "complete",
             clickup_last_synced_at: now,
             last_sync_at: now,
+            clickup_sync_started_at: null,
             clickup_sync_error:
               result.errors.length > 0
                 ? result.errors.join("; ")
@@ -152,6 +159,7 @@ export async function GET(request: NextRequest) {
           .from("workspaces")
           .update({
             clickup_sync_status: "error",
+            clickup_sync_started_at: null,
             clickup_sync_error:
               syncError instanceof Error
                 ? syncError.message

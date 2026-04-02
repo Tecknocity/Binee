@@ -218,7 +218,7 @@ export async function upsertCachedTimeEntries(
 
 async function updateSyncStatus(
   workspaceId: string,
-  status: "syncing" | "synced" | "error",
+  status: "syncing" | "complete" | "error",
   errorMessage?: string
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
@@ -228,8 +228,13 @@ async function updateSyncStatus(
     updated_at: new Date().toISOString(),
   };
 
-  if (status === "synced") {
+  if (status === "complete") {
     updates.clickup_last_synced_at = new Date().toISOString();
+    updates.clickup_sync_started_at = null;
+  }
+
+  if (status === "error") {
+    updates.clickup_sync_started_at = null;
   }
 
   if (errorMessage) {
@@ -598,8 +603,10 @@ export async function performInitialSync(
       message: `Synced ${result.timeEntries} time entries`,
     });
 
-    // Done
-    await updateSyncStatus(workspaceId, "synced");
+    // Done — NOTE: callers (sync route, OAuth callback) set the final
+    // "complete" status on the workspaces table after this returns.
+    // We skip updating workspaces.clickup_sync_status here to avoid
+    // race conditions with the caller's own status update.
     report({
       phase: "complete",
       current: 1,
@@ -847,7 +854,8 @@ export async function performReconciliationSync(
       result.errors.push(msg);
     }
 
-    await updateSyncStatus(workspaceId, "synced");
+    // Mark complete — reconciliation sync is called directly, not via fire-and-forget
+    await updateSyncStatus(workspaceId, "complete");
     return result;
   } catch (err) {
     const errorMessage =
