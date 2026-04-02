@@ -50,9 +50,13 @@ function mapSupabaseUser(supabaseUser: SupabaseUser): User {
  * Get the current access token for server API calls.
  */
 async function getAuthHeaders(supabase: ReturnType<typeof createBrowserClient>): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    return { Authorization: `Bearer ${session.access_token}` };
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` };
+    }
+  } catch (err) {
+    console.warn('[binee:auth] getAuthHeaders: getSession() failed:', err);
   }
   return {};
 }
@@ -104,10 +108,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const promise = (async () => {
       try {
         const headers = await getAuthHeaders(supabase);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
         const res = await fetch('/api/workspace/ensure-owner', {
           method: 'POST',
           headers,
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
         if (res.ok) {
           ensureOwnerDone.current = true;
           if (typeof window !== 'undefined') {
@@ -140,10 +148,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }> => {
     try {
       const headers = await getAuthHeaders(supabase);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
       const res = await fetch('/api/workspace/load', {
         method: 'POST',
         headers,
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!res.ok) {
         console.error('loadWorkspacesViaAPI: failed', res.status);
         return { workspaces: [], members: [] };
@@ -418,7 +430,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
 
-            await ensureAndLoad(session.user.id);
+            // Timeout guard: don't let workspace load block forever
+            await Promise.race([
+              ensureAndLoad(session.user.id),
+              new Promise((resolve) => setTimeout(resolve, 8000)),
+            ]);
             // Invalidate all React Query caches so child hooks refetch
             queryClient.invalidateQueries();
             setLoading(false);
