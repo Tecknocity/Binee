@@ -148,9 +148,11 @@ export default function MemberUsageTable() {
       query = query.gte('created_at', periodStart.toISOString());
     }
 
-    query
-      .order('created_at', { ascending: false })
-      .limit(5000) // safety cap for very active workspaces
+    Promise.resolve(
+      query
+        .order('created_at', { ascending: false })
+        .limit(5000), // safety cap for very active workspaces
+    )
       .then(({ data, error }) => {
         if (error) {
           console.error('[MemberUsageTable] Transactions query failed:', error.message);
@@ -158,6 +160,7 @@ export default function MemberUsageTable() {
           setTxData(data ?? []);
         }
       })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [workspace?.id, period]);
 
