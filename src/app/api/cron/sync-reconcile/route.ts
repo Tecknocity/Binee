@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { performReconciliationSync } from "@/lib/clickup/sync";
+import { registerWebhooks, verifyWebhookHealth } from "@/lib/clickup/webhooks";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
   // Find all workspaces with active ClickUp connections
   const { data: workspaces, error: queryError } = await supabase
     .from("workspaces")
-    .select("id, clickup_team_name")
+    .select("id, clickup_team_name, clickup_team_id")
     .eq("clickup_connected", true)
     .not("clickup_team_id", "is", null);
 
@@ -64,23 +65,47 @@ export async function GET(request: NextRequest) {
     teamName: string | null;
     success: boolean;
     tasks?: number;
+    webhookRepaired?: boolean;
     errors?: string[];
   }> = [];
 
   // Process each workspace sequentially to avoid rate-limit issues
   for (const workspace of workspaces) {
+    let webhookRepaired = false;
+
     try {
       console.log(
         `[Cron] Starting reconciliation for workspace: ${workspace.id} (${workspace.clickup_team_name})`
       );
+
+      // Check webhook health and re-register if unhealthy
+      try {
+        const health = await verifyWebhookHealth(workspace.id);
+        if (!health.healthy && workspace.clickup_team_id) {
+          console.log(
+            `[Cron] Webhook unhealthy for workspace ${workspace.id}, re-registering...`
+          );
+          await registerWebhooks(workspace.id, workspace.clickup_team_id);
+          webhookRepaired = true;
+          console.log(
+            `[Cron] Webhook re-registered for workspace ${workspace.id}`
+          );
+        }
+      } catch (webhookErr) {
+        console.error(
+          `[Cron] Webhook repair failed for workspace ${workspace.id}:`,
+          webhookErr
+        );
+      }
 
       const syncResult = await performReconciliationSync(workspace.id);
 
       results.push({
         workspaceId: workspace.id,
         teamName: workspace.clickup_team_name,
-        success: syncResult.errors.length === 0,
+        success: true,
         tasks: syncResult.tasks,
+        webhookRepaired,
         errors:
           syncResult.errors.length > 0 ? syncResult.errors : undefined,
       });
@@ -100,6 +125,7 @@ export async function GET(request: NextRequest) {
         workspaceId: workspace.id,
         teamName: workspace.clickup_team_name,
         success: false,
+        webhookRepaired,
         errors: [errorMessage],
       });
     }

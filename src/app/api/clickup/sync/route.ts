@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { performInitialSync } from '@/lib/clickup/sync';
+import { registerWebhooks } from '@/lib/clickup/webhooks';
 import { createServerClient } from '@/lib/supabase/server';
 
 // Allow up to 5 minutes for large workspace syncs (spaces, folders, lists,
@@ -73,6 +74,15 @@ export async function POST(request: Request) {
     // The client doesn't block on this response; it polls /api/clickup/status instead.
     console.log(`[ClickUp Sync] Starting sync for workspace ${workspace_id}`);
     const result = await performInitialSync(workspace_id);
+
+    // Re-register webhooks to fix unhealthy state (non-fatal if it fails)
+    try {
+      console.log(`[ClickUp Sync] Re-registering webhooks for workspace ${workspace_id}`);
+      await registerWebhooks(workspace_id, workspace.clickup_team_id);
+      console.log(`[ClickUp Sync] Webhooks re-registered successfully`);
+    } catch (webhookError) {
+      console.error(`[ClickUp Sync] Webhook re-registration failed (non-fatal):`, webhookError);
+    }
 
     // Mark sync as complete (performInitialSync throws on fatal errors,
     // so reaching here means the sync succeeded, possibly with non-fatal errors)
