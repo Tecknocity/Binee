@@ -83,6 +83,22 @@ export async function POST(request: NextRequest) {
       console.error('[setup/chat] Credit deduction failed:', deductError);
     }
 
+    // Log to credit_usage (same source of truth as chat)
+    const { error: usageErr } = await adminClient.from('credit_usage').insert({
+      user_id: authUser.id,
+      workspace_id,
+      action_type: 'chat',
+      session_id: conversation_id,
+      model_used: 'sonnet',
+      input_tokens: result.totalInputTokens ?? 0,
+      output_tokens: result.totalOutputTokens ?? 0,
+      anthropic_cost_cents: result.anthropicCostCents ?? 0,
+      credits_deducted: result.creditsToCharge,
+    });
+    if (usageErr) {
+      console.error('[setup/chat] credit_usage insert failed:', usageErr.message);
+    }
+
     // Save messages
     await adminClient.from('messages').insert([
       {

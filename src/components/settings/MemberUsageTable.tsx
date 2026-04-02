@@ -12,8 +12,6 @@ interface MemberUsage {
   email: string;
   avatar_url: string | null;
   total_credits: number;
-  chat_credits: number;
-  setup_credits: number;
   last_active: string | null;
 }
 
@@ -100,7 +98,6 @@ export default function MemberUsageTable() {
   const [usageData, setUsageData] = useState<Array<{
     user_id: string;
     credits_deducted: number;
-    action_type: string;
     created_at: string;
   }>>([]);
   const [loading, setLoading] = useState(true);
@@ -109,7 +106,7 @@ export default function MemberUsageTable() {
   const [sortAsc, setSortAsc] = useState(false);
   const [showPeriodMenu, setShowPeriodMenu] = useState(false);
 
-  // Fetch members once, re-fetch transactions when period changes
+  // Fetch members once
   useEffect(() => {
     if (!workspace?.id) return;
 
@@ -129,18 +126,18 @@ export default function MemberUsageTable() {
       });
   }, [workspace?.id]);
 
+  // Re-fetch usage when period changes
   useEffect(() => {
     if (!workspace?.id) return;
 
     setLoading(true);
     const supabase = createBrowserClient();
 
-    // Use credit_usage table — same source of truth as WeeklyUsageSummary
     const periodStart = getPeriodStart(period);
 
     let query = supabase
       .from('credit_usage')
-      .select('user_id, credits_deducted, action_type, created_at')
+      .select('user_id, credits_deducted, created_at')
       .eq('workspace_id', workspace.id);
 
     if (periodStart) {
@@ -166,21 +163,12 @@ export default function MemberUsageTable() {
   const members = useMemo(() => {
     if (!memberData.length) return [];
 
-    // Aggregate from credit_usage (same table as WeeklyUsageSummary)
-    const usageMap = new Map<string, { total: number; chat: number; setup: number; lastActive: string | null }>();
+    const usageMap = new Map<string, { total: number; lastActive: string | null }>();
     for (const row of usageData) {
       if (!row.user_id) continue;
 
-      const entry = usageMap.get(row.user_id) ?? { total: 0, chat: 0, setup: 0, lastActive: null };
-      const credits = Number(row.credits_deducted ?? 0);
-      entry.total += credits;
-
-      // Use action_type directly — same bucketing as WeeklyUsageSummary
-      if (row.action_type === 'setup') {
-        entry.setup += credits;
-      } else {
-        entry.chat += credits;
-      }
+      const entry = usageMap.get(row.user_id) ?? { total: 0, lastActive: null };
+      entry.total += Number(row.credits_deducted ?? 0);
 
       if (!entry.lastActive || row.created_at > entry.lastActive) {
         entry.lastActive = row.created_at;
@@ -197,13 +185,10 @@ export default function MemberUsageTable() {
         email: m.email,
         avatar_url: m.avatar_url,
         total_credits: usage?.total ?? 0,
-        chat_credits: usage?.chat ?? 0,
-        setup_credits: usage?.setup ?? 0,
         last_active: usage?.lastActive ?? null,
       };
     });
 
-    // Sort
     combined.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
@@ -321,8 +306,7 @@ export default function MemberUsageTable() {
             </thead>
             <tbody>
               {members.map((member, idx) => {
-                const chatPct = maxUsage > 0 ? (member.chat_credits / maxUsage) * 100 : 0;
-                const setupPct = maxUsage > 0 ? (member.setup_credits / maxUsage) * 100 : 0;
+                const usagePct = maxUsage > 0 ? (member.total_credits / maxUsage) * 100 : 0;
 
                 return (
                   <tr key={member.user_id} className="border-b border-border/50 last:border-0">
@@ -355,21 +339,14 @@ export default function MemberUsageTable() {
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-border/50 rounded-full overflow-hidden flex">
-                          {member.chat_credits > 0 && (
-                            <div
-                              className="h-full bg-accent transition-all"
-                              style={{ width: `${chatPct}%` }}
-                              title={`Chat: ${formatCredits(member.chat_credits)}`}
-                            />
-                          )}
-                          {member.setup_credits > 0 && (
-                            <div
-                              className="h-full bg-amber-500 transition-all"
-                              style={{ width: `${setupPct}%` }}
-                              title={`Setup: ${formatCredits(member.setup_credits)}`}
-                            />
-                          )}
+                        <div className="flex-1 h-2 bg-border/50 rounded-full overflow-hidden">
+                          <div
+                            className={cn(
+                              'h-full rounded-full bg-accent transition-all',
+                              member.total_credits === 0 && 'bg-transparent'
+                            )}
+                            style={{ width: `${usagePct}%` }}
+                          />
                         </div>
                         {totalUsage > 0 && member.total_credits > 0 && (
                           <span className="text-[10px] text-text-muted font-mono w-8 text-right">
