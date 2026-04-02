@@ -150,11 +150,10 @@ export async function handleChat(
 
   // Log per-user usage for analytics (credit_usage table)
   try {
-    const actionType = result.creditClassification.tier === 'setup_request' ? 'setup' : 'chat';
     const { error: usageErr } = await supabase.from('credit_usage').insert({
       user_id,
       workspace_id,
-      action_type: actionType,
+      action_type: 'chat',
       session_id: conversation_id ?? null,
       model_used: (result.modelUsed ?? '').includes('haiku') ? 'haiku' : (result.modelUsed ?? '').includes('opus') ? 'opus' : 'sonnet',
       input_tokens: result.totalInputTokens,
