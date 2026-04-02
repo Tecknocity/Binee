@@ -244,7 +244,7 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
   );
 }
 
-export default function ChatPage() {
+export default function ChatPage({ conversationId: propConversationId }: { conversationId?: string } = {}) {
   const { user } = useAuth();
   const { credit_balance, workspace, loading: wsLoading, error: wsError } = useWorkspaceContext();
   const searchParams = useSearchParams();
@@ -263,17 +263,11 @@ export default function ChatPage() {
     setActiveConversation,
   } = useSharedConversations();
 
-  // If we're in "new" mode, treat activeConversationId as null
-  const effectiveConversationId = isNew ? null : activeConversationId;
-
-  console.log('[binee:page] ChatPage render', {
-    activeConversationId,
-    effectiveConversationId,
-    isNew,
-    wsLoading,
-    hasUser: !!user,
-    hasWorkspace: !!workspace,
-  });
+  // Prefer the prop (available synchronously from URL params on first render)
+  // over the context value (which is updated asynchronously via useEffect).
+  // This eliminates the one-frame delay where effectiveConversationId is null
+  // because the context hasn't been updated yet.
+  const effectiveConversationId = isNew ? null : (propConversationId ?? activeConversationId);
 
   const {
     messages,
@@ -283,13 +277,6 @@ export default function ChatPage() {
     confirmAction,
     alwaysAllowAction,
   } = useChat(effectiveConversationId);
-
-  console.log('[binee:page] ChatPage state', {
-    messagesCount: messages.length,
-    isLoading,
-    isLoadingHistory,
-    pendingFirstMessage: !!pendingFirstMessage,
-  });
 
   // When ?new=1 is in URL, clear the active conversation so we show the welcome screen
   useEffect(() => {

@@ -206,9 +206,30 @@ function getSupabase() {
 // ---------------------------------------------------------------------------
 
 export function useChat(conversationId: string | null) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Use React Query's queryClient as a persistent cache for messages.
+  // Messages survive navigation: on unmount they stay in the query cache,
+  // on remount we read them back instantly (no spinner).
+  const queryClient = useQueryClient();
+
+  // Initialize messages from React Query cache SYNCHRONOUSLY to avoid the
+  // empty flash on component remount. Without this, messages start as []
+  // and only get populated after the useEffect fires (one frame later),
+  // causing a visible flash where the chat appears empty.
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (conversationId && !conversationId.startsWith('conv-')) {
+      return queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(conversationId)) ?? [];
+    }
+    return [];
+  });
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  // Only show loading spinner if we don't already have cached messages
+  const [isLoadingHistory, setIsLoadingHistory] = useState(() => {
+    if (conversationId && !conversationId.startsWith('conv-')) {
+      const cached = queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(conversationId));
+      return !cached || cached.length === 0;
+    }
+    return false;
+  });
   const [error, setError] = useState<string | null>(null);
   const totalCredits = useRef(0);
   const { workspace, user } = useAuth();
@@ -223,10 +244,29 @@ export function useChat(conversationId: string | null) {
   // Prevents stale-closure bugs from overwriting the title on every message.
   const titleSetRef = useRef(false);
 
-  // Use React Query's queryClient as a persistent cache for messages.
-  // Messages survive navigation: on unmount they stay in the query cache,
-  // on remount we read them back instantly (no spinner).
-  const queryClient = useQueryClient();
+  // Handle conversationId changes synchronously (React 18+ pattern).
+  // When navigating between conversations on the same page component
+  // (e.g. /chat/abc → /chat/xyz), useState initializer doesn't re-run.
+  // This synchronously loads cached messages so the UI never shows empty.
+  const prevConvIdRef = useRef(conversationId);
+  if (prevConvIdRef.current !== conversationId) {
+    prevConvIdRef.current = conversationId;
+    if (conversationId && !conversationId.startsWith('conv-')) {
+      const cached = queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(conversationId)) ?? [];
+      if (cached.length > 0) {
+        setMessages(cached);
+        setIsLoadingHistory(false);
+      } else {
+        setMessages([]);
+        setIsLoadingHistory(true);
+      }
+    } else if (!conversationId) {
+      setMessages([]);
+      setIsLoadingHistory(false);
+    }
+    totalCredits.current = 0;
+    titleSetRef.current = false;
+  }
 
   // Stable IDs for dependency arrays — avoids re-running effects when the
   // workspace/user *object* reference changes but the ID hasn't.
@@ -239,11 +279,9 @@ export function useChat(conversationId: string | null) {
 
   const loadConversation = useCallback(
     async (id: string | null) => {
-      console.log('[binee:chat] loadConversation called', { id, workspaceId, userId });
       setError(null);
 
       if (!id || !workspaceId || !userId) {
-        console.log('[binee:chat] loadConversation early exit — missing', { id: !!id, workspaceId: !!workspaceId, userId: !!userId });
         if (!id) {
           setMessages([]);
           totalCredits.current = 0;
@@ -254,7 +292,6 @@ export function useChat(conversationId: string | null) {
 
       // Skip loading for temporary conversation IDs (not yet persisted to DB)
       if (id.startsWith('conv-')) {
-        console.log('[binee:chat] loadConversation skip — temp ID');
         setIsLoadingHistory(false);
         return;
       }
@@ -262,7 +299,6 @@ export function useChat(conversationId: string | null) {
       // If a message is currently being sent (e.g. right after conversation
       // creation), skip reloading to avoid wiping the optimistic user message.
       if (sendingRef.current) {
-        console.log('[binee:chat] loadConversation skip — sending in progress');
         setIsLoadingHistory(false);
         return;
       }
@@ -271,7 +307,6 @@ export function useChat(conversationId: string | null) {
       // Then refresh from DB in the background.
       const cached = queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(id)) ?? [];
       if (cached.length > 0) {
-        console.log('[binee:chat] loadConversation — using cache', cached.length, 'messages');
         setMessages(cached);
         totalCredits.current = cached.reduce(
           (sum, m) => sum + (m.creditsConsumed ?? 0),
@@ -280,12 +315,10 @@ export function useChat(conversationId: string | null) {
         titleSetRef.current = true;
         // Don't show loading spinner — we already have data to display
       } else {
-        console.log('[binee:chat] loadConversation — no cache, showing spinner');
         setIsLoadingHistory(true);
       }
 
       try {
-        console.log('[binee:chat] loadConversation — querying Supabase...');
         const { data, error: fetchError } = await supabase
           .from('messages')
           .select('id, role, content, credits_used, metadata, created_at')
@@ -293,8 +326,6 @@ export function useChat(conversationId: string | null) {
           .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: true })
           .limit(200);
-
-        console.log('[binee:chat] loadConversation — query done', { error: fetchError?.message, rows: data?.length });
 
         if (fetchError) {
           console.error('Failed to load messages:', fetchError.message);
@@ -325,13 +356,12 @@ export function useChat(conversationId: string | null) {
         // Write through to React Query cache (survives navigation)
         if (id) queryClient.setQueryData(queryKeys.messages(id), mapped);
       } catch (err) {
-        console.error('[binee:chat] loadConversation — exception', err);
+        console.error('[useChat] loadConversation exception:', err);
         if (cached.length === 0) {
           setMessages([]);
           totalCredits.current = 0;
         }
       } finally {
-        console.log('[binee:chat] loadConversation — done, setting isLoadingHistory=false');
         setIsLoadingHistory(false);
       }
     },
@@ -348,8 +378,6 @@ export function useChat(conversationId: string | null) {
 
   // Load messages when conversationId changes
   useEffect(() => {
-    console.log('[binee:chat] conversationId effect fired', { conversationId, workspaceId, userId });
-    // Reset the title-set guard when switching conversations
     titleSetRef.current = false;
     loadConversationRef.current(conversationId);
   }, [conversationId, workspaceId, userId]);
