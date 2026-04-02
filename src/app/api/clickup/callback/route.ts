@@ -10,6 +10,11 @@ import { ClickUpClient } from "@/lib/clickup/client";
 import { normalizePlanTier } from "@/lib/clickup/rate-limits";
 import { createClient } from "@supabase/supabase-js";
 
+// Allow enough time for OAuth token exchange + team info fetch + webhook
+// registration + initial sync start. The sync itself runs fire-and-forget
+// (background) since we redirect the user to settings immediately.
+export const maxDuration = 60;
+
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 /**
