@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     .from('user_subscriptions')
     .select('*')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (error || !subscription) {
     return NextResponse.json({ subscription: null });

@@ -49,16 +49,13 @@ export async function generateWeeklyUsageSummaries() {
     total: number;
     total_actions: number;
     chat: number;
-    health_check: number;
     setup: number;
-    dashboard: number;
-    briefing: number;
   }>();
 
   for (const row of usageRows) {
     let entry = userMap.get(row.user_id);
     if (!entry) {
-      entry = { total: 0, total_actions: 0, chat: 0, health_check: 0, setup: 0, dashboard: 0, briefing: 0 };
+      entry = { total: 0, total_actions: 0, chat: 0, setup: 0 };
       userMap.set(row.user_id, entry);
     }
 
@@ -79,10 +76,7 @@ export async function generateWeeklyUsageSummaries() {
     total_credits: Math.round(data.total * 100) / 100,
     total_actions: data.total_actions,
     chat_credits: Math.round(data.chat * 100) / 100,
-    health_check_credits: Math.round(data.health_check * 100) / 100,
     setup_credits: Math.round(data.setup * 100) / 100,
-    dashboard_credits: Math.round(data.dashboard * 100) / 100,
-    briefing_credits: Math.round(data.briefing * 100) / 100,
   }));
 
   const { error: upsertError } = await supabaseAdmin

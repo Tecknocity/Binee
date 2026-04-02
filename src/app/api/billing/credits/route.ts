@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     .eq('user_id', userId)
     .in('status', ['active', 'pending'])
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (!member) {
     return NextResponse.json({

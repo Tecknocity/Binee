@@ -26,8 +26,8 @@ const plans = [
     features: [
       '1,000 AI credits/month',
       '3 workspaces',
-      'Full health monitoring',
-      'Custom dashboards',
+      'ClickUp workspace sync',
+      'AI-powered setup & analysis',
       'Email support',
     ],
     popular: true,

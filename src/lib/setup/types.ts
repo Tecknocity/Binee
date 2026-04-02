@@ -125,7 +125,7 @@ export interface ManualStep {
   title: string;
   description: string;
   instructions: string[];
-  category: 'automation' | 'view' | 'setting' | 'custom_field' | 'dashboard';
+  category: 'automation' | 'view' | 'setting' | 'custom_field';
   clickupLink?: string;
   completed: boolean;
 }

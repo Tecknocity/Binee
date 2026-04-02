@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       .from('user_profiles')
       .select('preferred_name')
       .eq('user_id', user_id)
-      .single();
+      .maybeSingle();
 
     const firstName = profile?.preferred_name?.split(' ')[0] || null;
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       .from('clickup_connections')
       .select('synced_spaces, synced_lists, synced_tasks')
       .eq('workspace_id', workspace_id)
-      .single();
+      .maybeSingle();
 
     const spaces = connection?.synced_spaces ?? 0;
     const lists = connection?.synced_lists ?? 0;
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         ? ` I synced your workspace — ${spaces} space${spaces !== 1 ? 's' : ''}, ${lists} list${lists !== 1 ? 's' : ''}, ${tasks.toLocaleString()} task${tasks !== 1 ? 's' : ''}.`
         : " I've connected to your workspace and I'm ready to help.";
 
-    const content = `${greeting}${statsLine}\n\nHere are some things I can help you with:\n\n- **Show me my overdue tasks** — I'll find tasks that need attention\n- **What actions can you take in my workspace?** — See everything I can do\n- **Help me organize my workspace** — Set up structures and workflows\n- **Create a dashboard for my team** — Build visual project overviews\n- **Run a health check on my workspace** — Get insights on workspace health`;
+    const content = `${greeting}${statsLine}\n\nHere are some things I can help you with:\n\n- **Show me my overdue tasks** — I'll find tasks that need attention\n- **What actions can you take in my workspace?** — See everything I can do\n- **Help me organize my workspace** — Set up structures and workflows\n- **How is my workspace looking?** — Get insights on your workspace`;
 
     // Create the conversation
     const { data: conversation, error: convError } = await supabase

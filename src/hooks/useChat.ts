@@ -83,9 +83,6 @@ const TOOL_LABELS: Record<string, { pending: string; success: string; icon: stri
   update_task: { pending: 'Updating task', success: 'Task updated', icon: 'edit' },
   assign_task: { pending: 'Assigning task', success: 'Task assigned', icon: 'user' },
   move_task: { pending: 'Moving task', success: 'Task moved', icon: 'move' },
-  list_dashboards: { pending: 'Checking dashboards', success: 'Found dashboards', icon: 'layout' },
-  create_dashboard_widget: { pending: 'Creating widget', success: 'Widget created', icon: 'plus' },
-  update_dashboard_widget: { pending: 'Updating widget', success: 'Widget updated', icon: 'edit' },
   write_operation: { pending: 'Executing action', success: 'Action completed', icon: 'check' },
 };
 

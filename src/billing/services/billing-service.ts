@@ -26,7 +26,7 @@ function getSupabaseAdmin() {
 
 interface ProcessAIUsageParams {
   userId: string;
-  actionType: 'chat' | 'health_check' | 'setup' | 'briefing';
+  actionType: 'chat' | 'setup';
   sessionId: string;
   model: 'haiku' | 'sonnet';
   inputTokens: number;

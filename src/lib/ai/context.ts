@@ -76,7 +76,7 @@ export async function buildContext(
   // For simple tasks: build a compact business state with just task metrics
   // (counts, overdue, unassigned) — skip the full structure/team/activity
   // queries. This reduces from 6 DB queries to 3 and cuts context by ~60%.
-  const COMPACT_TASK_TYPES = new Set(['general_chat', 'simple_lookup', 'health_check', 'troubleshooting']);
+  const COMPACT_TASK_TYPES = new Set(['general_chat', 'simple_lookup', 'troubleshooting']);
   const isCompact = taskType ? COMPACT_TASK_TYPES.has(taskType) : false;
 
   const [
@@ -148,7 +148,7 @@ export async function buildContext(
 
 // ---------------------------------------------------------------------------
 // Compact business state — just task metrics, no structure/team/activity
-// Used for simple_lookup, health_check, troubleshooting to cut ~60% tokens.
+// Used for simple_lookup, troubleshooting to cut ~60% tokens.
 // Only runs 2 DB queries instead of 6. Target: ~300–500 tokens.
 // ---------------------------------------------------------------------------
 

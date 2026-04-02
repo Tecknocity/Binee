@@ -277,7 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from('workspaces')
       .select('*')
       .eq('id', currentWorkspace.id)
-      .single();
+      .maybeSingle();
     if (ws) {
       // Only update state if something structurally changed.
       // This prevents cascading re-renders when only credit_balance or

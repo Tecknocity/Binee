@@ -5,7 +5,6 @@ import {
   MessageSquare,
   Zap,
   Settings,
-  LayoutDashboard,
   BarChart3,
   Loader2,
 } from 'lucide-react';
@@ -41,11 +40,6 @@ const WELCOME_SUGGESTIONS = [
     label: 'Set up workspace',
   },
   {
-    text: 'Create a dashboard for my team',
-    icon: LayoutDashboard,
-    label: 'Build dashboards',
-  },
-  {
     text: 'How is my workspace looking?',
     icon: BarChart3,
     label: 'Analyze workspace',
@@ -72,7 +66,7 @@ export default function WelcomeMessage({
           .from('clickup_connections')
           .select('synced_spaces, synced_lists, synced_tasks')
           .eq('workspace_id', workspaceId)
-          .single();
+          .maybeSingle();
 
         if (!cancelled && connection) {
           setStats({

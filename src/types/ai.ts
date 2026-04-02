@@ -4,8 +4,6 @@ export type TaskType =
   | 'complex_query'
   | 'action_request'
   | 'setup_request'
-  | 'health_check'
-  | 'dashboard_request'
   | 'analysis_audit'
   | 'strategy'
   | 'troubleshooting';
@@ -53,38 +51,6 @@ export interface BineeContext {
     role: 'user' | 'assistant';
     content: string;
   }>;
-  /** B-070: Active dashboard context, populated when taskType === 'dashboard_request' */
-  activeDashboard?: {
-    id: string;
-    name: string;
-    widgets: Array<{
-      id: string;
-      title: string;
-      type: string;
-      summary_config: Record<string, unknown>;
-    }>;
-  };
-
-  /** B-065: Health snapshot data, populated when taskType === 'health_check' */
-  healthSnapshot?: {
-    health_score: number;
-    health_factors: Array<{
-      name: string;
-      score: number;
-      weight: number;
-      details: string;
-      severity: 'healthy' | 'warning' | 'critical';
-    }>;
-    active_issues: Array<{
-      rule_name: string;
-      severity: 'critical' | 'warning' | 'info';
-      description: string;
-      affected_items: Array<{ type: string; id: string; name: string }>;
-      recommendation: string;
-    }>;
-    critical_count: number;
-    warning_count: number;
-  };
 }
 
 export interface AssistantResponse {

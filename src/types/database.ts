@@ -239,7 +239,7 @@ export interface Conversation {
   user_id: string;
   title: string | null;
   summary: string | null;
-  context_type: 'general' | 'health' | 'setup' | 'dashboard' | null;
+  context_type: 'general' | 'setup' | null;
   context_id: string | null;
   created_at: string;
   updated_at: string;
@@ -271,73 +271,6 @@ export interface CreditTransaction {
   created_at: string;
 }
 
-export interface Dashboard {
-  id: string;
-  workspace_id: string;
-  name: string;
-  description: string | null;
-  layout: Record<string, unknown>[];
-  layout_json: Record<string, unknown>;
-  is_default: boolean;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface UserDashboardPreference {
-  id: string;
-  user_id: string;
-  workspace_id: string;
-  last_active_dashboard_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DashboardWidget {
-  id: string;
-  workspace_id: string;
-  dashboard_id: string;
-  type: string;
-  title: string;
-  config: Record<string, unknown>;
-  position: { x: number; y: number; w: number; h: number };
-  created_at: string;
-  updated_at: string;
-}
-
-export interface HealthCheckResult {
-  id: string;
-  workspace_id: string;
-  overall_score: number;
-  category_scores: Record<string, number>;
-  issues: HealthIssue[];
-  recommendations: string[];
-  checked_at: string;
-  credits_used: number;
-  previous_score: number | null;
-  created_at: string;
-}
-
-export interface HealthIssue {
-  id: string;
-  category: string;
-  severity: 'critical' | 'warning' | 'info';
-  title: string;
-  description: string;
-  affected_items: string[];
-  suggestion: string;
-}
-
-export interface HealthSnapshot {
-  id: string;
-  workspace_id: string;
-  overall_score: number;
-  category_scores: Record<string, number>;
-  previous_score: number | null;
-  snapshot_week: string; // DATE as ISO string (Monday of the week)
-  created_at: string;
-}
-
 export interface SetupSession {
   id: string;
   workspace_id: string;
@@ -350,14 +283,6 @@ export interface SetupSession {
   credits_used: number;
   created_at: string;
   updated_at: string;
-}
-
-export interface PlanConfiguration {
-  plan: string;
-  monthly_credits: number;
-  price_cents: number;
-  max_members: number | null;
-  features: Record<string, unknown>;
 }
 
 // Helper type for deduct_credits RPC response
@@ -432,10 +357,7 @@ export interface WeeklyUsageSummary {
   week_start: string;
   total_credits: number;
   chat_credits: number;
-  health_check_credits: number;
   setup_credits: number;
-  dashboard_credits: number;
-  briefing_credits: number;
   created_at: string;
 }
 
@@ -459,13 +381,7 @@ export interface Tables {
   conversations: Conversation;
   messages: Message;
   credit_transactions: CreditTransaction;
-  dashboards: Dashboard;
-  dashboard_widgets: DashboardWidget;
-  user_dashboard_preferences: UserDashboardPreference;
-  health_check_results: HealthCheckResult;
-  health_snapshots: HealthSnapshot;
   setup_sessions: SetupSession;
-  plan_configurations: PlanConfiguration;
   user_credit_accounts: UserCreditAccount;
   user_subscriptions: UserSubscription;
   user_credit_transactions: UserCreditTransaction;
