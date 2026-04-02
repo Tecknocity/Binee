@@ -2,13 +2,13 @@
 
 import { useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { useSharedConversations } from '@/contexts/ConversationsContext';
+import { useConversationUI } from '@/stores/conversationUI';
 import ChatPage from '@/components/chat/ChatPage';
 
 export default function ChatConversationRoute() {
   const params = useParams();
   const conversationId = params.id as string;
-  const { setActiveConversation } = useSharedConversations();
+  const setActiveConversation = useConversationUI((s) => s.setActiveConversation);
 
   // Sync URL → context for sidebar highlight only.
   // ChatPage gets its conversationId directly from the prop below,

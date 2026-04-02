@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSharedConversations } from '@/contexts/ConversationsContext';
+import { useConversationUI } from '@/stores/conversationUI';
 import { useChat } from '@/hooks/useChat';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
@@ -258,8 +259,8 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
     conversations,
     createConversation,
     renameConversation,
-    setActiveConversation,
   } = useSharedConversations();
+  const setActiveConversation = useConversationUI((s) => s.setActiveConversation);
 
   // Conversation ID flows directly from URL prop — no context delay.
   // On /chat (no ID), this is null. On /chat/[id], it's the URL param.
