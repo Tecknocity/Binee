@@ -35,7 +35,7 @@ import { WARNING_THRESHOLDS } from '@/billing/config';
 // Navigation sections removed — sidebar now uses Workspace Setup button + All Chats link + Recents
 
 function getCreditColor(balance: number) {
-  const display = Math.floor(balance);
+  const display = Math.round(balance);
   if (display <= WARNING_THRESHOLDS.empty) {
     return { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' };
   }
@@ -402,7 +402,7 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1">
                           <span className={cn('text-sm font-semibold font-mono', creditColor.text)}>
-                            {workspace?.credit_balance != null ? Math.floor(workspace.credit_balance).toLocaleString() : '---'}
+                            {workspace?.credit_balance != null ? Math.round(workspace.credit_balance).toLocaleString() : '---'}
                           </span>
                           {(workspace?.credit_balance ?? 0) <= WARNING_THRESHOLDS.empty && (
                             <AlertCircle className="w-3.5 h-3.5 text-red-400" />
@@ -633,7 +633,7 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1">
                           <span className={cn('text-sm font-semibold font-mono', creditColor.text)}>
-                            {workspace?.credit_balance != null ? Math.floor(workspace.credit_balance).toLocaleString() : '---'}
+                            {workspace?.credit_balance != null ? Math.round(workspace.credit_balance).toLocaleString() : '---'}
                           </span>
                           {(workspace?.credit_balance ?? 0) <= WARNING_THRESHOLDS.empty && (
                             <AlertCircle className="w-3.5 h-3.5 text-red-400" />

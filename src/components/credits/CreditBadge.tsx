@@ -20,7 +20,7 @@ export default function CreditBadge() {
   const router = useRouter();
   const { credit_balance } = useWorkspace();
 
-  const displayBalance = Math.floor(credit_balance);
+  const displayBalance = Math.round(credit_balance);
 
   const color = (() => {
     if (displayBalance <= WARNING_THRESHOLDS.empty) {
