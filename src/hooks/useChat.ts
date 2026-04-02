@@ -250,6 +250,12 @@ export function useChat(conversationId: string | null) {
         return;
       }
 
+      // Skip loading for temporary conversation IDs (not yet persisted to DB)
+      if (id.startsWith('conv-')) {
+        setIsLoadingHistory(false);
+        return;
+      }
+
       // If a message is currently being sent (e.g. right after conversation
       // creation), skip reloading to avoid wiping the optimistic user message.
       if (sendingRef.current) {
