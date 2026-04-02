@@ -29,6 +29,8 @@ ALTER TABLE credit_transactions
 --    first — otherwise PostgreSQL keeps BOTH (overloaded) and
 --    PostgREST may resolve to the wrong one.
 -- ============================================================
+-- Drop ALL old integer-signature overloads (001 created 5-param, 005 may have created 6-param)
+DROP FUNCTION IF EXISTS deduct_credits(uuid, uuid, integer, text, jsonb);
 DROP FUNCTION IF EXISTS deduct_credits(uuid, uuid, integer, text, uuid, jsonb);
 
 CREATE OR REPLACE FUNCTION deduct_credits(
