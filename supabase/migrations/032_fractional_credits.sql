@@ -108,7 +108,7 @@ DECLARE
   v_transaction_id uuid;
 BEGIN
   -- Validate type
-  IF p_type NOT IN ('purchase', 'bonus', 'refund', 'monthly_reset') THEN
+  IF p_type NOT IN ('purchase', 'bonus', 'refund', 'monthly_reset', 'subscription_grant') THEN
     RETURN jsonb_build_object('success', false, 'error', 'Invalid credit type: ' || p_type);
   END IF;
 
