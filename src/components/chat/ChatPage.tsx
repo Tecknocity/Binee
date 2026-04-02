@@ -269,6 +269,16 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
   // because the context hasn't been updated yet.
   const effectiveConversationId = isNew ? null : (propConversationId ?? activeConversationId);
 
+  console.log('[binee:page] ChatPage render', {
+    propConversationId,
+    activeConversationId,
+    effectiveConversationId,
+    isNew,
+    wsLoading,
+    hasUser: !!user,
+    hasWorkspace: !!workspace,
+  });
+
   const {
     messages,
     isLoading,
@@ -277,6 +287,13 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
     confirmAction,
     alwaysAllowAction,
   } = useChat(effectiveConversationId);
+
+  console.log('[binee:page] ChatPage state', {
+    messagesCount: messages.length,
+    isLoading,
+    isLoadingHistory,
+    pendingFirstMessage: !!pendingFirstMessage,
+  });
 
   // When ?new=1 is in URL, clear the active conversation so we show the welcome screen
   useEffect(() => {
