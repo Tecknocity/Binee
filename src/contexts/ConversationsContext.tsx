@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useConversations as useConversationsHook } from '@/hooks/useConversations';
 import type { Conversation } from '@/hooks/useConversations';
 
@@ -26,7 +26,30 @@ const ConversationsContext = createContext<ConversationsContextValue | null>(nul
 // ---------------------------------------------------------------------------
 
 export function ConversationsProvider({ children }: { children: ReactNode }) {
-  const value = useConversationsHook();
+  const {
+    conversations,
+    activeConversationId,
+    isLoading,
+    createConversation,
+    deleteConversation,
+    renameConversation,
+    setActiveConversation,
+    refetch,
+  } = useConversationsHook();
+
+  // Memoize so consumers only re-render when actual values change,
+  // not on every parent render (which would cascade through the entire app).
+  const value = useMemo<ConversationsContextValue>(() => ({
+    conversations,
+    activeConversationId,
+    isLoading,
+    createConversation,
+    deleteConversation,
+    renameConversation,
+    setActiveConversation,
+    refetch,
+  }), [conversations, activeConversationId, isLoading, createConversation, deleteConversation, renameConversation, setActiveConversation, refetch]);
+
   return (
     <ConversationsContext.Provider value={value}>
       {children}

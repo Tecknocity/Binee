@@ -424,7 +424,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
   }, [supabase, ensureAndLoad]);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     setLoading(true);
     manualAuthInProgress.current = true;
     try {
@@ -451,9 +451,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       manualAuthInProgress.current = false;
     }
-  };
+  }, [supabase, ensureAndLoad]);
 
-  const signUp = async (email: string, password: string, name: string) => {
+  const signUp = useCallback(async (email: string, password: string, name: string) => {
     setLoading(true);
     manualAuthInProgress.current = true;
     try {
@@ -505,18 +505,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       manualAuthInProgress.current = false;
     }
-  };
+  }, [supabase, ensureAndLoad]);
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = useCallback(async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback`,
       },
     });
-  };
+  }, [supabase]);
 
-  const updateUser = async (data: { display_name?: string; avatar_url?: string | null }) => {
+  const updateUser = useCallback(async (data: { display_name?: string; avatar_url?: string | null }) => {
     const { error } = await supabase.auth.updateUser({ data });
     if (error) return { error: error.message };
     const { data: { session } } = await supabase.auth.getSession();
@@ -524,9 +524,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(mapSupabaseUser(session.user));
     }
     return {};
-  };
+  }, [supabase]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     setUser(null);
     setWorkspace(null);
     setWorkspaces([]);
@@ -551,17 +551,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       window.location.href = '/login';
     }
-  };
+  }, [supabase, queryClient]);
 
-  const switchWorkspace = (workspaceId: string) => {
-    const ws = workspaces.find((w) => w.id === workspaceId);
+  // Use a ref for workspaces so switchWorkspace doesn't need it as a dep
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
+
+  const switchWorkspace = useCallback((workspaceId: string) => {
+    const ws = workspacesRef.current.find((w) => w.id === workspaceId);
     if (ws) {
       setWorkspace(ws);
       if (typeof window !== 'undefined') {
         localStorage.setItem('binee_active_workspace', workspaceId);
       }
     }
-  };
+  }, []);
 
   // Memoize context value so consumers only re-render when actual state
   // values change — not on every AuthProvider render. Without this, every
