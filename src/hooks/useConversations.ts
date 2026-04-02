@@ -52,7 +52,7 @@ function getSupabase() {
 // ---------------------------------------------------------------------------
 
 export function useConversations() {
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversationId, _setActiveConversationId] = useState<string | null>(null);
   const { workspace, user } = useAuth();
   const supabase = getSupabase();
   const queryClient = useQueryClient();
@@ -60,6 +60,12 @@ export function useConversations() {
 
   const workspaceId = workspace?.id ?? null;
   const userId = user?.id ?? null;
+
+  // Debug wrapper
+  const setActiveConversationId = useCallback((id: string | null) => {
+    console.log('[binee:conv] setActiveConversationId', id);
+    _setActiveConversationId(id);
+  }, []);
 
   // -------------------------------------------------------------------------
   // React Query: fetch conversations
@@ -198,6 +204,7 @@ export function useConversations() {
   // -------------------------------------------------------------------------
 
   const createConversation = useCallback(async () => {
+    console.log('[binee:conv] createConversation', { workspaceId, userId });
     if (!workspaceId || !userId) return `conv-${Date.now()}`;
 
     const tempId = `conv-${Date.now()}`;
