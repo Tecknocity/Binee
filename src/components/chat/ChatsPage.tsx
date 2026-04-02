@@ -24,7 +24,6 @@ export default function ChatsPage() {
   const {
     conversations,
     createConversation,
-    setActiveConversation,
   } = useSharedConversations();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,8 +39,9 @@ export default function ChatsPage() {
   }, [conversations, searchQuery]);
 
   const handleSelectConversation = (id: string) => {
-    setActiveConversation(id);
-    router.push('/chat');
+    // Navigate directly to the conversation URL.
+    // The route component (/chat/[id]) will sync the context for sidebar highlight.
+    router.push(`/chat/${id}`);
   };
 
   const handleNewChat = () => {

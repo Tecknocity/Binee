@@ -58,7 +58,6 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
 
       if (res.ok) {
         addLog('Step 2: Loading workspaces...');
-        // Try with status filter; fall back without it if the column doesn't exist
         let memberRows = null;
         const attempt = await supabase
           .from('workspace_members')
@@ -134,7 +133,6 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
           joined_at: new Date().toISOString(),
         })).error;
 
-      // Retry with minimal columns if some don't exist yet
       if (memberErr && (memberErr.message.includes('status') || memberErr.message.includes('invited_email') || memberErr.message.includes('joined_at') || memberErr.message.includes('recursion'))) {
         addLog(`First insert failed (${memberErr.message}), retrying with minimal columns...`);
         memberErr = (await supabase
@@ -158,7 +156,6 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
 
       addLog('Member row created! Adding welcome credits...');
 
-      // Credit transaction (best-effort)
       await supabase.from('credit_transactions').insert({
         workspace_id: newWs.id,
         user_id: user.id,
@@ -168,14 +165,12 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
         description: 'Welcome to Binee! 10 free credits.',
       });
 
-      // Create profile (best-effort, try profiles then user_profiles)
       const { error: profileErr } = await supabase.from('profiles').upsert({
         user_id: user.id,
         email: user.email,
         full_name: displayName,
       }, { onConflict: 'user_id' });
       if (profileErr) {
-        // profiles table may not exist — try user_profiles as fallback
         await supabase.from('user_profiles').upsert({
           user_id: user.id,
           preferred_name: displayName,
@@ -244,6 +239,11 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
   );
 }
 
+/**
+ * ChatPage — the conversation ID comes directly from a prop (set by the route
+ * component from URL params). This is the industry-standard pattern:
+ * URL → prop → hook. No context middleman for the conversation ID.
+ */
 export default function ChatPage({ conversationId: propConversationId }: { conversationId?: string } = {}) {
   const { user } = useAuth();
   const { credit_balance, workspace, loading: wsLoading, error: wsError } = useWorkspaceContext();
@@ -254,24 +254,19 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
   const [pendingFirstMessage, setPendingFirstMessage] = useState<string | null>(null);
   const isOutOfCredits = credit_balance <= 0;
 
-  // All hooks must be called before any early return (React rules of hooks)
   const {
     conversations,
-    activeConversationId,
     createConversation,
     renameConversation,
     setActiveConversation,
   } = useSharedConversations();
 
-  // Prefer the prop (available synchronously from URL params on first render)
-  // over the context value (which is updated asynchronously via useEffect).
-  // This eliminates the one-frame delay where effectiveConversationId is null
-  // because the context hasn't been updated yet.
-  const effectiveConversationId = isNew ? null : (propConversationId ?? activeConversationId);
+  // Conversation ID flows directly from URL prop — no context delay.
+  // On /chat (no ID), this is null. On /chat/[id], it's the URL param.
+  const effectiveConversationId = isNew ? null : (propConversationId ?? null);
 
   console.log('[binee:page] ChatPage render', {
     propConversationId,
-    activeConversationId,
     effectiveConversationId,
     isNew,
     wsLoading,
@@ -295,16 +290,13 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
     pendingFirstMessage: !!pendingFirstMessage,
   });
 
-  // When ?new=1 is in URL, clear the active conversation so we show the welcome screen
+  // When ?new=1 is in URL, clear the active conversation so sidebar shows none selected
   useEffect(() => {
     if (isNew) {
       setActiveConversation(null);
       router.replace('/chat', { scroll: false });
     }
   }, [isNew, setActiveConversation, router]);
-
-  // Note: loadConversation is already triggered inside useChat when
-  // conversationId changes — no need to call it again here.
 
   const handleNewChat = useCallback(() => {
     setActiveConversation(null);
@@ -318,24 +310,21 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
         return;
       }
 
-      if (!activeConversationId) {
-        // Show the user's message in the chat view immediately,
-        // before the conversation is created in the database.
+      if (!effectiveConversationId) {
+        // New conversation: show user message immediately, create in DB, then send
         setPendingFirstMessage(content.trim());
         const newId = await createConversation();
-        // Start sending BEFORE clearing pendingFirstMessage so the
-        // optimistic user message is added to the messages array first.
-        // This prevents a flash of empty state between clearing the
-        // pending message and the optimistic insert.
         sendMessage(content, newId);
-        // Clear after a microtask to let React batch the optimistic
-        // message insert with this state update.
         queueMicrotask(() => setPendingFirstMessage(null));
+        // Navigate to the new conversation URL so the ID is in the URL
+        if (newId && !newId.startsWith('conv-')) {
+          router.push(`/chat/${newId}`, { scroll: false });
+        }
       } else {
         sendMessage(content);
       }
     },
-    [activeConversationId, createConversation, sendMessage, isOutOfCredits],
+    [effectiveConversationId, createConversation, sendMessage, isOutOfCredits, router],
   );
 
   const handleSuggestedPrompt = useCallback(
@@ -362,14 +351,14 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
 
   const handleRename = useCallback(
     (newTitle: string) => {
-      if (activeConversationId) {
-        renameConversation(activeConversationId, newTitle);
+      if (effectiveConversationId) {
+        renameConversation(effectiveConversationId, newTitle);
       }
     },
-    [activeConversationId, renameConversation],
+    [effectiveConversationId, renameConversation],
   );
 
-  // Show error state when workspace setup failed — with interactive fix
+  // Show error state when workspace setup failed
   if (!wsLoading && !workspace && user) {
     return <WorkspaceSetupError wsError={wsError} user={user} />;
   }
@@ -377,31 +366,26 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
   const hasMessages = messages.length > 0 || pendingFirstMessage !== null || (effectiveConversationId !== null && isLoadingHistory);
   const firstName = user?.display_name?.split(' ')[0] || undefined;
 
-  // Get the active conversation's title for the header
-  const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  // Get title from conversations list
+  const activeConversation = conversations.find((c) => c.id === effectiveConversationId);
   const conversationTitle = activeConversation?.title || 'New conversation';
 
-  // Determine which empty state variant to show
   const emptyStateVariant: EmptyStateVariant = isOutOfCredits
     ? 'no-credits'
     : workspace && !workspace.clickup_connected
       ? 'no-clickup'
       : 'no-conversations';
 
-  // Show welcome message when ClickUp just synced and this is the first conversation
   const showWelcome =
     !hasMessages &&
     emptyStateVariant === 'no-conversations' &&
     workspace?.clickup_connected &&
     conversations.length === 0;
 
-  // B-083: Welcome suggestions should only appear on the welcome/empty screen,
-  // never inside an active chat conversation (the opener already provides context).
   const isWelcomeConversation = false;
 
   return (
     <div className="flex h-full overflow-hidden bg-navy-base">
-      {/* Chat content area */}
       <div className="flex-1 min-w-0 flex flex-col">
         {hasMessages ? (
           <div className="flex-1 min-h-0 flex flex-col">
@@ -425,7 +409,6 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
               onCancelAction={handleCancelAction}
               onAlwaysAllowAction={handleAlwaysAllowAction}
             />
-            {/* B-083: Show suggestion cards after the welcome message */}
             {isWelcomeConversation && (
               <WelcomeSuggestions onSuggestedPrompt={handleSuggestedPrompt} />
             )}
@@ -456,7 +439,6 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
               />
             )}
 
-            {/* Show chat input below the welcome / empty state */}
             {(emptyStateVariant === 'no-conversations') && (
               <div className="shrink-0 w-full max-w-2xl mx-auto px-6 pb-6">
                 <ChatInput

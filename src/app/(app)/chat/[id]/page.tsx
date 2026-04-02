@@ -10,14 +10,15 @@ export default function ChatConversationRoute() {
   const conversationId = params.id as string;
   const { setActiveConversation } = useSharedConversations();
 
-  // Sync URL → context (for sidebar highlight, etc.)
+  // Sync URL → context for sidebar highlight only.
+  // ChatPage gets its conversationId directly from the prop below,
+  // NOT from this context update (which fires after render).
   useEffect(() => {
     if (conversationId) {
       setActiveConversation(conversationId);
     }
   }, [conversationId, setActiveConversation]);
 
-  // Pass conversationId directly as prop so ChatPage has it on FIRST render,
-  // before the context update above fires (which is deferred to after render).
+  // Pass conversationId directly as prop — available on FIRST render.
   return <ChatPage conversationId={conversationId} />;
 }

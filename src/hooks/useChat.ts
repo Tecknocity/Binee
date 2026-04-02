@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { queryKeys } from '@/lib/query/keys';
@@ -16,12 +16,9 @@ import {
 // ---------------------------------------------------------------------------
 
 function generateTitleFromMessage(content: string): string {
-  // Strip leading/trailing whitespace
   const trimmed = content.trim();
-  // Take first sentence or first 60 chars, whichever is shorter
   const firstSentence = trimmed.split(/[.!?\n]/)[0]?.trim() || trimmed;
   if (firstSentence.length <= 60) return firstSentence;
-  // Truncate at last word boundary before 60 chars
   const truncated = firstSentence.substring(0, 60);
   const lastSpace = truncated.lastIndexOf(' ');
   return (lastSpace > 20 ? truncated.substring(0, lastSpace) : truncated) + '…';
@@ -96,7 +93,6 @@ function formatToolCallDescription(
     ? status === 'pending' ? label.pending : label.success
     : status === 'pending' ? `Running ${toolName.replace(/_/g, ' ')}` : `Completed ${toolName.replace(/_/g, ' ')}`;
 
-  // Add context from tool_input
   const context = toolInput.name ?? toolInput.list_name ?? toolInput.title ?? toolInput.assignee_name;
   if (context && typeof context === 'string') {
     return `${base}: "${context}"`;
@@ -147,7 +143,6 @@ interface DbMessageRow {
 }
 
 function mapDbMessage(row: DbMessageRow): ChatMessage | null {
-  // Skip system messages — they're internal context, not displayed
   if (row.role === 'system') return null;
 
   const msg: ChatMessage = {
@@ -158,7 +153,6 @@ function mapDbMessage(row: DbMessageRow): ChatMessage | null {
     creditsConsumed: row.credits_used > 0 ? row.credits_used : undefined,
   };
 
-  // Hydrate tool calls from metadata if present
   if (row.metadata?.tool_calls && Array.isArray(row.metadata.tool_calls)) {
     msg.toolCalls = (row.metadata.tool_calls as ToolCallResult[]).map(
       (tc, i) => ({
@@ -176,7 +170,6 @@ function mapDbMessage(row: DbMessageRow): ChatMessage | null {
     );
   }
 
-  // Hydrate pending action from metadata if present
   if (row.metadata?.pending_action && typeof row.metadata.pending_action === 'object') {
     const pa = row.metadata.pending_action as Record<string, unknown>;
     msg.actionConfirmation = {
@@ -192,9 +185,7 @@ function mapDbMessage(row: DbMessageRow): ChatMessage | null {
   return msg;
 }
 
-// Stable module-level Supabase client — prevents dependency-array churn
-// that causes message reloads and realtime channel re-subscriptions.
-// Lazy-initialized to avoid SSR/prerender crashes (env vars missing).
+// Stable module-level Supabase client — singleton, never recreated.
 let _supabase: ReturnType<typeof createBrowserClient> | null = null;
 function getSupabase() {
   if (!_supabase) _supabase = createBrowserClient();
@@ -202,215 +193,128 @@ function getSupabase() {
 }
 
 // ---------------------------------------------------------------------------
-// Hook
+// Hook — React Query is the SINGLE source of truth for messages.
+//
+// Industry standard pattern:
+//   - useQuery fetches messages from DB, caches them, survives navigation
+//   - Optimistic updates via queryClient.setQueryData (for sent messages)
+//   - Realtime patches the query cache (for incoming messages)
+//   - NO local useState for messages — React Query IS the state
 // ---------------------------------------------------------------------------
 
 export function useChat(conversationId: string | null) {
-  // Use React Query's queryClient as a persistent cache for messages.
-  // Messages survive navigation: on unmount they stay in the query cache,
-  // on remount we read them back instantly (no spinner).
   const queryClient = useQueryClient();
-
-  // Initialize messages from React Query cache SYNCHRONOUSLY to avoid the
-  // empty flash on component remount. Without this, messages start as []
-  // and only get populated after the useEffect fires (one frame later),
-  // causing a visible flash where the chat appears empty.
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    if (conversationId && !conversationId.startsWith('conv-')) {
-      return queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(conversationId)) ?? [];
-    }
-    return [];
-  });
   const [isLoading, setIsLoading] = useState(false);
-  // Only show loading spinner if we don't already have cached messages
-  const [isLoadingHistory, setIsLoadingHistory] = useState(() => {
-    if (conversationId && !conversationId.startsWith('conv-')) {
-      const cached = queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(conversationId));
-      return !cached || cached.length === 0;
-    }
-    return false;
-  });
   const [error, setError] = useState<string | null>(null);
   const totalCredits = useRef(0);
   const { workspace, user } = useAuth();
   const supabase = getSupabase();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  // Ref to allow auto-approve to call confirmAction before it's defined in the hook
   const confirmActionRef = useRef<(actionId: string, confirmed: boolean) => void>(() => {});
-  // Guard: when sendMessage is in-flight, prevent loadConversation from wiping
-  // the optimistic messages (race condition when a new conversation is created)
   const sendingRef = useRef(false);
-  // Track whether the auto-generated title has already been set for this conversation.
-  // Prevents stale-closure bugs from overwriting the title on every message.
   const titleSetRef = useRef(false);
 
-  // Handle conversationId changes synchronously (React 18+ pattern).
-  // When navigating between conversations on the same page component
-  // (e.g. /chat/abc → /chat/xyz), useState initializer doesn't re-run.
-  // This synchronously loads cached messages so the UI never shows empty.
-  const prevConvIdRef = useRef(conversationId);
-  if (prevConvIdRef.current !== conversationId) {
-    prevConvIdRef.current = conversationId;
-    if (conversationId && !conversationId.startsWith('conv-')) {
-      const cached = queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(conversationId)) ?? [];
-      if (cached.length > 0) {
-        setMessages(cached);
-        setIsLoadingHistory(false);
-      } else {
-        setMessages([]);
-        setIsLoadingHistory(true);
-      }
-    } else if (!conversationId) {
-      setMessages([]);
-      setIsLoadingHistory(false);
-    }
-    totalCredits.current = 0;
-    titleSetRef.current = false;
-  }
-
-  // Stable IDs for dependency arrays — avoids re-running effects when the
-  // workspace/user *object* reference changes but the ID hasn't.
   const workspaceId = workspace?.id ?? null;
   const userId = user?.id ?? null;
 
   // -------------------------------------------------------------------------
-  // Load messages from database
+  // React Query: messages are the SINGLE source of truth.
+  // No useState for messages — useQuery manages fetch, cache, and display.
   // -------------------------------------------------------------------------
 
-  const loadConversation = useCallback(
-    async (id: string | null) => {
-      console.log('[binee:chat] loadConversation called', { id, workspaceId, userId });
-      setError(null);
+  const isValidConvId = !!conversationId && !conversationId.startsWith('conv-');
+  const isReady = isValidConvId && !!workspaceId && !!userId;
 
-      if (!id || !workspaceId || !userId) {
-        console.log('[binee:chat] loadConversation early exit — missing', { id: !!id, workspaceId: !!workspaceId, userId: !!userId });
-        if (!id) {
-          setMessages([]);
-          totalCredits.current = 0;
-        }
-        setIsLoadingHistory(false);
-        return;
-      }
+  const {
+    data: messages = [],
+    isLoading: isLoadingHistory,
+  } = useQuery({
+    queryKey: conversationId ? queryKeys.messages(conversationId) : ['messages', 'none'],
+    queryFn: async () => {
+      console.log('[binee:chat] useQuery queryFn fired', { conversationId, workspaceId, userId });
 
-      // Skip loading for temporary conversation IDs (not yet persisted to DB)
-      if (id.startsWith('conv-')) {
-        console.log('[binee:chat] loadConversation skip — temp ID');
-        setIsLoadingHistory(false);
-        return;
-      }
-
-      // If a message is currently being sent (e.g. right after conversation
-      // creation), skip reloading to avoid wiping the optimistic user message.
       if (sendingRef.current) {
-        console.log('[binee:chat] loadConversation skip — sending in progress');
-        setIsLoadingHistory(false);
-        return;
+        console.log('[binee:chat] queryFn skip — sending in progress');
+        // Return current cache to avoid wiping optimistic messages
+        return queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(conversationId!)) ?? [];
       }
 
-      // Check React Query cache first — show cached messages instantly (no spinner).
-      // Then refresh from DB in the background.
-      const cached = queryClient.getQueryData<ChatMessage[]>(queryKeys.messages(id)) ?? [];
-      if (cached.length > 0) {
-        console.log('[binee:chat] loadConversation — using cache', cached.length, 'messages');
-        setMessages(cached);
-        totalCredits.current = cached.reduce(
-          (sum, m) => sum + (m.creditsConsumed ?? 0),
-          0,
-        );
+      console.log('[binee:chat] queryFn — querying Supabase...');
+      const { data, error: fetchError } = await supabase
+        .from('messages')
+        .select('id, role, content, credits_used, metadata, created_at')
+        .eq('conversation_id', conversationId!)
+        .eq('workspace_id', workspaceId!)
+        .order('created_at', { ascending: true })
+        .limit(200);
+
+      console.log('[binee:chat] queryFn — query done', { error: fetchError?.message, rows: data?.length });
+
+      if (fetchError) {
+        console.error('[binee:chat] Failed to load messages:', fetchError.message);
+        throw fetchError;
+      }
+
+      const mapped = (data ?? [])
+        .map((row) => mapDbMessage(row as DbMessageRow))
+        .filter((m): m is ChatMessage => m !== null);
+
+      totalCredits.current = mapped.reduce(
+        (sum, m) => sum + (m.creditsConsumed ?? 0),
+        0,
+      );
+
+      if (mapped.length > 0) {
         titleSetRef.current = true;
-        // Don't show loading spinner — we already have data to display
-      } else {
-        console.log('[binee:chat] loadConversation — no cache, showing spinner');
-        setIsLoadingHistory(true);
       }
 
-      try {
-        console.log('[binee:chat] loadConversation — querying Supabase...');
-        const { data, error: fetchError } = await supabase
-          .from('messages')
-          .select('id, role, content, credits_used, metadata, created_at')
-          .eq('conversation_id', id)
-          .eq('workspace_id', workspaceId)
-          .order('created_at', { ascending: true })
-          .limit(200);
-
-        console.log('[binee:chat] loadConversation — query done', { error: fetchError?.message, rows: data?.length });
-
-        if (fetchError) {
-          console.error('Failed to load messages:', fetchError.message);
-          // Keep cached messages if DB fetch fails — don't wipe the screen
-          if (cached.length === 0) {
-            setMessages([]);
-            totalCredits.current = 0;
-          }
-          return;
-        }
-
-        const mapped = (data ?? [])
-          .map((row) => mapDbMessage(row as DbMessageRow))
-          .filter((m): m is ChatMessage => m !== null);
-
-        // Sum up credits from loaded messages
-        totalCredits.current = mapped.reduce(
-          (sum, m) => sum + (m.creditsConsumed ?? 0),
-          0,
-        );
-
-        // If the conversation already has messages, the title was already set
-        if (mapped.length > 0) {
-          titleSetRef.current = true;
-        }
-
-        setMessages(mapped);
-        // Write through to React Query cache (survives navigation)
-        if (id) queryClient.setQueryData(queryKeys.messages(id), mapped);
-      } catch (err) {
-        console.error('[useChat] loadConversation exception:', err);
-        if (cached.length === 0) {
-          setMessages([]);
-          totalCredits.current = 0;
-        }
-      } finally {
-        console.log('[binee:chat] loadConversation — done, setting isLoadingHistory=false');
-        setIsLoadingHistory(false);
-      }
+      return mapped;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-    [workspaceId, userId],
-  );
+    enabled: isReady,
+    // Keep messages cached for 30 min after navigating away
+    gcTime: 30 * 60 * 1000,
+    // Consider fresh for 60s — avoids redundant refetches on rapid navigation
+    staleTime: 60 * 1000,
+    // Keep previous data while refetching (prevents flash to empty)
+    placeholderData: (previousData) => previousData,
+  });
 
-  // Use a ref so the effect only re-runs when primitive IDs change,
-  // NOT when the loadConversation function identity changes (which was
-  // causing an infinite loop: query completes → cache update → loadConversation
-  // gets new reference → effect fires again → query starts again → repeat).
-  const loadConversationRef = useRef(loadConversation);
-  loadConversationRef.current = loadConversation;
-
-  // Load messages when conversationId changes
-  useEffect(() => {
-    console.log('[binee:chat] conversationId effect fired', { conversationId, workspaceId, userId });
+  // Reset title guard when conversation changes
+  const prevConvIdRef = useRef(conversationId);
+  if (prevConvIdRef.current !== conversationId) {
+    prevConvIdRef.current = conversationId;
     titleSetRef.current = false;
-    loadConversationRef.current(conversationId);
-  }, [conversationId, workspaceId, userId]);
+    totalCredits.current = 0;
+  }
 
-  // Helper: update messages state AND write through to React Query cache
-  const updateMessages = useCallback(
+  // Log for diagnostics
+  console.log('[binee:chat] useChat render', {
+    conversationId,
+    messagesCount: messages.length,
+    isLoadingHistory,
+    isReady,
+  });
+
+  // -------------------------------------------------------------------------
+  // Helper: patch messages in React Query cache (the single source of truth)
+  // -------------------------------------------------------------------------
+
+  const patchMessages = useCallback(
     (updater: (prev: ChatMessage[]) => ChatMessage[], convId?: string) => {
-      setMessages((prev) => {
-        const next = updater(prev);
-        const cacheId = convId || conversationId;
-        if (cacheId) queryClient.setQueryData(queryKeys.messages(cacheId), next);
-        return next;
-      });
+      const cacheId = convId || conversationId;
+      if (!cacheId) return;
+      queryClient.setQueryData<ChatMessage[]>(
+        queryKeys.messages(cacheId),
+        (prev = []) => updater(prev),
+      );
     },
     [conversationId, queryClient],
   );
 
   // -------------------------------------------------------------------------
-  // Realtime subscription for new messages
+  // Realtime subscription — patches React Query cache directly
   // -------------------------------------------------------------------------
 
-  // Shared helper: tears down any existing channel and creates a new one.
   const subscribeToMessages = useCallback((convId: string) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
@@ -432,13 +336,13 @@ export function useChat(conversationId: string | null) {
           const mapped = mapDbMessage(row);
           if (!mapped) return;
 
-          updateMessages((prev) => {
+          patchMessages((prev) => {
             if (prev.some((m) =>
               m.id === mapped.id ||
               (m.role === mapped.role && m.content === mapped.content)
             )) return prev;
             return [...prev, mapped];
-          });
+          }, convId);
 
           if (mapped.creditsConsumed) {
             totalCredits.current += mapped.creditsConsumed;
@@ -449,15 +353,15 @@ export function useChat(conversationId: string | null) {
 
     channelRef.current = channel;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, updateMessages]);
+  }, [supabase, patchMessages]);
 
-  // Use ref to avoid re-subscribing when subscribeToMessages changes identity
   const subscribeToMessagesRef = useRef(subscribeToMessages);
   subscribeToMessagesRef.current = subscribeToMessages;
 
   useEffect(() => {
     if (!conversationId || !workspaceId) return;
 
+    console.log('[binee:chat] subscribing to realtime', { conversationId });
     subscribeToMessagesRef.current(conversationId);
 
     return () => {
@@ -478,9 +382,6 @@ export function useChat(conversationId: string | null) {
       const effectiveId = overrideConversationId || conversationId;
       if (!effectiveId || !content.trim()) return;
 
-      // workspaceId and userId are stable (from outer scope, derived from IDs only)
-
-      // Prevent loadConversation from wiping our optimistic message
       sendingRef.current = true;
 
       const userMessage: ChatMessage = {
@@ -490,13 +391,14 @@ export function useChat(conversationId: string | null) {
         timestamp: new Date(),
       };
 
-      updateMessages((prev) => [...prev, userMessage], effectiveId);
+      // Optimistic update: add user message to React Query cache
+      patchMessages((prev) => [...prev, userMessage], effectiveId);
       setIsLoading(true);
       setError(null);
 
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 65_000); // 65s — slightly above Vercel's 60s max
+        const timeoutId = setTimeout(() => controller.abort(), 65_000);
 
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -535,7 +437,6 @@ export function useChat(conversationId: string | null) {
             tool_input: tc.tool_input,
           }));
 
-        // B-045: If the response includes a pending action, attach it as actionConfirmation
         const actionConfirmation: ActionConfirmationData | undefined =
           data.pending_action
             ? {
@@ -544,7 +445,7 @@ export function useChat(conversationId: string | null) {
                 trust_tier: data.pending_action.trust_tier,
                 description: data.pending_action.description,
                 details: data.pending_action.details,
-                confirmed: null, // pending user decision
+                confirmed: null,
               }
             : undefined;
 
@@ -559,13 +460,9 @@ export function useChat(conversationId: string | null) {
         };
 
         totalCredits.current += data.credits_consumed ?? 0;
-        updateMessages((prev) => [...prev, assistantMessage], effectiveId);
+        patchMessages((prev) => [...prev, assistantMessage], effectiveId);
 
-        // SAFETY NET: verify the assistant message was saved server-side.
-        // The server saves it in handleChat step 10, but if it failed silently
-        // (e.g. credits_used type mismatch, timeout), the message only exists
-        // in React state and will be lost on page refresh. Check after a short
-        // delay and save client-side if missing.
+        // SAFETY NET: verify assistant message was saved server-side
         if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
           setTimeout(async () => {
             try {
@@ -577,8 +474,6 @@ export function useChat(conversationId: string | null) {
                 .eq('role', 'assistant')
                 .order('created_at', { ascending: false })
                 .limit(1);
-              // If no assistant message found for this conversation's latest,
-              // save it client-side as a fallback
               if (!existing || existing.length === 0) {
                 console.warn('[useChat] Assistant message not found in DB — saving client-side fallback');
                 await supabase.from('messages').insert({
@@ -594,12 +489,12 @@ export function useChat(conversationId: string | null) {
                 });
               }
             } catch {
-              // Non-critical — best effort
+              // Non-critical
             }
-          }, 3000); // 3s delay to give server time to complete
+          }, 3000);
         }
 
-        // Update conversation title (only on the very first message) and timestamp
+        // Update conversation title (first message only) and timestamp
         if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
           const updatePayload: Record<string, string> = {
             updated_at: new Date().toISOString(),
@@ -617,7 +512,7 @@ export function useChat(conversationId: string | null) {
             });
         }
 
-        // B-045: Auto-approve if user has "Always Allow" for this operation type
+        // B-045: Auto-approve
         if (
           actionConfirmation &&
           shouldAutoApprove(actionConfirmation.tool_name, actionConfirmation.trust_tier)
@@ -634,7 +529,6 @@ export function useChat(conversationId: string | null) {
           : err instanceof Error
             ? err.message
             : 'An unexpected error occurred';
-        // Apply the same user-friendly formatting used for tool call errors
         const errorDetail = formatErrorMessage(rawDetail);
         const fallbackContent =
           `Something went wrong: ${errorDetail}`;
@@ -645,15 +539,12 @@ export function useChat(conversationId: string | null) {
           timestamp: new Date(),
           creditsConsumed: 0,
         };
-        updateMessages((prev) => [...prev, fallbackMessage], effectiveId);
+        patchMessages((prev) => [...prev, fallbackMessage], effectiveId);
         setError(errorDetail);
 
-        // Persist error message to DB so chat history shows what went wrong.
-        // Note: the user message is already saved server-side in handleChat step 3c
-        // (before the AI call), so we only save the error response here.
+        // Persist error message to DB
         if (workspaceId && effectiveId && !effectiveId.startsWith('conv-')) {
           try {
-            // Save assistant error message
             await supabase.from('messages').insert({
               workspace_id: workspaceId,
               conversation_id: effectiveId,
@@ -662,7 +553,6 @@ export function useChat(conversationId: string | null) {
               credits_used: 0,
               metadata: { error: true, error_detail: errorDetail },
             });
-            // Auto-generate title from first message if this is a new conversation
             const updatePayload: Record<string, string> = {
               updated_at: new Date().toISOString(),
             };
@@ -684,19 +574,17 @@ export function useChat(conversationId: string | null) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-    [conversationId, workspaceId, userId],
+    [conversationId, workspaceId, userId, patchMessages],
   );
 
   // -------------------------------------------------------------------------
-  // B-045: Confirm or cancel a pending write action via API
+  // B-045: Confirm or cancel a pending write action
   // -------------------------------------------------------------------------
 
   const confirmAction = useCallback(
     async (actionId: string, confirmed: boolean) => {
-      // workspaceId is used directly from outer scope
-
-      // Optimistically update the UI
-      setMessages((prev) =>
+      // Optimistic update in React Query cache
+      patchMessages((prev) =>
         prev.map((msg) => {
           if (msg.actionConfirmation?.id === actionId) {
             return {
@@ -729,7 +617,6 @@ export function useChat(conversationId: string | null) {
 
         const data = await res.json();
 
-        // If confirmed and executed, add a follow-up message with the result
         if (confirmed && data.status === 'executed' && data.result) {
           const resultContent = data.result.message ?? 'Action completed successfully.';
           const resultMessage: ChatMessage = {
@@ -747,8 +634,7 @@ export function useChat(conversationId: string | null) {
               },
             ],
           };
-          setMessages((prev) => [...prev, resultMessage]);
-          // Persist to DB so result survives page reload
+          patchMessages((prev) => [...prev, resultMessage]);
           if (workspaceId && conversationId) {
             supabase.from('messages').insert({
               workspace_id: workspaceId,
@@ -769,7 +655,7 @@ export function useChat(conversationId: string | null) {
             content: failContent,
             timestamp: new Date(),
           };
-          setMessages((prev) => [...prev, errorMessage]);
+          patchMessages((prev) => [...prev, errorMessage]);
           if (workspaceId && conversationId) {
             supabase.from('messages').insert({
               workspace_id: workspaceId,
@@ -791,16 +677,14 @@ export function useChat(conversationId: string | null) {
             'Sorry, there was an error processing the confirmation. Please try again.',
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, errorMessage]);
+        patchMessages((prev) => [...prev, errorMessage]);
       }
     },
-    [conversationId, workspaceId],
+    [conversationId, workspaceId, patchMessages],
   );
 
-  // Keep ref in sync so auto-approve can call confirmAction
   confirmActionRef.current = confirmAction;
 
-  // B-045: "Always Allow" — stores preference and confirms the action
   const alwaysAllowAction = useCallback(
     (actionId: string, toolName: string) => {
       setActionPreference(toolName, 'always_allow');
@@ -817,7 +701,6 @@ export function useChat(conversationId: string | null) {
     sendMessage,
     confirmAction,
     alwaysAllowAction,
-    loadConversation,
     totalCreditsConsumed: totalCredits.current,
   };
 }
