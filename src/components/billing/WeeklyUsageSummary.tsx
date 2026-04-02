@@ -92,45 +92,49 @@ export default function WeeklyUsageSummary() {
           return;
         }
 
-        if (rows && rows.length > 0) {
-          // Aggregate by week
-          const weekMap = new Map<string, WeeklyData>();
+        // Build all 8 weeks (including empty ones) so the chart always shows the full range
+        const weekMap = new Map<string, WeeklyData>();
 
+        // Pre-fill all 8 weeks starting from the current week going back
+        const now = new Date();
+        const currentWeekStart = getWeekStart(now);
+        for (let i = 7; i >= 0; i--) {
+          const d = new Date(currentWeekStart);
+          d.setDate(d.getDate() - i * 7);
+          const weekKey = d.toISOString().slice(0, 10);
+          weekMap.set(weekKey, {
+            week: d.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            }),
+            total: 0,
+            chat: 0,
+            setup: 0,
+          });
+        }
+
+        if (rows && rows.length > 0) {
           for (const row of rows) {
             const weekKey = getWeekStart(new Date(row.created_at));
-            let entry = weekMap.get(weekKey);
-            if (!entry) {
-              entry = {
-                week: new Date(weekKey).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                }),
-                total: 0,
-                chat: 0,
-                setup: 0,
-              };
-              weekMap.set(weekKey, entry);
-            }
+            const entry = weekMap.get(weekKey);
+            if (!entry) continue; // outside the 8-week window
 
             const credits = Number(row.credits_deducted ?? 0);
             entry.total += credits;
             // Map action_type to chart bucket: orchestrator/general_chat → chat, setup → setup
             const rawType = row.action_type ?? '';
-            const bucket: 'chat' | 'setup' | null =
-              rawType === 'setup' ? 'setup' :
-              (rawType === 'chat' || rawType === 'orchestrator' || rawType === 'general_chat') ? 'chat' :
-              'chat'; // default all AI usage to chat bucket
+            const bucket: 'chat' | 'setup' =
+              rawType === 'setup' ? 'setup' : 'chat';
             entry[bucket] += credits;
           }
-
-          // Sort by week and take last 8
-          const sorted = Array.from(weekMap.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .slice(-8)
-            .map(([, v]) => v);
-
-          setData(sorted);
         }
+
+        // Sort by week key (already in order, but ensure it)
+        const sorted = Array.from(weekMap.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([, v]) => v);
+
+        setData(sorted);
 
         setLoading(false);
       })
