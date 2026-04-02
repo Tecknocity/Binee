@@ -26,12 +26,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
   }
 
-  // Detect stale syncs: if status is "syncing" but started > 10 minutes ago,
-  // the sync process likely crashed or timed out. Auto-recover to "error".
-  if (workspace.clickup_sync_status === 'syncing' && workspace.clickup_sync_started_at) {
-    const startedAt = new Date(workspace.clickup_sync_started_at).getTime();
-    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-    if (startedAt < tenMinutesAgo) {
+  // Detect stale syncs: if status is "syncing" but either:
+  // 1. started > 10 minutes ago, OR
+  // 2. no started_at timestamp at all (legacy stuck sync from before this fix)
+  // then the sync process likely crashed or timed out. Auto-recover to "error".
+  if (workspace.clickup_sync_status === 'syncing') {
+    let isStale = false;
+
+    if (workspace.clickup_sync_started_at) {
+      const startedAt = new Date(workspace.clickup_sync_started_at).getTime();
+      const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+      isStale = startedAt < tenMinutesAgo;
+    } else {
+      // No timestamp means this is a legacy stuck sync — recover immediately
+      isStale = true;
+    }
+
+    if (isStale) {
       workspace.clickup_sync_status = 'error';
       workspace.clickup_sync_error = 'Sync timed out. Please try again.';
       // Update the DB so it doesn't stay stuck
