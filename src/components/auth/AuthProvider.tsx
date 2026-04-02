@@ -438,10 +438,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     );
 
+    // Industry standard: force-refresh session when tab becomes visible again.
+    // When a tab is backgrounded, the auth token may expire. Calling getSession()
+    // on visibility change ensures the token is refreshed before any data queries
+    // run. This is what Linear, Slack, and Claude.ai do.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !cancelled) {
+        console.log('[binee:auth] Tab visible — refreshing session');
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (cancelled) return;
+          if (session?.user) {
+            setUser(mapSupabaseUser(session.user));
+          }
+        }).catch(() => {
+          // Non-critical — next API call will trigger refresh anyway
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       cancelled = true;
       clearTimeout(timeout);
       subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
   }, [supabase, ensureAndLoad]);
