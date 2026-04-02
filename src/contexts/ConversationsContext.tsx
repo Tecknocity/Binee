@@ -10,12 +10,10 @@ import type { Conversation } from '@/hooks/useConversations';
 
 interface ConversationsContextValue {
   conversations: Conversation[];
-  activeConversationId: string | null;
   isLoading: boolean;
   createConversation: () => Promise<string>;
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
-  setActiveConversation: (id: string | null) => void;
   refetch: () => Promise<unknown>;
 }
 
@@ -28,12 +26,10 @@ const ConversationsContext = createContext<ConversationsContextValue | null>(nul
 export function ConversationsProvider({ children }: { children: ReactNode }) {
   const {
     conversations,
-    activeConversationId,
     isLoading,
     createConversation,
     deleteConversation,
     renameConversation,
-    setActiveConversation,
     refetch,
   } = useConversationsHook();
 
@@ -41,14 +37,12 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
   // not on every parent render (which would cascade through the entire app).
   const value = useMemo<ConversationsContextValue>(() => ({
     conversations,
-    activeConversationId,
     isLoading,
     createConversation,
     deleteConversation,
     renameConversation,
-    setActiveConversation,
     refetch,
-  }), [conversations, activeConversationId, isLoading, createConversation, deleteConversation, renameConversation, setActiveConversation, refetch]);
+  }), [conversations, isLoading, createConversation, deleteConversation, renameConversation, refetch]);
 
   return (
     <ConversationsContext.Provider value={value}>

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { queryKeys } from '@/lib/query/keys';
+import { useConversationUI } from '@/stores/conversationUI';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,7 +53,10 @@ function getSupabase() {
 // ---------------------------------------------------------------------------
 
 export function useConversations() {
-  const [activeConversationId, _setActiveConversationId] = useState<string | null>(null);
+  // Active conversation ID lives in Zustand — only components that read it re-render.
+  const activeConversationId = useConversationUI((s) => s.activeConversationId);
+  const setActiveConversationId = useConversationUI((s) => s.setActiveConversation);
+
   const { workspace, user } = useAuth();
   const supabase = getSupabase();
   const queryClient = useQueryClient();
@@ -60,12 +64,6 @@ export function useConversations() {
 
   const workspaceId = workspace?.id ?? null;
   const userId = user?.id ?? null;
-
-  // Debug wrapper
-  const setActiveConversationId = useCallback((id: string | null) => {
-    console.log('[binee:conv] setActiveConversationId', id);
-    _setActiveConversationId(id);
-  }, []);
 
   // -------------------------------------------------------------------------
   // React Query: fetch conversations
@@ -319,10 +317,6 @@ export function useConversations() {
     [workspaceId, userId, queryClient, refetch],
   );
 
-  const setActiveConversation = useCallback((id: string | null) => {
-    setActiveConversationId(id);
-  }, []);
-
   return {
     conversations,
     activeConversationId,
@@ -330,7 +324,7 @@ export function useConversations() {
     createConversation,
     deleteConversation,
     renameConversation,
-    setActiveConversation,
+    setActiveConversation: setActiveConversationId,
     refetch,
   };
 }

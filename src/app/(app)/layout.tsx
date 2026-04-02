@@ -6,6 +6,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import AppLayout from '@/components/layout/AppLayout';
 import { SidebarProvider } from '@/hooks/useSidebar';
 import { ConversationsProvider } from '@/contexts/ConversationsContext';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -32,7 +33,11 @@ export default function AppRouteLayout({ children }: { children: React.ReactNode
         <SidebarProvider>
           <ConversationsProvider>
             <Suspense fallback={<AppLoadingFallback />}>
-              <AppLayout>{children}</AppLayout>
+              <AppLayout>
+                <ErrorBoundary>
+                  {children}
+                </ErrorBoundary>
+              </AppLayout>
             </Suspense>
           </ConversationsProvider>
         </SidebarProvider>
