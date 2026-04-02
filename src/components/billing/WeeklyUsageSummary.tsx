@@ -19,23 +19,11 @@ import { cn } from '@/lib/utils';
 interface WeeklyData {
   weekKey: string;
   week: string;
-  total: number;
-  chat: number;
-  setup: number;
+  credits: number;
   isCurrentWeek: boolean;
 }
 
 type Period = 4 | 8 | 12;
-
-const ACTION_COLORS: Record<string, string> = {
-  chat: 'var(--color-accent)',
-  setup: '#eab308',
-};
-
-const ACTION_LABELS: Record<string, string> = {
-  chat: 'Chat',
-  setup: 'Setup',
-};
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: 4, label: '4 weeks' },
@@ -49,32 +37,19 @@ function formatCredits(n: number): string {
   return rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1);
 }
 
-function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey: string; value: number; color: string }>; label?: string }) {
+function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
-
-  const total = payload.reduce((sum, p) => sum + p.value, 0);
 
   return (
     <div className="rounded-lg bg-navy-dark border border-border px-3 py-2.5 shadow-lg">
-      <p className="text-xs text-text-muted mb-1.5">{label}</p>
-      {payload.map((entry) => (
-        <div key={entry.dataKey} className="flex items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: entry.color }}
-            />
-            <span className="text-text-secondary">{ACTION_LABELS[entry.dataKey] ?? entry.dataKey}</span>
-          </div>
-          <span className="font-mono font-medium text-text-primary">{formatCredits(entry.value)}</span>
+      <p className="text-xs text-text-muted mb-1">{label}</p>
+      <div className="flex items-center justify-between gap-4 text-xs">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-accent" />
+          <span className="text-text-secondary">Credits</span>
         </div>
-      ))}
-      {payload.length > 1 && (
-        <div className="flex items-center justify-between gap-4 text-xs border-t border-border/50 mt-1 pt-1">
-          <span className="text-text-secondary">Total</span>
-          <span className="font-mono font-medium text-text-primary">{formatCredits(total)}</span>
-        </div>
-      )}
+        <span className="font-mono font-medium text-text-primary">{formatCredits(payload[0].value)}</span>
+      </div>
     </div>
   );
 }
@@ -107,7 +82,7 @@ function formatWeekRange(weekStartISO: string): string {
 
 export default function WeeklyUsageSummary() {
   const { workspace } = useAuth();
-  const [allRows, setAllRows] = useState<Array<{ action_type: string; credits_deducted: number; created_at: string }>>([]);
+  const [allRows, setAllRows] = useState<Array<{ credits_deducted: number; created_at: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>(8);
 
@@ -123,7 +98,7 @@ export default function WeeklyUsageSummary() {
     Promise.resolve(
       supabase
         .from('credit_usage')
-        .select('action_type, credits_deducted, created_at')
+        .select('credits_deducted, created_at')
         .eq('workspace_id', workspace.id)
         .gte('created_at', twelveWeeksAgo.toISOString())
         .order('created_at', { ascending: true }),
@@ -152,9 +127,7 @@ export default function WeeklyUsageSummary() {
       weekMap.set(weekKey, {
         weekKey,
         week: formatWeekRange(weekKey),
-        total: 0,
-        chat: 0,
-        setup: 0,
+        credits: 0,
         isCurrentWeek: weekKey === currentWeekStartStr,
       });
     }
@@ -164,21 +137,16 @@ export default function WeeklyUsageSummary() {
       const weekKey = getWeekStart(new Date(row.created_at));
       const entry = weekMap.get(weekKey);
       if (!entry) continue;
-
-      const credits = Number(row.credits_deducted ?? 0);
-      entry.total += credits;
-      const bucket: 'chat' | 'setup' = (row.action_type ?? '') === 'setup' ? 'setup' : 'chat';
-      entry[bucket] += credits;
+      entry.credits += Number(row.credits_deducted ?? 0);
     }
 
     const sorted = Array.from(weekMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, v]) => v);
 
-    const total = sorted.reduce((s, d) => s + d.total, 0);
+    const total = sorted.reduce((s, d) => s + d.credits, 0);
 
     // Calculate trend: compare this period's total vs the previous period
-    // We need to look at data outside the current window for the previous period
     const periodStart = new Date(currentWeekStartStr + 'T00:00:00');
     periodStart.setDate(periodStart.getDate() - (period - 1) * 7);
     const prevPeriodStart = new Date(periodStart);
@@ -285,20 +253,11 @@ export default function WeeklyUsageSummary() {
               }}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="chat" stackId="usage" fill={ACTION_COLORS.chat} radius={[0, 0, 0, 0]}>
+            <Bar dataKey="credits" fill="var(--color-accent)" radius={[3, 3, 0, 0]}>
               {data.map((entry) => (
                 <Cell
                   key={entry.weekKey}
-                  fill={ACTION_COLORS.chat}
-                  opacity={entry.isCurrentWeek ? 0.6 : 1}
-                />
-              ))}
-            </Bar>
-            <Bar dataKey="setup" stackId="usage" fill={ACTION_COLORS.setup} radius={[3, 3, 0, 0]}>
-              {data.map((entry) => (
-                <Cell
-                  key={entry.weekKey}
-                  fill={ACTION_COLORS.setup}
+                  fill="var(--color-accent)"
                   opacity={entry.isCurrentWeek ? 0.6 : 1}
                 />
               ))}
@@ -309,17 +268,12 @@ export default function WeeklyUsageSummary() {
 
       {/* Legend */}
       {data.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
-          {Object.entries(ACTION_LABELS).map(([key, label]) => (
-            <div key={key} className="flex items-center gap-1.5 text-xs text-text-muted">
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: ACTION_COLORS[key] }}
-              />
-              {label}
-            </div>
-          ))}
-          <div className="flex items-center gap-1.5 text-xs text-text-muted ml-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-text-muted">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-accent" />
+            Credits used
+          </div>
+          <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-accent/50" />
             Current week (partial)
           </div>
