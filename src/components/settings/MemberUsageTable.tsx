@@ -109,53 +109,65 @@ export default function MemberUsageTable() {
   const [sortAsc, setSortAsc] = useState(false);
   const [showPeriodMenu, setShowPeriodMenu] = useState(false);
 
+  // Fetch members once, re-fetch transactions when period changes
   useEffect(() => {
     if (!workspace?.id) return;
 
     const supabase = createBrowserClient();
 
-    async function fetchData() {
-      try {
-        const [membersResult, txResult] = await Promise.all([
-          supabase
-            .from('workspace_members')
-            .select('user_id, display_name, email, avatar_url')
-            .eq('workspace_id', workspace!.id)
-            .eq('status', 'active'),
-          supabase
-            .from('credit_transactions')
-            .select('user_id, amount, created_at, description')
-            .eq('workspace_id', workspace!.id)
-            .eq('type', 'deduction'),
-        ]);
-
-        if (membersResult.error) {
-          console.error('[MemberUsageTable] Members query failed:', membersResult.error.message);
-          return;
+    supabase
+      .from('workspace_members')
+      .select('user_id, display_name, email, avatar_url')
+      .eq('workspace_id', workspace.id)
+      .eq('status', 'active')
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[MemberUsageTable] Members query failed:', error.message);
+        } else {
+          setMemberData(data ?? []);
         }
+      });
+  }, [workspace?.id]);
 
-        setMemberData(membersResult.data ?? []);
-        setTxData(txResult.data ?? []);
-      } catch (err) {
-        console.error('[MemberUsageTable] Unexpected error:', err);
-      } finally {
-        setLoading(false);
-      }
+  useEffect(() => {
+    if (!workspace?.id) return;
+
+    setLoading(true);
+    const supabase = createBrowserClient();
+
+    // Only fetch transactions for the selected period (bounded query)
+    const periodStart = getPeriodStart(period);
+
+    let query = supabase
+      .from('credit_transactions')
+      .select('user_id, amount, created_at, description')
+      .eq('workspace_id', workspace.id)
+      .eq('type', 'deduction');
+
+    if (periodStart) {
+      query = query.gte('created_at', periodStart.toISOString());
     }
 
-    fetchData();
-  }, [workspace?.id]);
+    query
+      .order('created_at', { ascending: false })
+      .limit(5000) // safety cap for very active workspaces
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[MemberUsageTable] Transactions query failed:', error.message);
+        } else {
+          setTxData(data ?? []);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [workspace?.id, period]);
 
   const members = useMemo(() => {
     if (!memberData.length) return [];
 
-    const periodStart = getPeriodStart(period);
-
-    // Aggregate usage per member within the selected period
+    // Transactions are already filtered by period from the query
     const usageMap = new Map<string, { total: number; chat: number; setup: number; lastActive: string | null }>();
     for (const tx of txData) {
       if (!tx.user_id) continue;
-      if (periodStart && new Date(tx.created_at) < periodStart) continue;
 
       const entry = usageMap.get(tx.user_id) ?? { total: 0, chat: 0, setup: 0, lastActive: null };
       const credits = Math.abs(tx.amount);
