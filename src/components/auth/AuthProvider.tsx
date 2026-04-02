@@ -50,9 +50,13 @@ function mapSupabaseUser(supabaseUser: SupabaseUser): User {
  * Get the current access token for server API calls.
  */
 async function getAuthHeaders(supabase: ReturnType<typeof createBrowserClient>): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    return { Authorization: `Bearer ${session.access_token}` };
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` };
+    }
+  } catch (err) {
+    console.warn('[binee:auth] getAuthHeaders: getSession() failed:', err);
   }
   return {};
 }
@@ -104,10 +108,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const promise = (async () => {
       try {
         const headers = await getAuthHeaders(supabase);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
         const res = await fetch('/api/workspace/ensure-owner', {
           method: 'POST',
           headers,
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
         if (res.ok) {
           ensureOwnerDone.current = true;
           if (typeof window !== 'undefined') {
@@ -140,10 +148,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }> => {
     try {
       const headers = await getAuthHeaders(supabase);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
       const res = await fetch('/api/workspace/load', {
         method: 'POST',
         headers,
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!res.ok) {
         console.error('loadWorkspacesViaAPI: failed', res.status);
         return { workspaces: [], members: [] };
@@ -418,7 +430,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             }
 
-            await ensureAndLoad(session.user.id);
+            // Timeout guard: don't let workspace load block forever
+            await Promise.race([
+              ensureAndLoad(session.user.id),
+              new Promise((resolve) => setTimeout(resolve, 8000)),
+            ]);
             // Invalidate all React Query caches so child hooks refetch
             queryClient.invalidateQueries();
             setLoading(false);
@@ -438,10 +454,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     );
 
+    // Industry standard: force-refresh session when tab becomes visible again.
+    // When a tab is backgrounded, the auth token may expire. Calling getSession()
+    // on visibility change ensures the token is refreshed before any data queries
+    // run. This is what Linear, Slack, and Claude.ai do.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !cancelled) {
+        console.log('[binee:auth] Tab visible — refreshing session');
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (cancelled) return;
+          if (session?.user) {
+            setUser(mapSupabaseUser(session.user));
+          }
+        }).catch(() => {
+          // Non-critical — next API call will trigger refresh anyway
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       cancelled = true;
       clearTimeout(timeout);
       subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
   }, [supabase, ensureAndLoad]);

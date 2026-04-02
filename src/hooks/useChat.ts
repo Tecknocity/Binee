@@ -503,13 +503,16 @@ export function useChat(conversationId: string | null) {
             updatePayload.title = generateTitleFromMessage(content);
             titleSetRef.current = true;
           }
-          supabase
-            .from('conversations')
-            .update(updatePayload)
-            .eq('id', effectiveId)
+          Promise.resolve(
+            supabase
+              .from('conversations')
+              .update(updatePayload)
+              .eq('id', effectiveId),
+          )
             .then(({ error: updateErr }) => {
               if (updateErr) console.error('[useChat] Failed to update conversation:', updateErr.message);
-            });
+            })
+            .catch((err: unknown) => console.error('[useChat] Conversation update network error:', err));
         }
 
         // B-045: Auto-approve
@@ -636,16 +639,18 @@ export function useChat(conversationId: string | null) {
           };
           patchMessages((prev) => [...prev, resultMessage]);
           if (workspaceId && conversationId) {
-            supabase.from('messages').insert({
-              workspace_id: workspaceId,
-              conversation_id: conversationId,
-              role: 'assistant',
-              content: resultContent,
-              credits_used: 0,
-              metadata: { action_result: true, tool_calls: resultMessage.toolCalls },
-            }).then(({ error: insertErr }) => {
+            Promise.resolve(
+              supabase.from('messages').insert({
+                workspace_id: workspaceId,
+                conversation_id: conversationId,
+                role: 'assistant',
+                content: resultContent,
+                credits_used: 0,
+                metadata: { action_result: true, tool_calls: resultMessage.toolCalls },
+              }),
+            ).then(({ error: insertErr }) => {
               if (insertErr) console.error('[useChat] Failed to persist action result:', insertErr.message);
-            });
+            }).catch((err: unknown) => console.error('[useChat] Action result persist error:', err));
           }
         } else if (data.status === 'failed') {
           const failContent = `The action failed: ${data.error ?? 'Unknown error'}. Please try again.`;
@@ -657,16 +662,18 @@ export function useChat(conversationId: string | null) {
           };
           patchMessages((prev) => [...prev, errorMessage]);
           if (workspaceId && conversationId) {
-            supabase.from('messages').insert({
-              workspace_id: workspaceId,
-              conversation_id: conversationId,
-              role: 'assistant',
-              content: failContent,
-              credits_used: 0,
-              metadata: { error: true, action_failed: true },
-            }).then(({ error: insertErr }) => {
+            Promise.resolve(
+              supabase.from('messages').insert({
+                workspace_id: workspaceId,
+                conversation_id: conversationId,
+                role: 'assistant',
+                content: failContent,
+                credits_used: 0,
+                metadata: { error: true, action_failed: true },
+              }),
+            ).then(({ error: insertErr }) => {
               if (insertErr) console.error('[useChat] Failed to persist action error:', insertErr.message);
-            });
+            }).catch((err: unknown) => console.error('[useChat] Action error persist error:', err));
           }
         }
       } catch {

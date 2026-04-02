@@ -44,15 +44,23 @@ export default function CreditUsageChart() {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    supabase
-      .from('credit_transactions')
-      .select('*')
-      .eq('workspace_id', workspace.id)
-      .eq('type', 'deduction')
-      .gte('created_at', thirtyDaysAgo.toISOString())
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
+    Promise.resolve(
+      supabase
+        .from('credit_transactions')
+        .select('*')
+        .eq('workspace_id', workspace.id)
+        .eq('type', 'deduction')
+        .gte('created_at', thirtyDaysAgo.toISOString())
+        .order('created_at', { ascending: true }),
+    )
+      .then(({ data, error }) => {
+        if (error) console.error('[CreditUsageChart] Query failed:', error.message);
         setTransactions((data as CreditTransaction[]) || []);
+      })
+      .catch((err: unknown) => {
+        console.error('[CreditUsageChart] Network error:', err);
+      })
+      .finally(() => {
         setLoading(false);
       });
   }, [workspace?.id]);

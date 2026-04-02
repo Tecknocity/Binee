@@ -85,10 +85,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       // Fallback: use server API (bypasses RLS)
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers: Record<string, string> = {};
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
+        let headers: Record<string, string> = {};
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            headers = { Authorization: `Bearer ${session.access_token}` };
+          }
+        } catch (sessionErr) {
+          console.warn('[WorkspaceContext] getSession failed in fallback, proceeding without token:', sessionErr);
         }
         const res = await fetch('/api/workspace/load', { method: 'POST', headers });
         if (res.ok) {
