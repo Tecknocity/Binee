@@ -63,7 +63,7 @@ export async function handleChat(
     throw new Error(`Workspace not found (id: ${workspace_id}): ${wsError?.message ?? 'no data returned'}`);
   }
 
-  const insufficientCredits = checkSufficientCredits(Math.floor(workspace.credit_balance), 1);
+  const insufficientCredits = checkSufficientCredits(Math.round(workspace.credit_balance), 1);
   if (insufficientCredits) {
     return {
       content: insufficientCredits.message,

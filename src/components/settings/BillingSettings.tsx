@@ -54,7 +54,7 @@ export default function BillingSettings() {
   const currentPlan = workspace?.plan || 'free';
   const planConfig = plans.find((p) => p.id === currentPlan);
   const totalCredits = planConfig?.credits || 100;
-  const currentBalance = workspace?.credit_balance ?? 0;
+  const currentBalance = Math.round(workspace?.credit_balance ?? 0);
   const usedCredits = Math.max(totalCredits - currentBalance, 0);
   const usagePercent = totalCredits > 0 ? Math.min((usedCredits / totalCredits) * 100, 100) : 0;
 

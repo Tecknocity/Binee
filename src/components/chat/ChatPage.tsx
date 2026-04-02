@@ -253,7 +253,7 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
   const isNew = searchParams.get('new') === '1';
   const [showCreditsModal, setShowCreditsModal] = useState(false);
   const [pendingFirstMessage, setPendingFirstMessage] = useState<string | null>(null);
-  const isOutOfCredits = credit_balance <= 0;
+  const isOutOfCredits = Math.round(credit_balance) <= 0;
 
   const {
     conversations,
