@@ -17,13 +17,33 @@ export async function GET(request: Request) {
   const { data: workspace, error } = await supabase
     .from('workspaces')
     .select(
-      'clickup_connected, clickup_team_id, clickup_team_name, clickup_sync_status, clickup_last_synced_at, clickup_sync_error, clickup_plan_tier, clickup_last_webhook_at',
+      'clickup_connected, clickup_team_id, clickup_team_name, clickup_sync_status, clickup_last_synced_at, clickup_sync_error, clickup_plan_tier, clickup_last_webhook_at, clickup_sync_started_at',
     )
     .eq('id', workspaceId)
     .single();
 
   if (error || !workspace) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
+  }
+
+  // Detect stale syncs: if status is "syncing" but started > 10 minutes ago,
+  // the sync process likely crashed or timed out. Auto-recover to "error".
+  if (workspace.clickup_sync_status === 'syncing' && workspace.clickup_sync_started_at) {
+    const startedAt = new Date(workspace.clickup_sync_started_at).getTime();
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    if (startedAt < tenMinutesAgo) {
+      workspace.clickup_sync_status = 'error';
+      workspace.clickup_sync_error = 'Sync timed out. Please try again.';
+      // Update the DB so it doesn't stay stuck
+      await supabase
+        .from('workspaces')
+        .update({
+          clickup_sync_status: 'error',
+          clickup_sync_error: 'Sync timed out. Please try again.',
+          clickup_sync_started_at: null,
+        })
+        .eq('id', workspaceId);
+    }
   }
 
   // Check webhook health: consider healthy if:

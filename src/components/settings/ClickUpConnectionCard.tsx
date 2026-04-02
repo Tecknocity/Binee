@@ -105,6 +105,23 @@ export function ClickUpConnectionCard() {
     fetchStatus();
   }, [fetchStatus]);
 
+  // Poll for sync completion whenever status is "syncing"
+  useEffect(() => {
+    if (status.syncStatus !== 'syncing') return;
+
+    const pollInterval = setInterval(async () => {
+      await fetchStatus();
+    }, 3000);
+
+    // Safety cap: stop polling after 15 minutes
+    const timeout = setTimeout(() => clearInterval(pollInterval), 15 * 60 * 1000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(timeout);
+    };
+  }, [status.syncStatus, fetchStatus]);
+
   // -----------------------------------------------------------------------
   // Handlers
   // -----------------------------------------------------------------------
@@ -154,12 +171,10 @@ export function ClickUpConnectionCard() {
         body: JSON.stringify({ workspace_id }),
       });
       if (res.ok) {
+        setStatus((prev) => ({ ...prev, syncStatus: 'syncing', syncError: null }));
+      } else if (res.status === 409) {
+        // Sync already in progress — just ensure we're polling
         setStatus((prev) => ({ ...prev, syncStatus: 'syncing' }));
-        // Poll for sync completion
-        const pollInterval = setInterval(async () => {
-          await fetchStatus();
-        }, 3000);
-        setTimeout(() => clearInterval(pollInterval), 300000);
       }
     } catch (err) {
       console.error('Failed to trigger re-sync:', err);

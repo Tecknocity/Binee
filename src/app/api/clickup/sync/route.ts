@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   // Check that ClickUp is connected
   const { data: workspace } = await supabase
     .from('workspaces')
-    .select('clickup_connected, clickup_team_id')
+    .select('clickup_connected, clickup_team_id, clickup_sync_status, clickup_sync_started_at')
     .eq('id', workspace_id)
     .single();
 
@@ -44,41 +44,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'ClickUp not connected' }, { status: 400 });
   }
 
-  // Mark sync as in progress
+  // Prevent duplicate syncs — if already syncing and started < 10 min ago, reject
+  if (workspace.clickup_sync_status === 'syncing' && workspace.clickup_sync_started_at) {
+    const startedAt = new Date(workspace.clickup_sync_started_at).getTime();
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    if (startedAt > tenMinutesAgo) {
+      return NextResponse.json({ error: 'Sync already in progress' }, { status: 409 });
+    }
+    // If older than 10 min, it's stale — allow re-sync
+  }
+
+  // Mark sync as in progress with a timestamp so we can detect stale syncs
   await supabase
     .from('workspaces')
     .update({
       clickup_sync_status: 'syncing',
       clickup_sync_error: null,
+      clickup_sync_started_at: new Date().toISOString(),
     })
     .eq('id', workspace_id);
 
-  try {
-    const result = await performInitialSync(workspace_id);
+  // Fire-and-forget: run sync in background so the API responds immediately.
+  // This prevents Vercel function timeouts from killing long-running syncs
+  // and leaving the status permanently stuck at "syncing".
+  performInitialSync(workspace_id)
+    .then(async (result) => {
+      const now = new Date().toISOString();
+      await supabase
+        .from('workspaces')
+        .update({
+          clickup_sync_status: 'complete',
+          clickup_last_synced_at: now,
+          last_sync_at: now,
+          clickup_sync_started_at: null,
+          clickup_sync_error: result.errors.length > 0 ? result.errors.join('; ') : null,
+        })
+        .eq('id', workspace_id);
+    })
+    .catch(async (error) => {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      await supabase
+        .from('workspaces')
+        .update({
+          clickup_sync_status: 'error',
+          clickup_sync_error: message,
+          clickup_sync_started_at: null,
+        })
+        .eq('id', workspace_id);
+    });
 
-    // Mark sync as complete
-    const now = new Date().toISOString();
-    await supabase
-      .from('workspaces')
-      .update({
-        clickup_sync_status: 'complete',
-        clickup_last_synced_at: now,
-        last_sync_at: now,
-        clickup_sync_error: result.errors.length > 0 ? result.errors.join('; ') : null,
-      })
-      .eq('id', workspace_id);
-
-    return NextResponse.json({ success: true, result });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    await supabase
-      .from('workspaces')
-      .update({
-        clickup_sync_status: 'error',
-        clickup_sync_error: message,
-      })
-      .eq('id', workspace_id);
-
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return NextResponse.json({ success: true, message: 'Sync started' });
 }
