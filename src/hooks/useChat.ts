@@ -339,13 +339,20 @@ export function useChat(conversationId: string | null) {
     [workspaceId, userId],
   );
 
+  // Use a ref so the effect only re-runs when primitive IDs change,
+  // NOT when the loadConversation function identity changes (which was
+  // causing an infinite loop: query completes → cache update → loadConversation
+  // gets new reference → effect fires again → query starts again → repeat).
+  const loadConversationRef = useRef(loadConversation);
+  loadConversationRef.current = loadConversation;
+
   // Load messages when conversationId changes
   useEffect(() => {
-    console.log('[binee:chat] conversationId effect fired', { conversationId });
+    console.log('[binee:chat] conversationId effect fired', { conversationId, workspaceId, userId });
     // Reset the title-set guard when switching conversations
     titleSetRef.current = false;
-    loadConversation(conversationId);
-  }, [conversationId, loadConversation]);
+    loadConversationRef.current(conversationId);
+  }, [conversationId, workspaceId, userId]);
 
   // Helper: update messages state AND write through to React Query cache
   const updateMessages = useCallback(
@@ -405,10 +412,14 @@ export function useChat(conversationId: string | null) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, updateMessages]);
 
-  useEffect(() => {
-    if (!conversationId || !workspace?.id) return;
+  // Use ref to avoid re-subscribing when subscribeToMessages changes identity
+  const subscribeToMessagesRef = useRef(subscribeToMessages);
+  subscribeToMessagesRef.current = subscribeToMessages;
 
-    subscribeToMessages(conversationId);
+  useEffect(() => {
+    if (!conversationId || !workspaceId) return;
+
+    subscribeToMessagesRef.current(conversationId);
 
     return () => {
       if (channelRef.current) {
@@ -417,7 +428,7 @@ export function useChat(conversationId: string | null) {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is a stable module-level singleton
-  }, [conversationId, workspaceId, subscribeToMessages]);
+  }, [conversationId, workspaceId]);
 
   // -------------------------------------------------------------------------
   // Send a message via the AI chat API
