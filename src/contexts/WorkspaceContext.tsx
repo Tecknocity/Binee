@@ -31,7 +31,7 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | undefined>(undefined);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const { user, workspace, membership, loading: authLoading, refreshWorkspace } = useAuth();
+  const { user, workspace, membership, workspaceLoading, refreshWorkspace } = useAuth();
   const queryClient = useQueryClient();
 
   const [error, setError] = useState<string | null>(null);
@@ -121,14 +121,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     staleTime: 2 * 60 * 1000,
   });
 
-  // Set error when user has no workspace
+  // Set error when user has no workspace (only after workspace loading is complete)
   useEffect(() => {
-    if (!authLoading && user && !workspace) {
+    if (!workspaceLoading && user && !workspace) {
       setError('No workspace found. Please contact support.');
     } else {
       setError(null);
     }
-  }, [workspace, authLoading, user]);
+  }, [workspace, workspaceLoading, user]);
 
   // -------------------------------------------------------------------------
   // Realtime: workspace row updates (credit balance, plan changes)
@@ -215,7 +215,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setCreditOverride(null);
   }, [workspace]);
 
-  const loading = authLoading;
+  const loading = workspaceLoading;
 
   // Memoize context value so consumers only re-render when actual values
   // change. Without this, every AuthProvider state change cascades through

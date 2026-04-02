@@ -18,7 +18,10 @@ interface AuthState {
   workspace: Workspace | null;
   workspaces: Workspace[];
   membership: WorkspaceMember | null;
+  /** True while determining if the user has a session. Resolves fast (<200ms). */
   loading: boolean;
+  /** True while workspace data is being loaded (after auth is determined). */
+  workspaceLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error?: string }>;
   signInWithGoogle: () => Promise<void>;
@@ -60,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [membership, setMembership] = useState<WorkspaceMember | null>(null);
   const [loading, setLoading] = useState(true);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const queryClient = useQueryClient();
 
   // Lazy-initialize the Supabase client. During SSR (server-side rendering),
@@ -335,6 +339,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return;
     let cancelled = false;
 
+    // Phase 1: Determine auth session (FAST — <200ms).
+    // Sets user + loading=false immediately. Does NOT wait for workspace data.
+    // This unblocks ProtectedRoute so the app shell renders instantly.
     const initAuth = async () => {
       if (initializingRef.current) return;
       initializingRef.current = true;
@@ -346,10 +353,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const mappedUser = mapSupabaseUser(session.user);
           setUser(mappedUser);
-          await ensureAndLoad(session.user.id);
+          // Phase 1 done — auth determined. Unblock rendering.
+          initAuthDone.current = true;
+          setLoading(false);
+
+          // Phase 2: Load workspace data ASYNCHRONOUSLY.
+          // The app shell (sidebar, nav) renders while this runs in background.
+          try {
+            await ensureAndLoad(session.user.id);
+          } finally {
+            if (!cancelled) setWorkspaceLoading(false);
+          }
+        } else {
+          // No session — not authenticated
+          setWorkspaceLoading(false);
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
+        if (!cancelled) setWorkspaceLoading(false);
       } finally {
         initializingRef.current = false;
         if (!cancelled) {
@@ -362,6 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Safety timeout: if auth init takes too long, stop loading anyway
     const timeout = setTimeout(() => {
       setLoading(false);
+      setWorkspaceLoading(false);
     }, 8000);
 
     initAuth().then(() => clearTimeout(timeout));
@@ -426,11 +448,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     setLoading(true);
+    setWorkspaceLoading(true);
     manualAuthInProgress.current = true;
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setLoading(false);
+        setWorkspaceLoading(false);
         if (error.message === 'Invalid login credentials') {
           return { error: 'NO_ACCOUNT_OR_WRONG_PASSWORD' };
         }
@@ -440,13 +464,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user) {
         const mappedUser = mapSupabaseUser(data.user);
         setUser(mappedUser);
+        setLoading(false); // Auth determined — unblock rendering
         await ensureAndLoad(data.user.id);
+      } else {
+        setLoading(false);
       }
 
-      setLoading(false);
+      setWorkspaceLoading(false);
       return {};
     } catch (err) {
       setLoading(false);
+      setWorkspaceLoading(false);
       return { error: 'Unable to connect. Please check your network and try again.' };
     } finally {
       manualAuthInProgress.current = false;
@@ -455,6 +483,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = useCallback(async (email: string, password: string, name: string) => {
     setLoading(true);
+    setWorkspaceLoading(true);
     manualAuthInProgress.current = true;
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -467,18 +496,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         setLoading(false);
+        setWorkspaceLoading(false);
         return { error: error.message };
       }
 
       // Detect fake signup
       if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
         setLoading(false);
+        setWorkspaceLoading(false);
         return { error: 'An account with this email may already exist. Try signing in instead.' };
       }
 
       // Email confirmation required
       if (data.user && !data.session) {
         setLoading(false);
+        setWorkspaceLoading(false);
         return { error: 'CONFIRM_EMAIL' };
       }
 
@@ -486,21 +518,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user && data.session) {
         const mappedUser = mapSupabaseUser(data.user);
         setUser(mappedUser);
+        setLoading(false); // Auth determined — unblock rendering
 
         const loaded = await ensureAndLoad(data.user.id);
 
         if (loaded.length === 0) {
           console.error('signUp: workspace creation failed — no workspaces after ensureAndLoad');
-          setLoading(false);
+          setWorkspaceLoading(false);
           return { error: 'Account created but workspace setup failed. Please try signing out and back in, or contact support.' };
         }
+      } else {
+        setLoading(false);
       }
 
-      setLoading(false);
+      setWorkspaceLoading(false);
       return {};
     } catch (err) {
       console.error('signUp: unexpected error', err);
       setLoading(false);
+      setWorkspaceLoading(false);
       return { error: 'Unable to connect. Please check your network and try again.' };
     } finally {
       manualAuthInProgress.current = false;
@@ -532,6 +568,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setWorkspaces([]);
     setMembership(null);
     setLoading(false);
+    setWorkspaceLoading(false);
     ensureOwnerDone.current = false;
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('binee_ensure_owner_done');
@@ -578,6 +615,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     workspaces,
     membership,
     loading,
+    workspaceLoading,
     signIn,
     signUp,
     signInWithGoogle,
@@ -585,7 +623,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     switchWorkspace,
     refreshWorkspace,
     updateUser,
-  }), [user, workspace, workspaces, membership, loading, signIn, signUp, signInWithGoogle, signOut, switchWorkspace, refreshWorkspace, updateUser]);
+  }), [user, workspace, workspaces, membership, loading, workspaceLoading, signIn, signUp, signInWithGoogle, signOut, switchWorkspace, refreshWorkspace, updateUser]);
 
   return (
     <AuthContext.Provider value={contextValue}>
