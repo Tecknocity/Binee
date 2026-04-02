@@ -114,10 +114,13 @@ export default function WeeklyUsageSummary() {
 
             const credits = Number(row.credits_deducted ?? 0);
             entry.total += credits;
-            const actionType = row.action_type as keyof Omit<WeeklyData, 'week' | 'total'>;
-            if (actionType in entry) {
-              (entry[actionType] as number) += credits;
-            }
+            // Map action_type to chart bucket: orchestrator/general_chat → chat, setup → setup
+            const rawType = row.action_type ?? '';
+            const bucket: 'chat' | 'setup' | null =
+              rawType === 'setup' ? 'setup' :
+              (rawType === 'chat' || rawType === 'orchestrator' || rawType === 'general_chat') ? 'chat' :
+              'chat'; // default all AI usage to chat bucket
+            entry[bucket] += credits;
           }
 
           // Sort by week and take last 8
