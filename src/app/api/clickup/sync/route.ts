@@ -71,10 +71,13 @@ export async function POST(request: Request) {
   try {
     // Await the full sync — maxDuration=300 gives us up to 5 minutes.
     // The client doesn't block on this response; it polls /api/clickup/status instead.
+    console.log(`[ClickUp Sync] Starting sync for workspace ${workspace_id}`);
     const result = await performInitialSync(workspace_id);
 
-    // Mark sync as complete
+    // Mark sync as complete (performInitialSync throws on fatal errors,
+    // so reaching here means the sync succeeded, possibly with non-fatal errors)
     const now = new Date().toISOString();
+    console.log(`[ClickUp Sync] Completed: ${result.spaces} spaces, ${result.tasks} tasks, ${result.errors.length} errors`);
     await supabase
       .from('workspaces')
       .update({
@@ -89,6 +92,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[ClickUp Sync] Failed for workspace ${workspace_id}:`, message);
     await supabase
       .from('workspaces')
       .update({

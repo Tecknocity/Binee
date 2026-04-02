@@ -618,9 +618,12 @@ export async function performInitialSync(
   } catch (err) {
     const errorMessage =
       err instanceof Error ? err.message : "Unknown sync error";
+    console.error("[ClickUp Sync] Fatal error:", errorMessage);
     await updateSyncStatus(workspaceId, "error", errorMessage);
     result.errors.push(errorMessage);
-    return result;
+    // Re-throw so callers (sync route, OAuth callback) know the sync failed
+    // and don't overwrite the error status with "complete"
+    throw err;
   }
 }
 
@@ -641,20 +644,12 @@ export async function runFullSync(workspaceId: string): Promise<SyncResult> {
   // Mark syncing on both tables
   await updateConnectionSyncStatus(workspaceId, "syncing");
 
-  const result = await performInitialSync(workspaceId, async (progress) => {
-    // Persist each progress update to clickup_connections for UI polling
-    await updateConnectionProgress(workspaceId, progress);
-  });
+  try {
+    const result = await performInitialSync(workspaceId, async (progress) => {
+      // Persist each progress update to clickup_connections for UI polling
+      await updateConnectionProgress(workspaceId, progress);
+    });
 
-  // Update final status on clickup_connections
-  if (result.errors.length > 0 && result.tasks === 0 && result.spaces === 0) {
-    // Total failure
-    await updateConnectionSyncStatus(
-      workspaceId,
-      "error",
-      result.errors.join("; ")
-    );
-  } else {
     // Success (possibly with non-fatal errors)
     await updateConnectionSyncStatus(workspaceId, "complete");
     await updateConnectionProgress(
@@ -669,9 +664,14 @@ export async function runFullSync(workspaceId: string): Promise<SyncResult> {
         timeEntries: result.timeEntries,
       }
     );
-  }
 
-  return result;
+    return result;
+  } catch (err) {
+    const errorMessage =
+      err instanceof Error ? err.message : "Unknown sync error";
+    await updateConnectionSyncStatus(workspaceId, "error", errorMessage);
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -860,8 +860,9 @@ export async function performReconciliationSync(
   } catch (err) {
     const errorMessage =
       err instanceof Error ? err.message : "Unknown reconciliation error";
+    console.error("[ClickUp Reconciliation] Fatal error:", errorMessage);
     await updateSyncStatus(workspaceId, "error", errorMessage);
     result.errors.push(errorMessage);
-    return result;
+    throw err;
   }
 }
