@@ -97,11 +97,11 @@ export default function MemberUsageTable() {
     email: string;
     avatar_url: string | null;
   }>>([]);
-  const [txData, setTxData] = useState<Array<{
+  const [usageData, setUsageData] = useState<Array<{
     user_id: string;
-    amount: number;
+    credits_deducted: number;
+    action_type: string;
     created_at: string;
-    description: string;
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<TimePeriod>('this_month');
@@ -135,14 +135,13 @@ export default function MemberUsageTable() {
     setLoading(true);
     const supabase = createBrowserClient();
 
-    // Only fetch transactions for the selected period (bounded query)
+    // Use credit_usage table — same source of truth as WeeklyUsageSummary
     const periodStart = getPeriodStart(period);
 
     let query = supabase
-      .from('credit_transactions')
-      .select('user_id, amount, created_at, description')
-      .eq('workspace_id', workspace.id)
-      .eq('type', 'deduction');
+      .from('credit_usage')
+      .select('user_id, credits_deducted, action_type, created_at')
+      .eq('workspace_id', workspace.id);
 
     if (periodStart) {
       query = query.gte('created_at', periodStart.toISOString());
@@ -151,13 +150,13 @@ export default function MemberUsageTable() {
     Promise.resolve(
       query
         .order('created_at', { ascending: false })
-        .limit(5000), // safety cap for very active workspaces
+        .limit(5000),
     )
       .then(({ data, error }) => {
         if (error) {
-          console.error('[MemberUsageTable] Transactions query failed:', error.message);
+          console.error('[MemberUsageTable] Usage query failed:', error.message);
         } else {
-          setTxData(data ?? []);
+          setUsageData(data ?? []);
         }
       })
       .catch(() => {})
@@ -167,38 +166,27 @@ export default function MemberUsageTable() {
   const members = useMemo(() => {
     if (!memberData.length) return [];
 
-    // Transactions are already filtered by period from the query
+    // Aggregate from credit_usage (same table as WeeklyUsageSummary)
     const usageMap = new Map<string, { total: number; chat: number; setup: number; lastActive: string | null }>();
-    for (const tx of txData) {
-      if (!tx.user_id) continue;
+    for (const row of usageData) {
+      if (!row.user_id) continue;
 
-      const entry = usageMap.get(tx.user_id) ?? { total: 0, chat: 0, setup: 0, lastActive: null };
-      const credits = Math.abs(tx.amount);
+      const entry = usageMap.get(row.user_id) ?? { total: 0, chat: 0, setup: 0, lastActive: null };
+      const credits = Number(row.credits_deducted ?? 0);
       entry.total += credits;
 
-      const isSetup = (tx.description ?? '').toLowerCase().includes('setup');
-      if (isSetup) {
+      // Use action_type directly — same bucketing as WeeklyUsageSummary
+      if (row.action_type === 'setup') {
         entry.setup += credits;
       } else {
         entry.chat += credits;
       }
 
-      // Track last active (most recent transaction in any period)
-      if (!entry.lastActive || tx.created_at > entry.lastActive) {
-        entry.lastActive = tx.created_at;
+      if (!entry.lastActive || row.created_at > entry.lastActive) {
+        entry.lastActive = row.created_at;
       }
 
-      usageMap.set(tx.user_id, entry);
-    }
-
-    // Also compute last active across all time for each member
-    const lastActiveAll = new Map<string, string>();
-    for (const tx of txData) {
-      if (!tx.user_id) continue;
-      const prev = lastActiveAll.get(tx.user_id);
-      if (!prev || tx.created_at > prev) {
-        lastActiveAll.set(tx.user_id, tx.created_at);
-      }
+      usageMap.set(row.user_id, entry);
     }
 
     const combined: MemberUsage[] = memberData.map((m) => {
@@ -211,7 +199,7 @@ export default function MemberUsageTable() {
         total_credits: usage?.total ?? 0,
         chat_credits: usage?.chat ?? 0,
         setup_credits: usage?.setup ?? 0,
-        last_active: lastActiveAll.get(m.user_id) ?? null,
+        last_active: usage?.lastActive ?? null,
       };
     });
 
@@ -233,7 +221,7 @@ export default function MemberUsageTable() {
     });
 
     return combined;
-  }, [memberData, txData, period, sortField, sortAsc]);
+  }, [memberData, usageData, sortField, sortAsc]);
 
   const maxUsage = Math.max(...members.map((m) => m.total_credits), 1);
   const totalUsage = members.reduce((s, m) => s + m.total_credits, 0);

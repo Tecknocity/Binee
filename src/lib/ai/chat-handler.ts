@@ -148,21 +148,25 @@ export async function handleChat(
     console.error('[chat-handler] workspace credit deduction failed:', err);
   }
 
-  // Log per-user usage for analytics
+  // Log per-user usage for analytics (credit_usage table)
   try {
-    await supabase.from('credit_usage').insert({
+    const actionType = result.creditClassification.tier === 'setup_request' ? 'setup' : 'chat';
+    const { error: usageErr } = await supabase.from('credit_usage').insert({
       user_id,
       workspace_id,
-      action_type: 'orchestrator',
-      model_used: 'sonnet',
+      action_type: actionType,
+      session_id: conversation_id ?? null,
+      model_used: (result.modelUsed ?? '').includes('haiku') ? 'haiku' : (result.modelUsed ?? '').includes('opus') ? 'opus' : 'sonnet',
       input_tokens: result.totalInputTokens,
       output_tokens: result.totalOutputTokens,
       anthropic_cost_cents: result.anthropicCost.totalCostCents,
       credits_deducted: creditCost,
-      credit_tier: result.creditClassification.tier,
     });
+    if (usageErr) {
+      console.error('[chat-handler] credit_usage insert failed:', usageErr.message);
+    }
   } catch (err) {
-    console.error('[chat-handler] usage tracking insert failed:', err);
+    console.error('[chat-handler] credit_usage insert failed:', err);
   }
 
   // Build tool calls from sub-agent results for response metadata
