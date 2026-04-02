@@ -168,8 +168,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           const current = workspaceStateRef.current;
           if (!current) return;
 
+          // credit_balance may arrive as string (NUMERIC columns) or number
+          const newBalance = updated.credit_balance != null ? Number(updated.credit_balance) : null;
+          const currentBalance = current.credit_balance ?? 0;
+
           const creditOnly =
-            updated.credit_balance !== current.credit_balance &&
+            newBalance !== null &&
+            newBalance !== currentBalance &&
             updated.name === current.name &&
             updated.plan === current.plan &&
             updated.slug === current.slug &&
@@ -177,7 +182,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             updated.clickup_connected === (current as any).clickup_connected;
 
           if (creditOnly) {
-            setCreditOverride(typeof updated.credit_balance === 'number' ? updated.credit_balance : null);
+            setCreditOverride(newBalance);
           } else {
             refreshWorkspaceRef.current();
           }

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSharedConversations } from '@/contexts/ConversationsContext';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { useConversationUI } from '@/stores/conversationUI';
 import type { Conversation } from '@/hooks/useConversations';
 import { useSidebar } from '@/hooks/useSidebar';
@@ -181,6 +182,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, workspace, signOut } = useAuth();
+  const { credit_balance: realtimeCreditBalance } = useWorkspaceContext();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -366,7 +368,7 @@ export default function Sidebar() {
               </button>
 
               {userMenuOpen && (() => {
-                const creditColor = getCreditColor(workspace?.credit_balance ?? 0);
+                const creditColor = getCreditColor(realtimeCreditBalance);
                 return createPortal(
                   <div ref={userMenuRef} className="fixed bottom-16 left-2 w-64 bg-navy-light border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
                     {/* User info header */}
@@ -402,9 +404,9 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1">
                           <span className={cn('text-sm font-semibold font-mono', creditColor.text)}>
-                            {workspace?.credit_balance != null ? Math.round(workspace.credit_balance).toLocaleString() : '---'}
+                            {Math.round(realtimeCreditBalance).toLocaleString()}
                           </span>
-                          {(workspace?.credit_balance ?? 0) <= WARNING_THRESHOLDS.empty && (
+                          {realtimeCreditBalance <= WARNING_THRESHOLDS.empty && (
                             <AlertCircle className="w-3.5 h-3.5 text-red-400" />
                           )}
                         </div>
@@ -597,7 +599,7 @@ export default function Sidebar() {
               </button>
 
               {userMenuOpen && (() => {
-                const creditColor = getCreditColor(workspace?.credit_balance ?? 0);
+                const creditColor = getCreditColor(realtimeCreditBalance);
                 return (
                   <div className="absolute bottom-full left-3 right-3 mb-2 bg-navy-light border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
                     {/* User info header */}
@@ -633,9 +635,9 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1">
                           <span className={cn('text-sm font-semibold font-mono', creditColor.text)}>
-                            {workspace?.credit_balance != null ? Math.round(workspace.credit_balance).toLocaleString() : '---'}
+                            {Math.round(realtimeCreditBalance).toLocaleString()}
                           </span>
-                          {(workspace?.credit_balance ?? 0) <= WARNING_THRESHOLDS.empty && (
+                          {realtimeCreditBalance <= WARNING_THRESHOLDS.empty && (
                             <AlertCircle className="w-3.5 h-3.5 text-red-400" />
                           )}
                         </div>
