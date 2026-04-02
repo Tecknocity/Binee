@@ -201,7 +201,7 @@ async function loadSessionState(
       .eq('status', 'in_progress')
       .order('updated_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!data?.config) return null;
 

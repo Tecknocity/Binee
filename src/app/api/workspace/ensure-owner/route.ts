@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
       .not('clickup_access_token', 'is', null)
       .neq('id', targetWorkspaceId)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!connectedWs) return false; // No connected workspace found
 
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
       .from('clickup_connections')
       .select('*')
       .eq('workspace_id', connectedWs.id)
-      .single();
+      .maybeSingle();
 
     if (existingConn) {
       // Copy the connection row for the new workspace

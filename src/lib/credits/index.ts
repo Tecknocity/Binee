@@ -68,7 +68,7 @@ export async function getCreditBalance(workspaceId: string): Promise<number> {
     .from('workspaces')
     .select('credit_balance')
     .eq('id', workspaceId)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return 0;
   return data.credit_balance;

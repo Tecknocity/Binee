@@ -72,7 +72,7 @@ export default function WelcomeMessage({
           .from('clickup_connections')
           .select('synced_spaces, synced_lists, synced_tasks')
           .eq('workspace_id', workspaceId)
-          .single();
+          .maybeSingle();
 
         if (!cancelled && connection) {
           setStats({

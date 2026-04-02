@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       .from('user_profiles')
       .select('preferred_name')
       .eq('user_id', user_id)
-      .single();
+      .maybeSingle();
 
     const firstName = profile?.preferred_name?.split(' ')[0] || null;
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       .from('clickup_connections')
       .select('synced_spaces, synced_lists, synced_tasks')
       .eq('workspace_id', workspace_id)
-      .single();
+      .maybeSingle();
 
     const spaces = connection?.synced_spaces ?? 0;
     const lists = connection?.synced_lists ?? 0;
