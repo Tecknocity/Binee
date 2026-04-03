@@ -11,7 +11,7 @@ import type {
   ManualStep,
 } from '@/lib/setup/types';
 import { executeSetupPlan } from '@/lib/setup/executor';
-import type { ExecutionResult as ExecutorResult } from '@/lib/setup/executor';
+import type { ExecutionItem } from '@/lib/setup/executor';
 import { generateSetupPlan } from '@/lib/setup/planner';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -58,6 +58,8 @@ export interface UseSetupReturn {
   executionResult: ExecutionResult | null;
   /** B-079: Typed execution steps with individual status tracking */
   executionSteps: ExecutionStep[];
+  /** Per-item execution data from the executor for rich progress tracking */
+  executionItems: ExecutionItem[];
   manualSteps: ManualStep[];
   isExecuting: boolean;
   isSending: boolean;
@@ -346,6 +348,7 @@ export function useSetup(): UseSetupReturn {
   const [proposedPlan, setProposedPlan] = useState<SetupPlan | null>(null);
   const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
+  const [executionItems, setExecutionItems] = useState<ExecutionItem[]>([]);
   const [manualSteps, setManualSteps] = useState<ManualStep[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -737,11 +740,25 @@ export function useSetup(): UseSetupReturn {
     setCurrentStep(3);
     setIsExecuting(true);
 
+    // Track items progressively so the UI can show per-item status
+    const progressItems: ExecutionItem[] = [];
+
     const executorResult = await executeSetupPlan(
       proposedPlan as SetupPlan,
       workspace_id || '',
       '', // access token resolved server-side by ClickUpClient
       (completedItem, progress) => {
+        // Update the progressItems snapshot and push to state
+        const idx = progressItems.findIndex(
+          (pi) => pi.type === completedItem.type && pi.name === completedItem.name && pi.parentName === completedItem.parentName
+        );
+        if (idx >= 0) {
+          progressItems[idx] = completedItem;
+        } else {
+          progressItems.push(completedItem);
+        }
+        setExecutionItems([...progressItems]);
+
         setExecutionProgress({
           phase: completedItem.type === 'space' ? 'creating_spaces' : completedItem.type === 'folder' ? 'creating_folders' : 'creating_lists',
           current: progress.completed,
@@ -752,6 +769,8 @@ export function useSetup(): UseSetupReturn {
       },
     );
 
+    // Store the final per-item results from the executor
+    setExecutionItems(executorResult.items);
     setExecutionResult({
       success: executorResult.success,
       spacesCreated: executorResult.items.filter((i) => i.type === 'space' && i.status === 'success').length,
@@ -821,6 +840,7 @@ export function useSetup(): UseSetupReturn {
     setProposedPlan(null);
     setExecutionProgress(null);
     setExecutionResult(null);
+    setExecutionItems([]);
     setManualSteps([]);
     setIsExecuting(false);
     setIsSending(false);
@@ -860,6 +880,7 @@ export function useSetup(): UseSetupReturn {
     executionProgress,
     executionResult,
     executionSteps,
+    executionItems,
     manualSteps,
     isExecuting,
     isSending,

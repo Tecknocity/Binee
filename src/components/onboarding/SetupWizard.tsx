@@ -123,6 +123,7 @@ export default function SetupWizard() {
             progress={setup.executionProgress}
             result={setup.executionResult}
             plan={setup.proposedPlan}
+            executionItems={setup.executionItems}
           />
         )}
 

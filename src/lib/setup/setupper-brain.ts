@@ -70,10 +70,11 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   // Step 2: Build system prompt with analysis + templates
   const systemPrompt = buildSetupperPrompt(workspaceAnalysis, input.templates);
 
-  // Step 3: Get setup-relevant tools (read AND write tools for creating structures)
+  // Step 3: Get read-only tools for the Setupper to gather workspace context.
+  // Write operations (create spaces/folders/lists) are handled by the separate
+  // executor engine after the user explicitly approves the plan — NOT by the brain.
   const setupToolNames = [
-    'lookup_tasks', 'get_workspace_summary', 'create_task', 'update_task',
-    'create_list', 'create_folder', 'create_space',
+    'lookup_tasks', 'get_workspace_summary', 'get_workspace_health',
   ];
   const setupTools = BINEE_TOOLS.filter(t => setupToolNames.includes(t.name));
 

@@ -50,6 +50,6 @@ INDUSTRY TEMPLATES:
 - E-commerce: Spaces for Products, Marketing, Fulfillment, Customer Service
 - Consulting: Spaces for Engagements, Business Development, Operations
 
-WRITE OPERATIONS:
-When you need to create or modify ClickUp structures, use the available tools. The confirmation system will intercept write operations for user approval.`;
+WORKSPACE TOOLS:
+You can look up current tasks and workspace structure to inform your recommendations. When you propose a structure, the user will review it visually and approve it before any changes are made to their workspace.`;
 }
