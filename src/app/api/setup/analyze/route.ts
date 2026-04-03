@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { executeSubAgent } from '@/lib/ai/sub-agents/executor';
+import { syncWorkspaceStructure } from '@/lib/clickup/sync';
 import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
-export const maxDuration = 30;
+
+export const maxDuration = 45; // Extra time for ClickUp sync + AI analysis
 
 let _client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -15,11 +17,12 @@ function getClient(): Anthropic {
 /**
  * POST /api/setup/analyze
  *
- * Fires the workspace_analyst sub-agent (Haiku) to scan the current
- * ClickUp workspace structure. Called at setup Step 1 (Analysis).
+ * 1. Syncs fresh workspace structure from ClickUp (spaces, folders, lists)
+ * 2. Runs workspace_analyst sub-agent (Haiku) on the fresh data
+ * 3. Charges 0.55 credits
  *
- * Charges 0.55 credits (simple tier — one sub-agent call).
- * Returns the analysis summary string for the analysis UI and planner prompt.
+ * This endpoint is called every time the user enters the Analysis step,
+ * so the data is always current — not stale from a previous sync.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -39,6 +42,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing workspace_id' }, { status: 400 });
     }
 
+    // Step 1: Sync fresh workspace structure from ClickUp
+    // This ensures the analyst sees the current state, not stale cached data.
+    let structureCounts = { spaces: 0, folders: 0, lists: 0 };
+    try {
+      structureCounts = await syncWorkspaceStructure(workspace_id);
+    } catch (syncErr) {
+      console.error('[setup/analyze] Structure sync failed:', syncErr);
+      // Continue with cached data — better than blocking entirely
+    }
+
+    // Step 2: Run workspace_analyst sub-agent on the (now fresh) cached data
     const result = await executeSubAgent(
       getClient(),
       'workspace_analyst',
@@ -46,9 +60,8 @@ export async function POST(request: NextRequest) {
       workspace_id,
     );
 
-    // Charge credits for the analysis (simple tier = 0.55 credits)
+    // Step 3: Charge credits (simple tier = 0.55 credits)
     const creditsToCharge = 0.55;
-
     try {
       const adminClient = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,10 +79,10 @@ export async function POST(request: NextRequest) {
           source: 'setup_analysis',
           input_tokens: result.inputTokens,
           output_tokens: result.outputTokens,
+          structure_synced: structureCounts,
         },
       });
 
-      // Log to credit_usage
       await adminClient.from('credit_usage').insert({
         user_id: user.id,
         workspace_id,
@@ -83,13 +96,13 @@ export async function POST(request: NextRequest) {
       });
     } catch (creditErr) {
       console.error('[setup/analyze] Credit deduction failed:', creditErr);
-      // Don't block the analysis — credit failures are non-fatal
     }
 
     return NextResponse.json({
       summary: result.summary,
       error: result.error || null,
       credits_consumed: creditsToCharge,
+      structure: structureCounts,
     });
   } catch (error) {
     console.error('[POST /api/setup/analyze] Error:', error);

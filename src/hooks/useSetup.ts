@@ -861,7 +861,7 @@ export function useSetup(): UseSetupReturn {
   }, []);
 
   const restartSetup = useCallback(() => {
-    setCurrentStep(clickUp.connected ? 2 : 0);
+    setCurrentStep(clickUp.connected ? 1 : 0);
     setBusinessDescription('');
     setChatMessages([WELCOME_MESSAGE]);
     setProposedPlan(null);
