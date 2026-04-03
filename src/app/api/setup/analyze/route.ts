@@ -6,7 +6,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 
-export const maxDuration = 45; // Extra time for ClickUp sync + AI analysis
+export const maxDuration = 45;
 
 let _client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -18,11 +18,12 @@ function getClient(): Anthropic {
  * POST /api/setup/analyze
  *
  * 1. Syncs fresh workspace structure from ClickUp (spaces, folders, lists)
- * 2. Runs workspace_analyst sub-agent (Haiku) on the fresh data
- * 3. Charges 0.55 credits
+ * 2. Reads hard counts directly from Supabase cached tables (reliable)
+ * 3. Runs workspace_analyst sub-agent (Haiku) for qualitative analysis
+ * 4. Returns both structured counts AND AI summary
  *
- * This endpoint is called every time the user enters the Analysis step,
- * so the data is always current — not stale from a previous sync.
+ * This way, the UI gets accurate numbers from the DB and uses the AI
+ * only for insights/findings — not for counting.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -42,17 +43,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing workspace_id' }, { status: 400 });
     }
 
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+
     // Step 1: Sync fresh workspace structure from ClickUp
-    // This ensures the analyst sees the current state, not stale cached data.
     let structureCounts = { spaces: 0, folders: 0, lists: 0 };
     try {
       structureCounts = await syncWorkspaceStructure(workspace_id);
     } catch (syncErr) {
       console.error('[setup/analyze] Structure sync failed:', syncErr);
-      // Continue with cached data — better than blocking entirely
     }
 
-    // Step 2: Run workspace_analyst sub-agent on the (now fresh) cached data
+    // Step 2: Read hard counts from cached Supabase tables (source of truth for numbers)
+    const [spacesRes, foldersRes, listsRes, tasksRes, membersRes] = await Promise.all([
+      adminClient.from('cached_spaces').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
+      adminClient.from('cached_folders').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
+      adminClient.from('cached_lists').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
+      adminClient.from('cached_tasks').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
+      adminClient.from('cached_members').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
+    ]);
+
+    const counts = {
+      spaces: spacesRes.count ?? 0,
+      folders: foldersRes.count ?? 0,
+      lists: listsRes.count ?? 0,
+      tasks: tasksRes.count ?? 0,
+      members: membersRes.count ?? 0,
+    };
+
+    // Step 3: Run workspace_analyst for qualitative analysis (findings, recommendations)
     const result = await executeSubAgent(
       getClient(),
       'workspace_analyst',
@@ -60,14 +81,9 @@ export async function POST(request: NextRequest) {
       workspace_id,
     );
 
-    // Step 3: Charge credits (simple tier = 0.55 credits)
+    // Step 4: Charge credits (simple tier = 0.55)
     const creditsToCharge = 0.55;
     try {
-      const adminClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      );
-
       await adminClient.rpc('deduct_credits', {
         p_workspace_id: workspace_id,
         p_user_id: user.id,
@@ -100,9 +116,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       summary: result.summary,
+      counts,
       error: result.error || null,
       credits_consumed: creditsToCharge,
-      structure: structureCounts,
     });
   } catch (error) {
     console.error('[POST /api/setup/analyze] Error:', error);

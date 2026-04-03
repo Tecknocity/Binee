@@ -79,6 +79,7 @@ export default function SetupWizard() {
           <WorkspaceAnalysis
             isAnalyzing={setup.isAnalyzing}
             analysisSummary={setup.workspaceAnalysis}
+            counts={setup.workspaceCounts}
             onContinue={setup.continueFromAnalysis}
           />
         )}
