@@ -1,19 +1,22 @@
 'use client';
 
-import { Check, Loader2, PartyPopper, ArrowLeft } from 'lucide-react';
+import { Check, PartyPopper } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
 import { ClickUpConnectStep } from './ClickUpConnectStep';
+import { WorkspaceAnalysis } from './WorkspaceAnalysis';
 import { BusinessChatStep } from './BusinessChatStep';
 import { StructurePreview } from './StructurePreview';
 import { ExecutionProgress } from './ExecutionProgress';
+import { ManualStepsGuide } from './ManualStepsGuide';
 
 const STEPS = [
   { label: 'Connect', number: 0 },
-  { label: 'Describe', number: 1 },
-  { label: 'Review', number: 2 },
-  { label: 'Build', number: 3 },
-  { label: 'Finish', number: 4 },
+  { label: 'Analyze', number: 1 },
+  { label: 'Describe', number: 2 },
+  { label: 'Review', number: 3 },
+  { label: 'Build', number: 4 },
+  { label: 'Finish', number: 5 },
 ] as const;
 
 export default function SetupWizard() {
@@ -31,12 +34,12 @@ export default function SetupWizard() {
             <div key={step.label} className="flex items-center">
               {i > 0 && (
                 <div
-                  className={`w-16 h-0.5 ${isDone ? 'bg-accent' : 'bg-border'}`}
+                  className={`w-12 h-0.5 ${isDone ? 'bg-accent' : 'bg-border'}`}
                 />
               )}
               <div className="flex flex-col items-center gap-1.5">
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-colors ${
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-colors ${
                     isDone
                       ? 'bg-accent border-accent text-white'
                       : isActive
@@ -44,10 +47,10 @@ export default function SetupWizard() {
                         : 'bg-surface border-border text-text-secondary'
                   }`}
                 >
-                  {isDone ? <Check className="w-5 h-5" /> : step.number + 1}
+                  {isDone ? <Check className="w-4 h-4" /> : step.number + 1}
                 </div>
                 <span
-                  className={`text-xs font-medium ${
+                  className={`text-[10px] font-medium ${
                     isActive || isDone ? 'text-text-primary' : 'text-text-muted'
                   }`}
                 >
@@ -61,7 +64,8 @@ export default function SetupWizard() {
 
       {/* Step content */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {setup.currentStep === 0 && !setup.isAnalyzing && (
+        {/* Step 0: Connect ClickUp */}
+        {setup.currentStep === 0 && (
           <ClickUpConnectStep
             connected={setup.clickUpConnected}
             loading={setup.clickUpLoading}
@@ -70,15 +74,17 @@ export default function SetupWizard() {
           />
         )}
 
-        {setup.currentStep === 0 && setup.isAnalyzing && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <Loader2 className="w-8 h-8 text-accent animate-spin" />
-            <p className="text-sm text-text-secondary">Analyzing your current workspace structure...</p>
-            <p className="text-xs text-text-muted">This may take a few seconds</p>
-          </div>
+        {/* Step 1: Workspace Analysis */}
+        {setup.currentStep === 1 && (
+          <WorkspaceAnalysis
+            isAnalyzing={setup.isAnalyzing}
+            analysisSummary={setup.workspaceAnalysis}
+            onContinue={setup.continueFromAnalysis}
+          />
         )}
 
-        {setup.currentStep === 1 && (
+        {/* Step 2: Business Chat */}
+        {setup.currentStep === 2 && (
           <BusinessChatStep
             messages={setup.chatMessages}
             isSending={setup.isSending}
@@ -89,44 +95,62 @@ export default function SetupWizard() {
           />
         )}
 
-        {setup.currentStep === 2 && (
-          setup.proposedPlan ? (
-            <StructurePreview
-              plan={setup.proposedPlan}
-              onApprove={setup.approvePlan}
-              onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
-              onReject={setup.restartSetup}
-            />
-          ) : setup.isSending ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <Loader2 className="w-8 h-8 text-accent animate-spin" />
-              <p className="text-sm text-text-secondary">Generating your workspace structure...</p>
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <p className="text-sm text-text-secondary">
-                No workspace structure available. Please go back and describe your business.
-              </p>
-              <button
-                onClick={setup.restartSetup}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-accent hover:text-accent-hover transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Go Back
-              </button>
-            </div>
-          )
+        {/* Step 3: Editable Structure Preview */}
+        {setup.currentStep === 3 && setup.proposedPlan && (
+          <StructurePreview
+            plan={setup.proposedPlan}
+            onApprove={setup.approvePlan}
+            onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
+            onReject={setup.restartSetup}
+            onPlanChange={setup.updatePlan}
+          />
         )}
 
-        {setup.currentStep === 3 && (
+        {/* Step 3: Loading state when plan is being generated */}
+        {setup.currentStep === 3 && !setup.proposedPlan && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+            {setup.isSending ? (
+              <>
+                <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-text-secondary">Generating your workspace structure...</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-text-secondary">
+                  No workspace structure available. Please go back and describe your business.
+                </p>
+                <button
+                  onClick={setup.restartSetup}
+                  className="text-sm text-accent hover:text-accent-hover transition-colors"
+                >
+                  Go Back
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Step 4: Build / Execution Progress */}
+        {setup.currentStep === 4 && (
           <ExecutionProgress
             progress={setup.executionProgress}
             result={setup.executionResult}
             plan={setup.proposedPlan}
+            executionItems={setup.executionItems}
           />
         )}
 
-        {setup.currentStep === 4 && (
+        {/* Step 5: Manual Steps or Completion */}
+        {setup.currentStep === 5 && setup.manualSteps.length > 0 && (
+          <ManualStepsGuide
+            steps={setup.manualSteps}
+            onMarkComplete={setup.markStepComplete}
+            onFinish={() => router.push('/chat')}
+          />
+        )}
+
+        {/* Step 5: No manual steps — show completion */}
+        {setup.currentStep === 5 && setup.manualSteps.length === 0 && (
           <div className="max-w-lg mx-auto text-center py-16">
             <div className="w-16 h-16 rounded-full bg-accent/15 flex items-center justify-center mx-auto mb-6">
               <PartyPopper className="w-8 h-8 text-accent" />

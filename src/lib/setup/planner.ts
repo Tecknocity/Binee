@@ -9,7 +9,7 @@ import type {
 // Anthropic client (lazy — server-only)
 // ---------------------------------------------------------------------------
 
-const SONNET_MODEL_ID = 'claude-sonnet-4-6';
+const SONNET_MODEL_ID = 'claude-sonnet-4-20250514';
 const MAX_TOKENS = 4096;
 
 let _anthropic: Anthropic | null = null;

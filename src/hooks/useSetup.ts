@@ -11,8 +11,9 @@ import type {
   ManualStep,
 } from '@/lib/setup/types';
 import { executeSetupPlan } from '@/lib/setup/executor';
-import type { ExecutionResult as ExecutorResult } from '@/lib/setup/executor';
+import type { ExecutionItem } from '@/lib/setup/executor';
 import { generateSetupPlan } from '@/lib/setup/planner';
+import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -29,7 +30,7 @@ export interface SetupChatMessage {
   timestamp: Date;
 }
 
-export type SetupStep = 0 | 1 | 2 | 3 | 4;
+export type SetupStep = 0 | 1 | 2 | 3 | 4 | 5;
 
 /**
  * Structured business profile collected during the discovery conversation.
@@ -58,6 +59,8 @@ export interface UseSetupReturn {
   executionResult: ExecutionResult | null;
   /** B-079: Typed execution steps with individual status tracking */
   executionSteps: ExecutionStep[];
+  /** Per-item execution data from the executor for rich progress tracking */
+  executionItems: ExecutionItem[];
   manualSteps: ManualStep[];
   isExecuting: boolean;
   isSending: boolean;
@@ -65,13 +68,19 @@ export interface UseSetupReturn {
   isAnalyzing: boolean;
   /** Whether session state has been restored from persistence */
   isRestored: boolean;
+  /** Workspace analysis summary from the analyzer step */
+  workspaceAnalysis: string | null;
   handleClickUpConnect: () => void;
   refreshClickUpStatus: () => Promise<void>;
   sendMessage: (msg: string) => void;
   selectTemplate: (template: string) => void;
+  /** Update the plan in-place (editable preview) */
+  updatePlan: (plan: SetupPlan) => void;
   approvePlan: () => void;
   requestChanges: (feedback: string) => void;
   markStepComplete: (stepIndex: number) => void;
+  /** Continue from analysis step to chat step */
+  continueFromAnalysis: () => void;
   restartSetup: () => void;
   goToDashboard: () => void;
 }
@@ -129,19 +138,20 @@ const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string 
 // ---------------------------------------------------------------------------
 
 const WIZARD_STEP_TO_NUMERIC: Record<SetupWizardStep, SetupStep> = {
-  business_chat: 1,
-  preview: 2,
-  executing: 3,
-  manual_steps: 4,
-  complete: 4,
+  business_chat: 2,
+  preview: 3,
+  executing: 4,
+  manual_steps: 5,
+  complete: 5,
 };
 
 const NUMERIC_TO_WIZARD_STEP: Record<SetupStep, SetupWizardStep> = {
   0: 'business_chat', // connect step maps to business_chat (pre-chat)
-  1: 'business_chat',
-  2: 'preview',
-  3: 'executing',
-  4: 'manual_steps',
+  1: 'business_chat', // analysis step maps to business_chat
+  2: 'business_chat',
+  3: 'preview',
+  4: 'executing',
+  5: 'manual_steps',
 };
 
 // ---------------------------------------------------------------------------
@@ -346,6 +356,7 @@ export function useSetup(): UseSetupReturn {
   const [proposedPlan, setProposedPlan] = useState<SetupPlan | null>(null);
   const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
+  const [executionItems, setExecutionItems] = useState<ExecutionItem[]>([]);
   const [manualSteps, setManualSteps] = useState<ManualStep[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -491,13 +502,15 @@ export function useSetup(): UseSetupReturn {
     }
   }, [restoredCompletedIndices, manualSteps.length]);
 
-  // Auto-advance from step 0 to step 1 once ClickUp is connected
-  // Run workspace analyzer before transitioning
+  // Auto-advance from step 0 to step 1 (analysis) once ClickUp is connected.
+  // The analysis runs and displays results — user clicks "Continue" to go to step 2.
   useEffect(() => {
     if (!clickUp.loading && clickUp.connected && currentStep === 0) {
       let cancelled = false;
 
-      const advanceWithAnalysis = async () => {
+      const runAnalysis = async () => {
+        // Move to step 1 immediately so the user sees the analysis UI
+        setCurrentStep(1);
         setIsAnalyzing(true);
         try {
           if (workspace_id) {
@@ -515,16 +528,18 @@ export function useSetup(): UseSetupReturn {
           }
         } catch (err) {
           console.error('[useSetup] Workspace analysis failed:', err);
-          // Continue anyway — don't block the flow
+          // Set a fallback so user isn't stuck
+          if (!cancelled) {
+            setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
+          }
         }
         if (!cancelled) {
           setIsAnalyzing(false);
-          setCurrentStep(1);
         }
       };
 
       // Small delay for the connect animation to settle
-      const timer = setTimeout(advanceWithAnalysis, 800);
+      const timer = setTimeout(runAnalysis, 800);
       return () => {
         cancelled = true;
         clearTimeout(timer);
@@ -560,9 +575,9 @@ export function useSetup(): UseSetupReturn {
 
   // Fallback: if stuck on Review (step 2) without a plan for 15s, go back to Describe
   useEffect(() => {
-    if (currentStep === 2 && !proposedPlan && !isSending) {
+    if (currentStep === 3 && !proposedPlan && !isSending) {
       const timer = setTimeout(() => {
-        setCurrentStep(1);
+        setCurrentStep(2);
         addMessage(
           'assistant',
           "I wasn't able to generate the workspace structure. Let's try again — tell me more about your business or click **\"Generate Structure\"** when ready."
@@ -682,11 +697,11 @@ export function useSetup(): UseSetupReturn {
           `I've created a workspace structure tailored for your ${template} business. It includes **${plan.spaces.length} spaces** with organized folders and lists.\n\nLet me show you the full structure for review.`
         );
         setIsSending(false);
-        setCurrentStep(2);
+        setCurrentStep(3);
       } catch {
         addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try describing your business manually.');
         setIsSending(false);
-        // Stay on step 1 — don't advance to Review without a plan
+        // Stay on step 2 — don't advance to Review without a plan
       }
     },
     [addMessage, workspace_id, user, conversationId, workspaceAnalysis]
@@ -713,7 +728,7 @@ export function useSetup(): UseSetupReturn {
         'assistant',
         `I've designed your workspace structure with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`
       );
-      setCurrentStep(2);
+      setCurrentStep(3);
     } catch {
       addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');
     }
@@ -734,14 +749,28 @@ export function useSetup(): UseSetupReturn {
 
   const approvePlan = useCallback(async () => {
     if (!proposedPlan || isExecuting) return;
-    setCurrentStep(3);
+    setCurrentStep(4);
     setIsExecuting(true);
+
+    // Track items progressively so the UI can show per-item status
+    const progressItems: ExecutionItem[] = [];
 
     const executorResult = await executeSetupPlan(
       proposedPlan as SetupPlan,
       workspace_id || '',
       '', // access token resolved server-side by ClickUpClient
       (completedItem, progress) => {
+        // Update the progressItems snapshot and push to state
+        const idx = progressItems.findIndex(
+          (pi) => pi.type === completedItem.type && pi.name === completedItem.name && pi.parentName === completedItem.parentName
+        );
+        if (idx >= 0) {
+          progressItems[idx] = completedItem;
+        } else {
+          progressItems.push(completedItem);
+        }
+        setExecutionItems([...progressItems]);
+
         setExecutionProgress({
           phase: completedItem.type === 'space' ? 'creating_spaces' : completedItem.type === 'folder' ? 'creating_folders' : 'creating_lists',
           current: progress.completed,
@@ -752,6 +781,8 @@ export function useSetup(): UseSetupReturn {
       },
     );
 
+    // Store the final per-item results from the executor
+    setExecutionItems(executorResult.items);
     setExecutionResult({
       success: executorResult.success,
       spacesCreated: executorResult.items.filter((i) => i.type === 'space' && i.status === 'success').length,
@@ -761,15 +792,21 @@ export function useSetup(): UseSetupReturn {
     });
     setIsExecuting(false);
 
-    // Auto-advance to finish after brief pause
+    // Generate manual steps from the plan
+    if (proposedPlan) {
+      const steps = generateManualSteps(proposedPlan as SetupPlan);
+      setManualSteps(steps);
+    }
+
+    // Auto-advance to manual steps after brief pause
     setTimeout(() => {
-      setCurrentStep(4);
+      setCurrentStep(5);
     }, 1500);
   }, [proposedPlan, isExecuting, workspace_id]);
 
   const requestChanges = useCallback(
     async (feedback: string) => {
-      setCurrentStep(1);
+      setCurrentStep(2);
       addMessage('user', feedback);
       setIsSending(true);
 
@@ -815,12 +852,13 @@ export function useSetup(): UseSetupReturn {
   }, []);
 
   const restartSetup = useCallback(() => {
-    setCurrentStep(clickUp.connected ? 1 : 0);
+    setCurrentStep(clickUp.connected ? 2 : 0);
     setBusinessDescription('');
     setChatMessages([WELCOME_MESSAGE]);
     setProposedPlan(null);
     setExecutionProgress(null);
     setExecutionResult(null);
+    setExecutionItems([]);
     setManualSteps([]);
     setIsExecuting(false);
     setIsSending(false);
@@ -848,6 +886,16 @@ export function useSetup(): UseSetupReturn {
     window.location.href = '/';
   }, []);
 
+  // Continue from analysis step to chat step
+  const continueFromAnalysis = useCallback(() => {
+    setCurrentStep(2);
+  }, []);
+
+  // Update the plan in-place from editable preview
+  const updatePlan = useCallback((newPlan: SetupPlan) => {
+    setProposedPlan(newPlan);
+  }, []);
+
   return {
     currentStep,
     wizardStep,
@@ -860,18 +908,22 @@ export function useSetup(): UseSetupReturn {
     executionProgress,
     executionResult,
     executionSteps,
+    executionItems,
     manualSteps,
     isExecuting,
     isSending,
     isAnalyzing,
     isRestored,
+    workspaceAnalysis,
     handleClickUpConnect,
     refreshClickUpStatus,
     sendMessage: enhancedSendMessage,
     selectTemplate,
+    updatePlan,
     approvePlan,
     requestChanges,
     markStepComplete,
+    continueFromAnalysis,
     restartSetup,
     goToDashboard,
   };
