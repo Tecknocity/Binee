@@ -100,8 +100,8 @@ export function WorkspaceAnalysis({
   analysisSummary,
   onContinue,
 }: WorkspaceAnalysisProps) {
-  // Loading state
-  if (isAnalyzing || !analysisSummary) {
+  // Loading state — only show while actively analyzing
+  if (isAnalyzing) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4">
         <div className="w-16 h-16 rounded-full bg-accent/15 flex items-center justify-center">
@@ -111,6 +111,31 @@ export function WorkspaceAnalysis({
         <p className="text-sm text-text-secondary text-center max-w-sm">
           Scanning your ClickUp workspace structure, tasks, and team setup...
         </p>
+      </div>
+    );
+  }
+
+  // If analysis finished but no summary (edge case), treat as empty workspace
+  if (!analysisSummary) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4 max-w-lg mx-auto">
+        <div className="w-16 h-16 rounded-full bg-accent/15 flex items-center justify-center">
+          <Inbox className="w-8 h-8 text-accent" />
+        </div>
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-text-primary mb-2">Ready to build</h2>
+          <p className="text-sm text-text-secondary">
+            Let&apos;s set up your ClickUp workspace with a structure tailored to your business.
+          </p>
+        </div>
+        <button
+          onClick={onContinue}
+          className="flex items-center gap-2 px-6 py-3 bg-accent text-white font-medium rounded-xl
+            hover:bg-accent-hover transition-colors shadow-lg shadow-accent/20"
+        >
+          <Sparkles className="w-4 h-4" />
+          Start Building
+        </button>
       </div>
     );
   }

@@ -524,11 +524,20 @@ export function useSetup(): UseSetupReturn {
               if (!cancelled && data.summary) {
                 setWorkspaceAnalysis(data.summary);
               }
+            } else {
+              // Non-200 response (e.g. 400, 500) — set fallback
+              if (!cancelled) {
+                setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
+              }
+            }
+          } else {
+            // No workspace_id — set fallback for empty workspace
+            if (!cancelled) {
+              setWorkspaceAnalysis('No workspace data yet — this appears to be a fresh workspace.');
             }
           }
         } catch (err) {
           console.error('[useSetup] Workspace analysis failed:', err);
-          // Set a fallback so user isn't stuck
           if (!cancelled) {
             setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
           }
