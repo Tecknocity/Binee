@@ -503,58 +503,58 @@ export function useSetup(): UseSetupReturn {
   }, [restoredCompletedIndices, manualSteps.length]);
 
   // Auto-advance from step 0 to step 1 (analysis) once ClickUp is connected.
-  // The analysis runs and displays results — user clicks "Continue" to go to step 2.
   useEffect(() => {
     if (!clickUp.loading && clickUp.connected && currentStep === 0) {
-      let cancelled = false;
+      const timer = setTimeout(() => setCurrentStep(1), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [clickUp.connected, clickUp.loading, currentStep]);
 
-      const runAnalysis = async () => {
-        // Move to step 1 immediately so the user sees the analysis UI
-        setCurrentStep(1);
-        setIsAnalyzing(true);
-        try {
-          if (workspace_id) {
-            const res = await fetch('/api/setup/analyze', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ workspace_id }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (!cancelled && data.summary) {
-                setWorkspaceAnalysis(data.summary);
-              }
-            } else {
-              // Non-200 response (e.g. 400, 500) — set fallback
-              if (!cancelled) {
-                setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
-              }
-            }
-          } else {
-            // No workspace_id — set fallback for empty workspace
-            if (!cancelled) {
+  // Run workspace analysis when we arrive at step 1 and haven't analyzed yet.
+  // Separate effect to avoid the race condition where setCurrentStep(1) triggers
+  // cleanup of the same effect that's running the async fetch.
+  const analysisStartedRef = useRef(false);
+  useEffect(() => {
+    if (currentStep !== 1 || workspaceAnalysis || analysisStartedRef.current) return;
+    analysisStartedRef.current = true;
+
+    let cancelled = false;
+    setIsAnalyzing(true);
+
+    (async () => {
+      try {
+        if (workspace_id) {
+          const res = await fetch('/api/setup/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspace_id }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (!cancelled && data.summary) {
+              setWorkspaceAnalysis(data.summary);
+            } else if (!cancelled) {
               setWorkspaceAnalysis('No workspace data yet — this appears to be a fresh workspace.');
             }
-          }
-        } catch (err) {
-          console.error('[useSetup] Workspace analysis failed:', err);
-          if (!cancelled) {
+          } else if (!cancelled) {
             setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
           }
+        } else if (!cancelled) {
+          setWorkspaceAnalysis('No workspace data yet — this appears to be a fresh workspace.');
         }
+      } catch (err) {
+        console.error('[useSetup] Workspace analysis failed:', err);
         if (!cancelled) {
-          setIsAnalyzing(false);
+          setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
         }
-      };
+      }
+      if (!cancelled) {
+        setIsAnalyzing(false);
+      }
+    })();
 
-      // Small delay for the connect animation to settle
-      const timer = setTimeout(runAnalysis, 800);
-      return () => {
-        cancelled = true;
-        clearTimeout(timer);
-      };
-    }
-  }, [clickUp.connected, clickUp.loading, currentStep, workspace_id]);
+    return () => { cancelled = true; };
+  }, [currentStep, workspaceAnalysis, workspace_id]);
 
   // Derive business profile from messages — no effect needed
   const businessProfile = useMemo(
@@ -861,7 +861,7 @@ export function useSetup(): UseSetupReturn {
   }, []);
 
   const restartSetup = useCallback(() => {
-    setCurrentStep(clickUp.connected ? 2 : 0);
+    setCurrentStep(clickUp.connected ? 1 : 0);
     setBusinessDescription('');
     setChatMessages([WELCOME_MESSAGE]);
     setProposedPlan(null);
@@ -873,6 +873,7 @@ export function useSetup(): UseSetupReturn {
     setIsSending(false);
     setIsAnalyzing(false);
     setWorkspaceAnalysis(null);
+    analysisStartedRef.current = false;
     setMessageCount(0);
     setWizardStep('business_chat');
     setExecutionSteps([]);

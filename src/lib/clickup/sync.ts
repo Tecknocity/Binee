@@ -866,3 +866,55 @@ export async function performReconciliationSync(
     throw err;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Lightweight structure-only sync (spaces → folders → lists, no tasks/members)
+// Used by the setup analyzer to ensure we're working with live ClickUp data.
+// ---------------------------------------------------------------------------
+
+export async function syncWorkspaceStructure(workspaceId: string): Promise<{
+  spaces: number;
+  folders: number;
+  lists: number;
+}> {
+  const client = new ClickUpClient(workspaceId);
+
+  const teams = await client.getTeams();
+  if (teams.length === 0) {
+    return { spaces: 0, folders: 0, lists: 0 };
+  }
+  const teamId = teams[0].id;
+
+  // Fetch spaces
+  const spaces = await client.getSpaces(teamId);
+  await upsertCachedSpaces(workspaceId, spaces);
+
+  // Fetch folders and lists for each space
+  const allFolders: ClickUpFolder[] = [];
+  const allLists: ClickUpList[] = [];
+
+  for (const space of spaces) {
+    try {
+      const folders = await client.getFolders(space.id);
+      allFolders.push(...folders);
+      for (const folder of folders) {
+        if (folder.lists) {
+          allLists.push(...folder.lists);
+        }
+      }
+      const folderlessLists = await client.getFolderlessLists(space.id);
+      allLists.push(...folderlessLists);
+    } catch {
+      // Skip spaces that error — don't block the whole sync
+    }
+  }
+
+  await upsertCachedFolders(workspaceId, allFolders);
+  await upsertCachedLists(workspaceId, allLists);
+
+  return {
+    spaces: spaces.length,
+    folders: allFolders.length,
+    lists: allLists.length,
+  };
+}
