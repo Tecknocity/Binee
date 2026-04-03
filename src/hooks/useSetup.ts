@@ -70,6 +70,8 @@ export interface UseSetupReturn {
   isRestored: boolean;
   /** Workspace analysis summary from the analyzer step */
   workspaceAnalysis: string | null;
+  /** Hard counts from Supabase cached tables (reliable, not AI-parsed) */
+  workspaceCounts: { spaces: number; folders: number; lists: number; tasks: number; members: number } | null;
   handleClickUpConnect: () => void;
   refreshClickUpStatus: () => Promise<void>;
   sendMessage: (msg: string) => void;
@@ -173,26 +175,44 @@ async function saveSessionState(
   state: Partial<SetupSessionState>
 ): Promise<void> {
   try {
-    await getSupabase().from('setup_sessions').upsert(
-      {
-        workspace_id: workspaceId,
-        user_id: userId,
-        conversation_id: conversationId,
-        status: state.wizardStep === 'complete' ? 'completed' : 'in_progress',
-        setup_type: 'new_space' as const,
-        config: {
-          wizardStep: state.wizardStep,
-          businessProfile: state.businessProfile,
-          plan: state.plan,
-          executionSteps: state.executionSteps,
-          executionResult: state.executionResult,
-          manualStepsCompleted: state.manualStepsCompleted,
-          chatMessages: state.chatMessages,
-        },
-        updated_at: new Date().toISOString(),
+    const sb = getSupabase();
+    const payload = {
+      workspace_id: workspaceId,
+      user_id: userId,
+      conversation_id: conversationId,
+      status: state.wizardStep === 'complete' ? 'completed' : 'in_progress',
+      setup_type: 'new_space' as const,
+      config: {
+        wizardStep: state.wizardStep,
+        businessProfile: state.businessProfile,
+        plan: state.plan,
+        executionSteps: state.executionSteps,
+        executionResult: state.executionResult,
+        manualStepsCompleted: state.manualStepsCompleted,
+        chatMessages: state.chatMessages,
       },
-      { onConflict: 'workspace_id,user_id' }
-    );
+      updated_at: new Date().toISOString(),
+    };
+
+    // Try update first (existing session), fall back to insert (new session).
+    // Avoids the onConflict upsert which requires a unique constraint.
+    const { data: existing } = await sb
+      .from('setup_sessions')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', userId)
+      .eq('status', 'in_progress')
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      await sb
+        .from('setup_sessions')
+        .update(payload)
+        .eq('id', existing.id);
+    } else {
+      await sb.from('setup_sessions').insert(payload);
+    }
   } catch {
     // Non-critical — session persistence is best-effort
   }
@@ -362,6 +382,7 @@ export function useSetup(): UseSetupReturn {
   const [isSending, setIsSending] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [workspaceAnalysis, setWorkspaceAnalysis] = useState<string | null>(null);
+  const [workspaceCounts, setWorkspaceCounts] = useState<{ spaces: number; folders: number; lists: number; tasks: number; members: number } | null>(null);
   const [messageCount, setMessageCount] = useState(0);
 
   // B-079: Named wizard step, execution steps, and restoration state
@@ -531,10 +552,11 @@ export function useSetup(): UseSetupReturn {
           });
           if (res.ok) {
             const data = await res.json();
-            if (!cancelled && data.summary) {
-              setWorkspaceAnalysis(data.summary);
-            } else if (!cancelled) {
-              setWorkspaceAnalysis('No workspace data yet — this appears to be a fresh workspace.');
+            if (!cancelled) {
+              setWorkspaceAnalysis(data.summary || 'No workspace data yet — this appears to be a fresh workspace.');
+              if (data.counts) {
+                setWorkspaceCounts(data.counts);
+              }
             }
           } else if (!cancelled) {
             setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
@@ -873,6 +895,7 @@ export function useSetup(): UseSetupReturn {
     setIsSending(false);
     setIsAnalyzing(false);
     setWorkspaceAnalysis(null);
+    setWorkspaceCounts(null);
     analysisStartedRef.current = false;
     setMessageCount(0);
     setWizardStep('business_chat');
@@ -925,6 +948,7 @@ export function useSetup(): UseSetupReturn {
     isAnalyzing,
     isRestored,
     workspaceAnalysis,
+    workspaceCounts,
     handleClickUpConnect,
     refreshClickUpStatus,
     sendMessage: enhancedSendMessage,
