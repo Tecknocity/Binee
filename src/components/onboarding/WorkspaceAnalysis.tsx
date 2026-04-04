@@ -13,6 +13,9 @@ import {
   Sparkles,
   Inbox,
   CheckSquare,
+  ShieldCheck,
+  Wrench,
+  Plus,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -22,41 +25,27 @@ import {
 interface WorkspaceAnalysisProps {
   isAnalyzing: boolean;
   analysisSummary: string | null;
-  /** Hard counts from Supabase cached tables — reliable, not AI-parsed */
   counts: { spaces: number; folders: number; lists: number; tasks: number; members: number } | null;
+  findings: Array<{ type: string; text: string }>;
+  recommendations: Array<{ action: string; text: string }>;
   onContinue: () => void;
 }
 
-interface Finding {
-  type: 'good' | 'warning' | 'info';
-  text: string;
-}
-
 // ---------------------------------------------------------------------------
-// Extract findings from the AI summary text (qualitative only, no numbers)
+// Icons for recommendation actions
 // ---------------------------------------------------------------------------
 
-function extractFindings(summary: string): Finding[] {
-  const findings: Finding[] = [];
-  const sentences = summary.split(/[.\n]/).filter((s) => s.trim().length > 15);
+const ACTION_ICONS: Record<string, React.ReactNode> = {
+  keep: <ShieldCheck className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />,
+  improve: <Wrench className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />,
+  add: <Plus className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />,
+};
 
-  for (const s of sentences.slice(0, 8)) {
-    const trimmed = s.trim();
-    // Skip lines that are just headers/labels
-    if (/^#+\s|^\*\*[A-Z]/.test(trimmed)) continue;
-    if (/^[-•]\s*$/.test(trimmed)) continue;
-
-    if (/overdue|missing|empty|unused|inconsist|duplicate|problem|issue|stale|no\s+\w+\s+found/i.test(trimmed)) {
-      findings.push({ type: 'warning', text: trimmed.replace(/^[-•*#\s]+/, '') });
-    } else if (/good|well|active|organized|clean|healthy|strong|excellent/i.test(trimmed)) {
-      findings.push({ type: 'good', text: trimmed.replace(/^[-•*#\s]+/, '') });
-    } else if (trimmed.length > 20 && !/^\d+\s|^total|^count/i.test(trimmed)) {
-      findings.push({ type: 'info', text: trimmed.replace(/^[-•*#\s]+/, '') });
-    }
-  }
-
-  return findings.slice(0, 5);
-}
+const ACTION_LABELS: Record<string, string> = {
+  keep: 'Keep',
+  improve: 'Improve',
+  add: 'Add',
+};
 
 // ---------------------------------------------------------------------------
 // Component
@@ -66,9 +55,11 @@ export function WorkspaceAnalysis({
   isAnalyzing,
   analysisSummary,
   counts,
+  findings,
+  recommendations,
   onContinue,
 }: WorkspaceAnalysisProps) {
-  // Loading state — only show while actively analyzing
+  // Loading state
   if (isAnalyzing) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4">
@@ -83,7 +74,7 @@ export function WorkspaceAnalysis({
     );
   }
 
-  // If analysis finished but no data, treat as empty workspace
+  // No data at all — ready to build
   if (!analysisSummary && !counts) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4 max-w-lg mx-auto">
@@ -108,11 +99,10 @@ export function WorkspaceAnalysis({
     );
   }
 
-  // Use hard counts from DB (reliable), fall back to zeros
   const stats = counts ?? { spaces: 0, folders: 0, lists: 0, tasks: 0, members: 0 };
   const isEmpty = stats.spaces === 0 && stats.folders === 0 && stats.lists === 0;
 
-  // Empty workspace — simple CTA
+  // Empty workspace
   if (isEmpty) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4 max-w-lg mx-auto">
@@ -138,15 +128,13 @@ export function WorkspaceAnalysis({
     );
   }
 
-  // Existing workspace — show report card
-  const findings = analysisSummary ? extractFindings(analysisSummary) : [];
-  const warningCount = findings.filter((f) => f.type === 'warning').length;
-  const recommendation =
-    warningCount >= 2 ? 'improve' :
-    stats.spaces >= 3 ? 'fine_tune' : 'improve';
+  // Existing workspace — full report
+  const hasKeepItems = recommendations.some((r) => r.action === 'keep');
+  const hasImprovements = recommendations.some((r) => r.action === 'improve' || r.action === 'add');
 
-  const ctaLabel =
-    recommendation === 'fine_tune' ? 'Fine-tune Workspace' : 'Improve Workspace';
+  const ctaLabel = hasKeepItems && !hasImprovements
+    ? 'Fine-tune Workspace'
+    : 'Improve Workspace';
 
   return (
     <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pb-6 overflow-y-auto">
@@ -161,7 +149,7 @@ export function WorkspaceAnalysis({
         </p>
       </div>
 
-      {/* Stats grid — numbers from database, not AI */}
+      {/* Stats grid */}
       <div className="grid grid-cols-5 gap-2 mb-6">
         {[
           { label: 'Spaces', value: stats.spaces, icon: FolderOpen },
@@ -178,9 +166,9 @@ export function WorkspaceAnalysis({
         ))}
       </div>
 
-      {/* Findings from AI (qualitative only) */}
+      {/* Key Findings */}
       {findings.length > 0 && (
-        <div className="bg-surface border border-border rounded-xl p-4 mb-6">
+        <div className="bg-surface border border-border rounded-xl p-4 mb-4">
           <h3 className="text-sm font-semibold text-text-primary mb-3">Key Findings</h3>
           <div className="space-y-2.5">
             {findings.map((finding, i) => (
@@ -201,20 +189,49 @@ export function WorkspaceAnalysis({
         </div>
       )}
 
-      {/* Recommendation */}
-      <div className="bg-accent/5 border border-accent/15 rounded-xl p-4 mb-6">
-        <div className="flex items-start gap-2.5">
-          <Sparkles className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-accent mb-1">Recommendation</p>
-            <p className="text-sm text-text-secondary leading-relaxed">
-              {recommendation === 'fine_tune'
-                ? "Your workspace is well-organized! We can suggest some minor improvements and optimizations to make it even better."
-                : "Your workspace has a solid foundation. Let's discuss what's working and what could be improved — we'll build alongside your existing structure."}
-            </p>
+      {/* Recommendations */}
+      {recommendations.length > 0 && (
+        <div className="bg-accent/5 border border-accent/15 rounded-xl p-4 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4 text-accent" />
+            <h3 className="text-sm font-semibold text-accent">Recommendations</h3>
+          </div>
+          <div className="space-y-2.5">
+            {recommendations.map((rec, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                {ACTION_ICONS[rec.action] || <Wrench className="w-4 h-4 text-text-muted flex-shrink-0 mt-0.5" />}
+                <div className="flex-1 min-w-0">
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider mr-2 ${
+                    rec.action === 'keep' ? 'text-success' :
+                    rec.action === 'improve' ? 'text-warning' :
+                    'text-accent'
+                  }`}>
+                    {ACTION_LABELS[rec.action] || rec.action}
+                  </span>
+                  <span className="text-sm text-text-secondary leading-relaxed">{rec.text}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Fallback recommendation if AI didn't return structured data */}
+      {recommendations.length === 0 && (
+        <div className="bg-accent/5 border border-accent/15 rounded-xl p-4 mb-6">
+          <div className="flex items-start gap-2.5">
+            <Sparkles className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-accent mb-1">Recommendation</p>
+              <p className="text-sm text-text-secondary leading-relaxed">
+                {stats.spaces >= 3
+                  ? "Your workspace has a solid foundation. Let's discuss what's working and what could be improved."
+                  : "Let's build on your existing workspace with a structure tailored to your business needs."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CTA */}
       <div className="flex justify-center pt-2">

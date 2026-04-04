@@ -16,6 +16,8 @@ interface SetupperInput {
   conversationId: string;
   conversationHistory: Anthropic.MessageParam[];
   templates: string;
+  /** Pre-computed analysis from the analyzer step — avoids redundant sub-agent call */
+  precomputedAnalysis?: string;
 }
 
 interface SetupperResult {
@@ -48,9 +50,10 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
-  // Step 1: If this is the first message, run workspace-analyst for initial scan
-  let workspaceAnalysis = '';
-  if (input.conversationHistory.length === 0) {
+  // Step 1: Use pre-computed analysis from the analyzer step if available.
+  // Only run a fresh sub-agent call if no analysis was provided (e.g. direct API call).
+  let workspaceAnalysis = input.precomputedAnalysis || '';
+  if (!workspaceAnalysis && input.conversationHistory.length === 0) {
     try {
       const analysisResult = await executeSubAgent(
         anthropic,

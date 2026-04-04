@@ -72,6 +72,10 @@ export interface UseSetupReturn {
   workspaceAnalysis: string | null;
   /** Hard counts from Supabase cached tables (reliable, not AI-parsed) */
   workspaceCounts: { spaces: number; folders: number; lists: number; tasks: number; members: number } | null;
+  /** Structured findings from the workspace analyst */
+  workspaceFindings: Array<{ type: string; text: string }>;
+  /** Structured recommendations from the workspace analyst */
+  workspaceRecommendations: Array<{ action: string; text: string }>;
   handleClickUpConnect: () => void;
   refreshClickUpStatus: () => Promise<void>;
   sendMessage: (msg: string) => void;
@@ -194,14 +198,14 @@ async function saveSessionState(
       updated_at: new Date().toISOString(),
     };
 
-    // Try update first (existing session), fall back to insert (new session).
-    // Avoids the onConflict upsert which requires a unique constraint.
+    // Find any existing session for this workspace+user (regardless of status)
+    // and update it, or insert a new one if none exists.
     const { data: existing } = await sb
       .from('setup_sessions')
       .select('id')
       .eq('workspace_id', workspaceId)
       .eq('user_id', userId)
-      .eq('status', 'in_progress')
+      .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -383,6 +387,8 @@ export function useSetup(): UseSetupReturn {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [workspaceAnalysis, setWorkspaceAnalysis] = useState<string | null>(null);
   const [workspaceCounts, setWorkspaceCounts] = useState<{ spaces: number; folders: number; lists: number; tasks: number; members: number } | null>(null);
+  const [workspaceFindings, setWorkspaceFindings] = useState<Array<{ type: string; text: string }>>([]);
+  const [workspaceRecommendations, setWorkspaceRecommendations] = useState<Array<{ action: string; text: string }>>([]);
   const [messageCount, setMessageCount] = useState(0);
 
   // B-079: Named wizard step, execution steps, and restoration state
@@ -554,9 +560,9 @@ export function useSetup(): UseSetupReturn {
             const data = await res.json();
             if (!cancelled) {
               setWorkspaceAnalysis(data.summary || 'No workspace data yet — this appears to be a fresh workspace.');
-              if (data.counts) {
-                setWorkspaceCounts(data.counts);
-              }
+              if (data.counts) setWorkspaceCounts(data.counts);
+              if (data.findings) setWorkspaceFindings(data.findings);
+              if (data.recommendations) setWorkspaceRecommendations(data.recommendations);
             }
           } else if (!cancelled) {
             setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
@@ -583,6 +589,41 @@ export function useSetup(): UseSetupReturn {
     () => extractProfileFromMessages(chatMessages),
     [chatMessages]
   );
+
+  // Build comprehensive analysis context to pass to the Setupper brain.
+  // Includes hard counts, structured findings, recommendations, and raw AI summary
+  // so the Setupper has complete workspace knowledge without running its own analysis.
+  const fullAnalysisContext = useMemo(() => {
+    if (!workspaceAnalysis && !workspaceCounts) return undefined;
+
+    const parts: string[] = [];
+
+    if (workspaceCounts) {
+      parts.push(`WORKSPACE STRUCTURE COUNTS:
+- Spaces: ${workspaceCounts.spaces}
+- Folders: ${workspaceCounts.folders}
+- Lists: ${workspaceCounts.lists}
+- Tasks: ${workspaceCounts.tasks}
+- Team Members: ${workspaceCounts.members}`);
+    }
+
+    if (workspaceFindings.length > 0) {
+      parts.push(`KEY FINDINGS:
+${workspaceFindings.map(f => `- [${f.type.toUpperCase()}] ${f.text}`).join('\n')}`);
+    }
+
+    if (workspaceRecommendations.length > 0) {
+      parts.push(`RECOMMENDATIONS FROM ANALYSIS:
+${workspaceRecommendations.map(r => `- [${r.action.toUpperCase()}] ${r.text}`).join('\n')}`);
+    }
+
+    if (workspaceAnalysis) {
+      parts.push(`RAW WORKSPACE ANALYST REPORT:
+${workspaceAnalysis}`);
+    }
+
+    return parts.join('\n\n');
+  }, [workspaceAnalysis, workspaceCounts, workspaceFindings, workspaceRecommendations]);
 
   const handleClickUpConnect = useCallback(() => {
     if (!workspace_id) return;
@@ -641,6 +682,7 @@ export function useSetup(): UseSetupReturn {
             workspace_id,
             conversation_id: conversationId,
             message: msg,
+            workspace_analysis: fullAnalysisContext,
           }),
         });
 
@@ -696,6 +738,7 @@ export function useSetup(): UseSetupReturn {
             workspace_id,
             conversation_id: conversationId,
             message: `Please set up my ClickUp workspace. ${description} Create the full structure — Spaces, Folders, Lists, and statuses — tailored for a ${template} business.`,
+            workspace_analysis: fullAnalysisContext,
           }),
         });
 
@@ -850,6 +893,7 @@ export function useSetup(): UseSetupReturn {
             workspace_id,
             conversation_id: conversationId,
             message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}`,
+            workspace_analysis: fullAnalysisContext,
           }),
         });
 
@@ -896,6 +940,8 @@ export function useSetup(): UseSetupReturn {
     setIsAnalyzing(false);
     setWorkspaceAnalysis(null);
     setWorkspaceCounts(null);
+    setWorkspaceFindings([]);
+    setWorkspaceRecommendations([]);
     analysisStartedRef.current = false;
     setMessageCount(0);
     setWizardStep('business_chat');
@@ -949,6 +995,8 @@ export function useSetup(): UseSetupReturn {
     isRestored,
     workspaceAnalysis,
     workspaceCounts,
+    workspaceFindings,
+    workspaceRecommendations,
     handleClickUpConnect,
     refreshClickUpStatus,
     sendMessage: enhancedSendMessage,

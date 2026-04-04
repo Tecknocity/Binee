@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspace_id, conversation_id, message } = body;
+    const { workspace_id, conversation_id, message, workspace_analysis } = body;
 
     if (!workspace_id || !conversation_id || !message?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       content: m.content,
     }));
 
-    // Run setupper brain
+    // Run setupper brain — pass pre-computed analysis if available
     const result = await handleSetupMessage({
       userMessage: message.trim(),
       workspaceId: workspace_id,
@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
       conversationId: conversation_id,
       conversationHistory,
       templates,
+      precomputedAnalysis: workspace_analysis || undefined,
     });
 
     // Deduct credits
