@@ -9,6 +9,7 @@ import {
   ArrowRight,
   Loader2,
   ChevronDown,
+  Layout,
 } from 'lucide-react';
 import type { ProfileFormData } from '@/hooks/useSetup';
 
@@ -26,7 +27,7 @@ interface BusinessProfileFormProps {
 // Options
 // ---------------------------------------------------------------------------
 
-const BUSINESS_CATEGORIES = [
+const INDUSTRIES = [
   'Marketing & Advertising',
   'Software & Technology',
   'E-commerce & Retail',
@@ -34,24 +35,31 @@ const BUSINESS_CATEGORIES = [
   'Healthcare & Wellness',
   'Education & Training',
   'Finance & Accounting',
-  'Real Estate',
+  'Real Estate & Property Management',
   'Manufacturing & Logistics',
   'Media & Entertainment',
+  'Legal Services',
+  'Architecture & Engineering',
+  'Food & Hospitality',
+  'Travel & Tourism',
+  'Insurance',
+  'Automotive',
+  'Agriculture & Farming',
+  'Energy & Utilities',
+  'Construction',
   'Nonprofit & Social Impact',
+  'Government & Public Sector',
+  'Telecommunications',
+  'Sports & Fitness',
+  'Beauty & Fashion',
   'Other',
 ] as const;
 
-const COMPANY_TYPES = [
-  'Agency',
-  'Startup',
-  'Small Business',
-  'Enterprise',
-  'Freelancer / Solo',
-  'Consulting Firm',
-  'SaaS Company',
-  'E-commerce Store',
-  'Nonprofit',
-  'Other',
+const WORK_STYLES = [
+  { value: 'client-based', label: 'Client-based', description: 'We manage work for multiple clients or accounts' },
+  { value: 'product-based', label: 'Product-based', description: 'We build and ship products (software, physical, etc.)' },
+  { value: 'project-based', label: 'Project-based', description: 'We run discrete projects with clear start and end dates' },
+  { value: 'operations-based', label: 'Operations-based', description: 'We manage ongoing processes and recurring workflows' },
 ] as const;
 
 const TEAM_SIZES = [
@@ -71,17 +79,26 @@ export function BusinessProfileForm({
   isSubmitting,
   initialData,
 }: BusinessProfileFormProps) {
-  const [businessCategory, setBusinessCategory] = useState(initialData?.businessCategory ?? '');
-  const [companyType, setCompanyType] = useState(initialData?.companyType ?? '');
+  const [industry, setIndustry] = useState(initialData?.industry ?? '');
+  const [industryCustom, setIndustryCustom] = useState(initialData?.industryCustom ?? '');
+  const [workStyle, setWorkStyle] = useState(initialData?.workStyle ?? '');
   const [services, setServices] = useState(initialData?.services ?? '');
   const [teamSize, setTeamSize] = useState(initialData?.teamSize ?? '');
 
-  const isValid = businessCategory && companyType && services.trim() && teamSize;
+  const effectiveIndustry = industry === 'Other' ? industryCustom.trim() : industry;
+  const isValid = effectiveIndustry && workStyle && services.trim() && teamSize;
+  const filledCount = [effectiveIndustry, workStyle, services.trim(), teamSize].filter(Boolean).length;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid || isSubmitting) return;
-    onSubmit({ businessCategory, companyType, services: services.trim(), teamSize });
+    onSubmit({
+      industry: effectiveIndustry,
+      industryCustom: industry === 'Other' ? industryCustom.trim() : '',
+      workStyle,
+      services: services.trim(),
+      teamSize,
+    });
   };
 
   return (
@@ -100,39 +117,68 @@ export function BusinessProfileForm({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Industry / Category */}
+          {/* Industry */}
           <FormField
             icon={<Briefcase className="w-4 h-4" />}
             label="Industry"
             hint="What industry is your business in?"
+            required
           >
             <SelectField
-              value={businessCategory}
-              onChange={setBusinessCategory}
+              value={industry}
+              onChange={(val) => {
+                setIndustry(val);
+                if (val !== 'Other') setIndustryCustom('');
+              }}
               placeholder="Select your industry..."
-              options={BUSINESS_CATEGORIES}
+              options={INDUSTRIES}
             />
+            {industry === 'Other' && (
+              <input
+                type="text"
+                value={industryCustom}
+                onChange={(e) => setIndustryCustom(e.target.value)}
+                placeholder="Enter your industry..."
+                className="mt-2 w-full bg-navy-base/50 border border-border rounded-xl px-4 py-3 text-sm text-text-primary
+                  placeholder:text-text-muted/50 outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all"
+              />
+            )}
           </FormField>
 
-          {/* Company Type */}
+          {/* Work Style */}
           <FormField
-            icon={<Building2 className="w-4 h-4" />}
-            label="Company type"
-            hint="What kind of company do you run?"
+            icon={<Layout className="w-4 h-4" />}
+            label="Work style"
+            hint="How is your work structured? This shapes your workspace layout."
+            required
           >
-            <SelectField
-              value={companyType}
-              onChange={setCompanyType}
-              placeholder="Select company type..."
-              options={COMPANY_TYPES}
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {WORK_STYLES.map((ws) => (
+                <button
+                  key={ws.value}
+                  type="button"
+                  onClick={() => setWorkStyle(ws.value)}
+                  className={`text-left px-4 py-3 rounded-xl border transition-all ${
+                    workStyle === ws.value
+                      ? 'bg-accent/15 border-accent/40'
+                      : 'bg-surface border-border hover:border-accent/20'
+                  }`}
+                >
+                  <p className={`text-sm font-medium ${workStyle === ws.value ? 'text-accent' : 'text-text-primary'}`}>
+                    {ws.label}
+                  </p>
+                  <p className="text-xs text-text-muted mt-0.5">{ws.description}</p>
+                </button>
+              ))}
+            </div>
           </FormField>
 
           {/* Services */}
           <FormField
             icon={<Wrench className="w-4 h-4" />}
             label="Services / Products"
-            hint="What does your business offer?"
+            hint="What does your business offer? List your main services or products."
+            required
           >
             <textarea
               value={services}
@@ -150,6 +196,7 @@ export function BusinessProfileForm({
             icon={<Users className="w-4 h-4" />}
             label="Team size"
             hint="How many people are on your team?"
+            required
           >
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {TEAM_SIZES.map((size) => (
@@ -173,16 +220,12 @@ export function BusinessProfileForm({
           <div className="pt-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-text-muted">Profile completeness</span>
-              <span className="text-xs font-medium text-accent">
-                {[businessCategory, companyType, services.trim(), teamSize].filter(Boolean).length}/4
-              </span>
+              <span className="text-xs font-medium text-accent">{filledCount}/4</span>
             </div>
             <div className="h-1.5 rounded-full bg-border overflow-hidden">
               <div
                 className="h-full rounded-full bg-accent transition-all duration-500 ease-out"
-                style={{
-                  width: `${([businessCategory, companyType, services.trim(), teamSize].filter(Boolean).length / 4) * 100}%`,
-                }}
+                style={{ width: `${(filledCount / 4) * 100}%` }}
               />
             </div>
           </div>
@@ -223,18 +266,23 @@ function FormField({
   icon,
   label,
   hint,
+  required,
   children,
 }: {
   icon: React.ReactNode;
   label: string;
   hint: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
         <span className="text-accent">{icon}</span>
-        <label className="text-sm font-semibold text-text-primary">{label}</label>
+        <label className="text-sm font-semibold text-text-primary">
+          {label}
+          {required && <span className="text-red-400 ml-0.5">*</span>}
+        </label>
       </div>
       <p className="text-xs text-text-muted mb-2">{hint}</p>
       {children}

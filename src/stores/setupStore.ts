@@ -53,8 +53,9 @@ interface SetupState {
   // Step 2: Profile form + Chat
   profileFormCompleted: boolean;
   profileFormData: {
-    businessCategory: string;
-    companyType: string;
+    industry: string;
+    industryCustom: string;
+    workStyle: string;
     services: string;
     teamSize: string;
   } | null;
@@ -73,7 +74,7 @@ interface SetupState {
   setConversationId: (id: string) => void;
   setAnalysis: (analysis: string | null, counts: WorkspaceCounts | null, findings: Finding[], recommendations: Recommendation[]) => void;
   setProfileFormCompleted: (completed: boolean) => void;
-  setProfileFormData: (data: { businessCategory: string; companyType: string; services: string; teamSize: string } | null) => void;
+  setProfileFormData: (data: { industry: string; industryCustom: string; workStyle: string; services: string; teamSize: string } | null) => void;
   addMessage: (msg: SetupChatMessage) => void;
   setBusinessDescription: (desc: string) => void;
   incrementMessageCount: () => void;

@@ -42,8 +42,9 @@ export interface BusinessProfile {
 }
 
 export interface ProfileFormData {
-  businessCategory: string;
-  companyType: string;
+  industry: string;
+  industryCustom: string;
+  workStyle: string;
   services: string;
   teamSize: string;
 }
@@ -634,12 +635,19 @@ export function useSetup(): UseSetupReturn {
   }, [setCurrentStep]);
 
   const submitProfileForm = useCallback(
-    async (data: { businessCategory: string; companyType: string; services: string; teamSize: string }) => {
+    async (data: ProfileFormData) => {
       store?.getState().setProfileFormData(data);
       store?.getState().setProfileFormCompleted(true);
 
+      const workStyleLabel: Record<string, string> = {
+        'client-based': 'client-based work (managing multiple clients)',
+        'product-based': 'product development (building and shipping products)',
+        'project-based': 'project-based work (discrete projects with deadlines)',
+        'operations-based': 'operations management (ongoing processes and workflows)',
+      };
+
       // Build a business description from the form data
-      const desc = `I run a ${data.companyType} in the ${data.businessCategory} industry. Our services include: ${data.services}. Team size: ${data.teamSize}.`;
+      const desc = `We're in the ${data.industry} industry. Our work style is ${workStyleLabel[data.workStyle] || data.workStyle}. Our services/products include: ${data.services}. Team size: ${data.teamSize}.`;
       store?.getState().setBusinessDescription(desc);
 
       // Add the description as a user message and trigger the chat
@@ -654,7 +662,7 @@ export function useSetup(): UseSetupReturn {
           body: JSON.stringify({
             workspace_id,
             conversation_id: conversationId,
-            message: `Here's my business profile:\n- Industry: ${data.businessCategory}\n- Company type: ${data.companyType}\n- Services: ${data.services}\n- Team size: ${data.teamSize}\n\nBased on my current workspace analysis and this profile, please recommend the optimal ClickUp workspace structure. Summarize what you'd build and ask if I want to make any changes before generating the structure.`,
+            message: `Here's my business profile:\n- Industry: ${data.industry}\n- Work style: ${workStyleLabel[data.workStyle] || data.workStyle}\n- Services/Products: ${data.services}\n- Team size: ${data.teamSize}\n\nBased on my current workspace analysis and this profile, please recommend the optimal ClickUp workspace structure. Summarize what you'd build and ask if I want to make any changes before generating the structure.`,
             workspace_analysis: fullAnalysisContext,
           }),
         });
@@ -673,7 +681,7 @@ export function useSetup(): UseSetupReturn {
 
       // Fallback if API fails
       await new Promise((r) => setTimeout(r, 800));
-      addMessage('assistant', `Great! Based on your profile as a **${data.companyType}** in **${data.businessCategory}**, I can see how to structure your workspace.\n\nI'll create spaces for your core operations, organize folders by ${data.services.includes(',') ? 'service areas' : 'your workflow'}, and set up lists with custom statuses.\n\nWould you like to share any more details about your workflows, tools, or pain points? Or click **"Generate Structure"** to see the proposed plan.`);
+      addMessage('assistant', `Great! Based on your **${data.industry}** business with a **${data.workStyle}** work style, I can see how to structure your workspace.\n\nI'll create spaces for your core operations, organize folders by ${data.services.includes(',') ? 'service areas' : 'your workflow'}, and set up lists with custom statuses.\n\nWould you like to share any more details about your workflows, tools, or pain points? Or click **"Generate Structure"** to see the proposed plan.`);
       setIsSending(false);
     },
     [addMessage, workspace_id, conversationId, fullAnalysisContext, store],
