@@ -17,6 +17,8 @@ import {
   GitBranch,
   AlertCircle,
   MessageSquare,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import type { SetupChatMessage, BusinessProfile } from '@/hooks/useSetup';
 import { profileCompleteness } from '@/hooks/useSetup';
@@ -155,8 +157,75 @@ export function BusinessChatStep({
     return val.length > 0;
   };
 
+  const [mobileProgressOpen, setMobileProgressOpen] = useState(false);
+
   return (
-    <div className="flex-1 flex max-w-5xl mx-auto w-full px-4 pb-4 gap-6 min-h-0 overflow-hidden">
+    <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden">
+      {/* Mobile discovery progress — collapsible banner */}
+      {messageCount > 0 && (
+        <div className="lg:hidden shrink-0 mb-2">
+          <button
+            type="button"
+            onClick={() => setMobileProgressOpen((v) => !v)}
+            className="w-full flex items-center justify-between bg-surface border border-border rounded-xl px-4 py-2.5"
+          >
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-accent" />
+              <span className="text-xs font-semibold text-text-primary uppercase tracking-wide">
+                Discovery Progress
+              </span>
+              <span className="text-xs font-medium text-accent">
+                {completeness}/{PROFILE_FIELDS.length}
+              </span>
+            </div>
+            {mobileProgressOpen ? (
+              <ChevronUp className="w-4 h-4 text-text-muted" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-text-muted" />
+            )}
+          </button>
+
+          {mobileProgressOpen && (
+            <div className="mt-1 bg-surface border border-border rounded-xl p-4">
+              {/* Progress bar */}
+              <div className="mb-3">
+                <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-accent transition-all duration-500 ease-out"
+                    style={{ width: `${(completeness / PROFILE_FIELDS.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                {PROFILE_FIELDS.map((field) => {
+                  const collected = isFieldCollected(field.key);
+                  return (
+                    <div key={field.key} className="flex items-start gap-2">
+                      {collected ? (
+                        <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <Circle className="w-4 h-4 text-text-muted/40 shrink-0 mt-0.5" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-xs font-medium ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
+                          {field.label}
+                        </p>
+                        {collected ? (
+                          <ProfileFieldValue profile={businessProfile} field={field.key} />
+                        ) : (
+                          <p className="text-[11px] text-text-muted/60 italic">{field.hint}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
       {/* Main chat area — ~70% width when sidebar visible */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Chat messages — flex-grow with bottom-anchored messages */}
@@ -295,7 +364,7 @@ export function BusinessChatStep({
         </p>
       </div>
 
-      {/* Profile progress sidebar — visible once conversation starts */}
+      {/* Profile progress sidebar — desktop only */}
       {messageCount > 0 && (
         <div className="hidden lg:flex flex-col w-64 shrink-0">
           <div className="sticky top-4 bg-surface border border-border rounded-xl p-4">
@@ -377,6 +446,7 @@ export function BusinessChatStep({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

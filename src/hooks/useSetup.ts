@@ -11,7 +11,7 @@ import type {
 } from '@/lib/setup/types';
 import { executeSetupPlan } from '@/lib/setup/executor';
 import type { ExecutionItem } from '@/lib/setup/executor';
-import { generateSetupPlan } from '@/lib/setup/planner';
+// generateSetupPlan is called via /api/setup/generate-plan (server-side only)
 import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -41,6 +41,13 @@ export interface BusinessProfile {
   painPoints: string[] | null;
 }
 
+export interface ProfileFormData {
+  businessCategory: string;
+  companyType: string;
+  services: string;
+  teamSize: string;
+}
+
 export interface UseSetupReturn {
   currentStep: SetupStep;
   wizardStep: SetupWizardStep;
@@ -48,6 +55,8 @@ export interface UseSetupReturn {
   clickUpLoading: boolean;
   businessDescription: string;
   businessProfile: BusinessProfile;
+  profileFormCompleted: boolean;
+  profileFormData: ProfileFormData | null;
   chatMessages: SetupChatMessage[];
   proposedPlan: SetupPlan | null;
   executionProgress: ExecutionProgress | null;
@@ -67,6 +76,7 @@ export interface UseSetupReturn {
   refreshClickUpStatus: () => Promise<void>;
   sendMessage: (msg: string) => void;
   selectTemplate: (template: string) => void;
+  submitProfileForm: (data: ProfileFormData) => void;
   updatePlan: (plan: SetupPlan) => void;
   approvePlan: () => void;
   requestChanges: (feedback: string) => void;
@@ -228,6 +238,8 @@ export function useSetup(): UseSetupReturn {
   const workspaceCounts = storeState?.workspaceCounts ?? null;
   const workspaceFindings = storeState?.workspaceFindings ?? [];
   const workspaceRecommendations = storeState?.workspaceRecommendations ?? [];
+  const profileFormCompleted = storeState?.profileFormCompleted ?? false;
+  const profileFormData = storeState?.profileFormData ?? null;
   const storedMessages = storeState?.chatMessages ?? [];
   const businessDescription = storeState?.businessDescription ?? '';
   const messageCount = storeState?.messageCount ?? 0;
@@ -460,10 +472,16 @@ export function useSetup(): UseSetupReturn {
       }
 
       try {
-        const plan = await generateSetupPlan(
-          { businessDescription: description, teamSize: null, departments: null, tools: null, workflows: null, painPoints: null },
-          workspaceAnalysis ?? undefined,
-        );
+        const planRes = await fetch('/api/setup/generate-plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessProfile: { businessDescription: description, teamSize: null, departments: null, tools: null, workflows: null, painPoints: null },
+            workspaceAnalysis: workspaceAnalysis ?? undefined,
+          }),
+        });
+        if (!planRes.ok) throw new Error('Plan generation failed');
+        const { plan } = await planRes.json();
         store?.getState().setPlan(plan);
         addMessage('assistant', `I've created a workspace structure tailored for your ${template} business. It includes **${plan.spaces.length} spaces** with organized folders and lists.\n\nLet me show you the full structure for review.`);
         setIsSending(false);
@@ -479,17 +497,23 @@ export function useSetup(): UseSetupReturn {
   const generateStructure = useCallback(async () => {
     setIsSending(true);
     try {
-      const plan = await generateSetupPlan(
-        {
-          businessDescription,
-          teamSize: businessProfile.teamSize,
-          departments: businessProfile.departments,
-          tools: businessProfile.tools,
-          workflows: businessProfile.workflows,
-          painPoints: businessProfile.painPoints,
-        },
-        workspaceAnalysis ?? undefined,
-      );
+      const res = await fetch('/api/setup/generate-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessProfile: {
+            businessDescription,
+            teamSize: businessProfile.teamSize,
+            departments: businessProfile.departments,
+            tools: businessProfile.tools,
+            workflows: businessProfile.workflows,
+            painPoints: businessProfile.painPoints,
+          },
+          workspaceAnalysis: workspaceAnalysis ?? undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('Plan generation failed');
+      const { plan } = await res.json();
       store?.getState().setPlan(plan);
       addMessage('assistant', `I've designed your workspace structure with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`);
       setCurrentStep(3);
@@ -609,6 +633,52 @@ export function useSetup(): UseSetupReturn {
     setCurrentStep(2);
   }, [setCurrentStep]);
 
+  const submitProfileForm = useCallback(
+    async (data: { businessCategory: string; companyType: string; services: string; teamSize: string }) => {
+      store?.getState().setProfileFormData(data);
+      store?.getState().setProfileFormCompleted(true);
+
+      // Build a business description from the form data
+      const desc = `I run a ${data.companyType} in the ${data.businessCategory} industry. Our services include: ${data.services}. Team size: ${data.teamSize}.`;
+      store?.getState().setBusinessDescription(desc);
+
+      // Add the description as a user message and trigger the chat
+      addMessage('user', desc);
+      store?.getState().incrementMessageCount();
+      setIsSending(true);
+
+      try {
+        const response = await fetch('/api/setup/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspace_id,
+            conversation_id: conversationId,
+            message: `Here's my business profile:\n- Industry: ${data.businessCategory}\n- Company type: ${data.companyType}\n- Services: ${data.services}\n- Team size: ${data.teamSize}\n\nBased on my current workspace analysis and this profile, please recommend the optimal ClickUp workspace structure. Summarize what you'd build and ask if I want to make any changes before generating the structure.`,
+            workspace_analysis: fullAnalysisContext,
+          }),
+        });
+
+        if (response.ok) {
+          const resData = await response.json();
+          if (resData.content) {
+            addMessage('assistant', resData.content);
+            setIsSending(false);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to fallback
+      }
+
+      // Fallback if API fails
+      await new Promise((r) => setTimeout(r, 800));
+      addMessage('assistant', `Great! Based on your profile as a **${data.companyType}** in **${data.businessCategory}**, I can see how to structure your workspace.\n\nI'll create spaces for your core operations, organize folders by ${data.services.includes(',') ? 'service areas' : 'your workflow'}, and set up lists with custom statuses.\n\nWould you like to share any more details about your workflows, tools, or pain points? Or click **"Generate Structure"** to see the proposed plan.`);
+      setIsSending(false);
+    },
+    [addMessage, workspace_id, conversationId, fullAnalysisContext, store],
+  );
+
   const updatePlan = useCallback((newPlan: SetupPlan) => {
     store?.getState().setPlan(newPlan);
   }, [store]);
@@ -624,6 +694,8 @@ export function useSetup(): UseSetupReturn {
     clickUpLoading: clickUp.loading,
     businessDescription,
     businessProfile,
+    profileFormCompleted,
+    profileFormData,
     chatMessages,
     proposedPlan,
     executionProgress,
@@ -643,6 +715,7 @@ export function useSetup(): UseSetupReturn {
     refreshClickUpStatus,
     sendMessage: enhancedSendMessage,
     selectTemplate,
+    submitProfileForm,
     updatePlan,
     approvePlan,
     requestChanges,
