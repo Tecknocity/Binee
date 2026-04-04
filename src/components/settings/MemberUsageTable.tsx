@@ -349,7 +349,7 @@ export default function MemberUsageTable() {
                           />
                         </div>
                         {totalUsage > 0 && member.total_credits > 0 && (
-                          <span className="text-[10px] text-text-muted font-mono w-8 text-right">
+                          <span className="text-[11px] text-text-muted font-mono w-8 text-right">
                             {Math.round((member.total_credits / totalUsage) * 100)}%
                           </span>
                         )}

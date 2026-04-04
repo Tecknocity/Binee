@@ -204,7 +204,7 @@ export function BusinessChatStep({
                       {collected ? (
                         <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
                       ) : (
-                        <Circle className="w-4 h-4 text-text-muted/40 shrink-0 mt-0.5" />
+                        <Circle className="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
                       )}
                       <div className="min-w-0 flex-1">
                         <p className={`text-xs font-medium ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
@@ -213,7 +213,7 @@ export function BusinessChatStep({
                         {collected ? (
                           <ProfileFieldValue profile={businessProfile} field={field.key} />
                         ) : (
-                          <p className="text-[11px] text-text-muted/60 italic">{field.hint}</p>
+                          <p className="text-[11px] text-text-muted italic">{field.hint}</p>
                         )}
                       </div>
                     </div>
@@ -354,12 +354,12 @@ export function BusinessChatStep({
         </div>
 
         {/* Keyboard hint */}
-        <p className="text-center text-[11px] text-text-muted/50 mt-1.5">
-          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
+        <p className="text-center text-[11px] text-text-muted mt-1.5">
+          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Enter</kbd>{' '}
           to send
-          <span className="mx-1.5 text-text-muted/30">|</span>
-          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Shift</kbd>+
-          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
+          <span className="mx-1.5 text-text-muted/50">|</span>
+          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Shift</kbd>+
+          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Enter</kbd>{' '}
           for new line
         </p>
       </div>
@@ -400,7 +400,7 @@ export function BusinessChatStep({
                     {collected ? (
                       <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
                     ) : (
-                      <Circle className="w-4 h-4 text-text-muted/40 shrink-0 mt-0.5" />
+                      <Circle className="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
                     )}
                     <div className="min-w-0">
                       <p
@@ -413,7 +413,7 @@ export function BusinessChatStep({
                       {collected ? (
                         <ProfileFieldValue profile={businessProfile} field={field.key} />
                       ) : (
-                        <p className="text-[11px] text-text-muted/60 italic">{field.hint}</p>
+                        <p className="text-[11px] text-text-muted italic">{field.hint}</p>
                       )}
                     </div>
                   </div>

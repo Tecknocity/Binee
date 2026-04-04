@@ -85,7 +85,7 @@ export default function EmptyState({
   // no-conversations (default / welcome)
   return (
     <div className="flex flex-col items-center justify-center flex-1 text-center px-6">
-      <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mb-4 overflow-hidden">
+      <div className="w-14 h-14 rounded-2xl bg-accent flex items-center justify-center mb-4 overflow-hidden">
         <Image src="/Binee__icon__white.svg" alt="Binee" width={36} height={36} unoptimized />
       </div>
       <h2 className="text-xl font-semibold text-text-primary mb-2">
@@ -97,7 +97,7 @@ export default function EmptyState({
       </p>
 
       <div className="grid gap-2 w-full max-w-md">
-        <p className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">
+        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-widest mb-1">
           Try asking
         </p>
         {SUGGESTED_PROMPTS.map((prompt) => (

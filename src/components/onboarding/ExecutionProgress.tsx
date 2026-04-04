@@ -241,7 +241,7 @@ export function ExecutionProgress({
                   transition-all duration-300 w-full justify-center
                   ${isDone ? 'bg-success/10 text-success' : ''}
                   ${isCurrent ? 'bg-accent/10 text-accent' : ''}
-                  ${!isDone && !isCurrent ? 'bg-surface/50 text-text-muted/50' : ''}
+                  ${!isDone && !isCurrent ? 'bg-surface/50 text-text-muted' : ''}
                 `}
               >
                 {isDone ? (
@@ -285,7 +285,7 @@ export function ExecutionProgress({
                   ${isActive ? 'bg-accent/10 border border-accent/20' : 'border border-transparent'}
                   ${item.state === 'error' ? 'bg-error/5' : ''}
                   ${item.state === 'success' ? 'animate-item-done' : ''}
-                  ${item.state === 'pending' ? 'opacity-40' : 'opacity-100'}
+                  ${item.state === 'pending' ? 'opacity-50' : 'opacity-100'}
                 `}
                 style={{
                   animationDelay: item.state === 'success' && hasScrolledOnce ? '0ms' : `${i * 30}ms`,
@@ -303,7 +303,7 @@ export function ExecutionProgress({
                     <XCircle className="w-4 h-4 text-error" />
                   )}
                   {item.state === 'pending' && (
-                    <Circle className="w-4 h-4 text-text-muted/40" />
+                    <Circle className="w-4 h-4 text-text-muted/60" />
                   )}
                 </div>
 
@@ -316,7 +316,7 @@ export function ExecutionProgress({
                       ? 'text-text-secondary'
                       : item.state === 'error'
                       ? 'text-error/60'
-                      : 'text-text-muted/40'
+                      : 'text-text-muted/60'
                   }`}
                 >
                   {TYPE_ICONS[item.type]}
@@ -331,7 +331,7 @@ export function ExecutionProgress({
                       ? 'text-text-secondary'
                       : item.state === 'error'
                       ? 'text-error/80'
-                      : 'text-text-muted/60'
+                      : 'text-text-muted'
                   }`}
                 >
                   {item.name}
@@ -339,14 +339,14 @@ export function ExecutionProgress({
 
                 {/* Type badge */}
                 <span
-                  className={`text-[10px] font-medium ml-auto flex-shrink-0 uppercase tracking-wider ${
+                  className={`text-[11px] font-medium ml-auto flex-shrink-0 uppercase tracking-wider ${
                     item.state === 'in-progress'
                       ? 'text-accent/70'
                       : item.state === 'success'
-                      ? 'text-text-muted/60'
+                      ? 'text-text-muted'
                       : item.state === 'error'
                       ? 'text-error/50'
-                      : 'text-text-muted/30'
+                      : 'text-text-muted/60'
                   }`}
                 >
                   {item.type}

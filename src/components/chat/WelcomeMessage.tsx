@@ -95,7 +95,7 @@ export default function WelcomeMessage({
   return (
     <div className="flex gap-3 max-w-2xl">
       {/* Binee avatar */}
-      <div className="shrink-0 w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center overflow-hidden">
+      <div className="shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden">
         <Image
           src="/Binee__icon__white.svg"
           alt="Binee"

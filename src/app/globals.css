@@ -35,11 +35,11 @@ html.light {
   --color-border-light: rgba(0, 0, 0, 0.08);
   --color-text-primary: #1A1A2E;
   --color-text-secondary: #4A4A60;
-  --color-text-muted: #656578;
-  --color-accent: #854DF9;
-  --color-accent-hover: #9D6FFA;
+  --color-text-muted: #555568;
+  --color-accent: #7B3FE4;
+  --color-accent-hover: #6935CC;
   --color-accent-light: #9D6FFA;
-  --color-accent-dark: #6B3AD4;
+  --color-accent-dark: #5C2DB0;
   --color-success: #16A34A;
   --color-warning: #CA8A04;
   --color-error: #DC2626;
@@ -51,6 +51,12 @@ body {
   color: var(--color-text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Native select option styling for consistent contrast */
+select option {
+  background-color: var(--color-navy-light);
+  color: var(--color-text-primary);
 }
 
 /* Smooth page transitions */

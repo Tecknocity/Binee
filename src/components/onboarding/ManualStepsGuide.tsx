@@ -157,7 +157,7 @@ function StepCard({
           {step.completed ? (
             <CheckCircle2 className="w-5 h-5 text-success" />
           ) : (
-            <Circle className="w-5 h-5 text-text-muted/40 hover:text-accent transition-colors" />
+            <Circle className="w-5 h-5 text-text-muted/60 hover:text-accent transition-colors" />
           )}
         </button>
       </button>

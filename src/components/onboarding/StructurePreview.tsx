@@ -170,7 +170,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
                           style={{ color: status.color, fill: status.color }}
                         />
                         <span>{status.name}</span>
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-surface text-text-muted">
+                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-surface text-text-muted">
                           {status.type}
                         </span>
                       </div>
@@ -402,7 +402,7 @@ function TreeNode({
 
         {/* Badge */}
         {badge && !editing && (
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${badgeColor}`}>
+          <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${badgeColor}`}>
             {badge}
           </span>
         )}
