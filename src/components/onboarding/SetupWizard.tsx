@@ -80,6 +80,8 @@ export default function SetupWizard() {
             isAnalyzing={setup.isAnalyzing}
             analysisSummary={setup.workspaceAnalysis}
             counts={setup.workspaceCounts}
+            findings={setup.workspaceFindings}
+            recommendations={setup.workspaceRecommendations}
             onContinue={setup.continueFromAnalysis}
           />
         )}

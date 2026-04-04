@@ -74,12 +74,65 @@ export async function POST(request: NextRequest) {
     };
 
     // Step 3: Run workspace_analyst for qualitative analysis (findings, recommendations)
+    // Pass a structured-output instruction so we get parseable JSON back
+    const analysisContext = `Analyze this ClickUp workspace as a ClickUp expert and project management consultant.
+Use the tools to inspect the workspace structure, tasks, and team.
+
+After analysis, respond ONLY with a JSON object in this exact format (no markdown, no extra text):
+{
+  "findings": [
+    {"type": "good", "text": "Description of something working well"},
+    {"type": "warning", "text": "Description of a problem or risk"},
+    {"type": "info", "text": "Neutral observation about the workspace"}
+  ],
+  "recommendations": [
+    {"action": "keep", "text": "What to preserve and why"},
+    {"action": "improve", "text": "What to change and why"},
+    {"action": "add", "text": "What to create and why"}
+  ]
+}
+
+FINDINGS should be specific and actionable like a senior PM consultant:
+- "Marketing space has 15 overdue tasks (37% of total) — bottleneck in review status"
+- "Engineering team has clean sprint workflow with consistent velocity"
+- "Client Work space has 3 empty lists that add clutter"
+- "No custom fields used — missing client tracking and priority data"
+- "Task descriptions are empty on 80% of tasks — low context for team"
+
+RECOMMENDATIONS should be concrete:
+- keep: "Keep the Engineering space structure — sprint workflow is well-designed"
+- improve: "Consolidate 3 empty lists in Client Work into a single backlog"
+- add: "Add Board views to pipeline-style lists for visual workflow tracking"
+
+If the workspace is empty, return: {"findings": [{"type": "info", "text": "Workspace is empty — ready for setup"}], "recommendations": [{"action": "add", "text": "Build workspace structure from scratch based on business needs"}]}
+
+Return 3-5 findings and 2-4 recommendations. Be specific with names and numbers.`;
+
     const result = await executeSubAgent(
       getClient(),
       'workspace_analyst',
-      'Provide a complete snapshot of the current workspace structure: all spaces, folders, lists, statuses, custom fields, and team members. Include counts for each. If the workspace is empty, say so clearly.',
+      analysisContext,
       workspace_id,
     );
+
+    // Parse structured findings from AI response
+    let findings: Array<{ type: string; text: string }> = [];
+    let recommendations: Array<{ action: string; text: string }> = [];
+
+    try {
+      // Try to extract JSON from the response (may be wrapped in markdown code fences)
+      const jsonMatch = result.summary.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        findings = Array.isArray(parsed.findings) ? parsed.findings : [];
+        recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+      }
+    } catch {
+      // If JSON parsing fails, treat the whole summary as a single finding
+      if (result.summary && result.summary.length > 10) {
+        findings = [{ type: 'info', text: result.summary.slice(0, 300) }];
+      }
+    }
 
     // Step 4: Charge credits (simple tier = 0.55)
     const creditsToCharge = 0.55;
@@ -117,6 +170,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       summary: result.summary,
       counts,
+      findings,
+      recommendations,
       error: result.error || null,
       credits_consumed: creditsToCharge,
     });

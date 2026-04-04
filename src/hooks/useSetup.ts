@@ -72,6 +72,10 @@ export interface UseSetupReturn {
   workspaceAnalysis: string | null;
   /** Hard counts from Supabase cached tables (reliable, not AI-parsed) */
   workspaceCounts: { spaces: number; folders: number; lists: number; tasks: number; members: number } | null;
+  /** Structured findings from the workspace analyst */
+  workspaceFindings: Array<{ type: string; text: string }>;
+  /** Structured recommendations from the workspace analyst */
+  workspaceRecommendations: Array<{ action: string; text: string }>;
   handleClickUpConnect: () => void;
   refreshClickUpStatus: () => Promise<void>;
   sendMessage: (msg: string) => void;
@@ -383,6 +387,8 @@ export function useSetup(): UseSetupReturn {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [workspaceAnalysis, setWorkspaceAnalysis] = useState<string | null>(null);
   const [workspaceCounts, setWorkspaceCounts] = useState<{ spaces: number; folders: number; lists: number; tasks: number; members: number } | null>(null);
+  const [workspaceFindings, setWorkspaceFindings] = useState<Array<{ type: string; text: string }>>([]);
+  const [workspaceRecommendations, setWorkspaceRecommendations] = useState<Array<{ action: string; text: string }>>([]);
   const [messageCount, setMessageCount] = useState(0);
 
   // B-079: Named wizard step, execution steps, and restoration state
@@ -554,9 +560,9 @@ export function useSetup(): UseSetupReturn {
             const data = await res.json();
             if (!cancelled) {
               setWorkspaceAnalysis(data.summary || 'No workspace data yet — this appears to be a fresh workspace.');
-              if (data.counts) {
-                setWorkspaceCounts(data.counts);
-              }
+              if (data.counts) setWorkspaceCounts(data.counts);
+              if (data.findings) setWorkspaceFindings(data.findings);
+              if (data.recommendations) setWorkspaceRecommendations(data.recommendations);
             }
           } else if (!cancelled) {
             setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
@@ -641,6 +647,7 @@ export function useSetup(): UseSetupReturn {
             workspace_id,
             conversation_id: conversationId,
             message: msg,
+            workspace_analysis: workspaceAnalysis || undefined,
           }),
         });
 
@@ -696,6 +703,7 @@ export function useSetup(): UseSetupReturn {
             workspace_id,
             conversation_id: conversationId,
             message: `Please set up my ClickUp workspace. ${description} Create the full structure — Spaces, Folders, Lists, and statuses — tailored for a ${template} business.`,
+            workspace_analysis: workspaceAnalysis || undefined,
           }),
         });
 
@@ -850,6 +858,7 @@ export function useSetup(): UseSetupReturn {
             workspace_id,
             conversation_id: conversationId,
             message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}`,
+            workspace_analysis: workspaceAnalysis || undefined,
           }),
         });
 
@@ -896,6 +905,8 @@ export function useSetup(): UseSetupReturn {
     setIsAnalyzing(false);
     setWorkspaceAnalysis(null);
     setWorkspaceCounts(null);
+    setWorkspaceFindings([]);
+    setWorkspaceRecommendations([]);
     analysisStartedRef.current = false;
     setMessageCount(0);
     setWizardStep('business_chat');
@@ -949,6 +960,8 @@ export function useSetup(): UseSetupReturn {
     isRestored,
     workspaceAnalysis,
     workspaceCounts,
+    workspaceFindings,
+    workspaceRecommendations,
     handleClickUpConnect,
     refreshClickUpStatus,
     sendMessage: enhancedSendMessage,
