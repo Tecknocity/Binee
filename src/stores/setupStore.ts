@@ -17,6 +17,26 @@ export interface SetupChatMessage {
   timestamp: string; // ISO string for serialization
 }
 
+export interface ExistingSpaceInfo {
+  clickup_id: string;
+  name: string;
+  folders: Array<{
+    clickup_id: string;
+    name: string;
+    lists: Array<{
+      clickup_id: string;
+      name: string;
+      task_count: number;
+      statuses: unknown;
+    }>;
+  }>;
+}
+
+export interface ExistingWorkspaceStructure {
+  spaces: ExistingSpaceInfo[];
+  captured_at: string;
+}
+
 interface WorkspaceCounts {
   spaces: number;
   folders: number;
@@ -66,6 +86,9 @@ interface SetupState {
   // Step 3: Plan
   proposedPlan: SetupPlan | null;
 
+  // Existing workspace structure (from cached tables)
+  existingStructure: ExistingWorkspaceStructure | null;
+
   // Step 5: Manual steps
   manualSteps: ManualStep[];
 
@@ -79,6 +102,7 @@ interface SetupState {
   setBusinessDescription: (desc: string) => void;
   incrementMessageCount: () => void;
   setPlan: (plan: SetupPlan | null) => void;
+  setExistingStructure: (structure: ExistingWorkspaceStructure | null) => void;
   setManualSteps: (steps: ManualStep[]) => void;
   toggleManualStep: (index: number) => void;
   resetFromStep: (step: SetupStep) => void;
@@ -110,6 +134,7 @@ function createSetupStore(workspaceId: string) {
         messageCount: 0,
 
         proposedPlan: null,
+        existingStructure: null,
 
         manualSteps: [],
 
@@ -129,6 +154,7 @@ function createSetupStore(workspaceId: string) {
         incrementMessageCount: () => set((s) => ({ messageCount: s.messageCount + 1 })),
 
         setPlan: (plan) => set({ proposedPlan: plan }),
+        setExistingStructure: (structure) => set({ existingStructure: structure }),
 
         setManualSteps: (steps) => set({ manualSteps: steps }),
         toggleManualStep: (index) =>
@@ -182,6 +208,7 @@ function createSetupStore(workspaceId: string) {
             businessDescription: '',
             messageCount: 0,
             proposedPlan: null,
+            existingStructure: null,
             manualSteps: [],
           }),
       }),
@@ -201,6 +228,7 @@ function createSetupStore(workspaceId: string) {
           businessDescription: state.businessDescription,
           messageCount: state.messageCount,
           proposedPlan: state.proposedPlan,
+          existingStructure: state.existingStructure,
           manualSteps: state.manualSteps,
         }),
       }

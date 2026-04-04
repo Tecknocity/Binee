@@ -6,6 +6,8 @@ import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 
+import { takeWorkspaceSnapshot } from '@/lib/setup/snapshots';
+
 export const maxDuration = 45;
 
 let _client: Anthropic | null = null;
@@ -55,6 +57,11 @@ export async function POST(request: NextRequest) {
     } catch (syncErr) {
       console.error('[setup/analyze] Structure sync failed:', syncErr);
     }
+
+    // Step 1b: Take initial snapshot of workspace structure (safety net)
+    takeWorkspaceSnapshot(workspace_id, 'initial_connect', user.id).catch((err) => {
+      console.error('[setup/analyze] Snapshot failed (non-blocking):', err);
+    });
 
     // Step 2: Read hard counts from cached Supabase tables (source of truth for numbers)
     const [spacesRes, foldersRes, listsRes, tasksRes, membersRes] = await Promise.all([

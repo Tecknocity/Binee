@@ -210,6 +210,7 @@ export default function SetupWizard() {
             onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
             onReject={setup.restartSetup}
             onPlanChange={setup.updatePlan}
+            existingStructure={setup.existingStructure}
           />
         )}
 
