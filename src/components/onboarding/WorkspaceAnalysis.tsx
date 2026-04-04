@@ -148,7 +148,7 @@ export function WorkspaceAnalysis({
         </div>
 
         {/* Stats grid */}
-        <div className="grid grid-cols-5 gap-3 mb-8">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mb-8">
           {[
             { label: 'Spaces', value: stats.spaces, icon: FolderOpen },
             { label: 'Folders', value: stats.folders, icon: Folder },

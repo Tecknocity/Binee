@@ -50,7 +50,14 @@ interface SetupState {
   workspaceFindings: Finding[];
   workspaceRecommendations: Recommendation[];
 
-  // Step 2: Chat
+  // Step 2: Profile form + Chat
+  profileFormCompleted: boolean;
+  profileFormData: {
+    businessCategory: string;
+    companyType: string;
+    services: string;
+    teamSize: string;
+  } | null;
   chatMessages: SetupChatMessage[];
   businessDescription: string;
   messageCount: number;
@@ -65,6 +72,8 @@ interface SetupState {
   setStep: (step: SetupStep) => void;
   setConversationId: (id: string) => void;
   setAnalysis: (analysis: string | null, counts: WorkspaceCounts | null, findings: Finding[], recommendations: Recommendation[]) => void;
+  setProfileFormCompleted: (completed: boolean) => void;
+  setProfileFormData: (data: { businessCategory: string; companyType: string; services: string; teamSize: string } | null) => void;
   addMessage: (msg: SetupChatMessage) => void;
   setBusinessDescription: (desc: string) => void;
   incrementMessageCount: () => void;
@@ -92,6 +101,8 @@ function createSetupStore(workspaceId: string) {
         workspaceFindings: [],
         workspaceRecommendations: [],
 
+        profileFormCompleted: false,
+        profileFormData: null,
         chatMessages: [],
         businessDescription: '',
         messageCount: 0,
@@ -105,6 +116,9 @@ function createSetupStore(workspaceId: string) {
 
         setAnalysis: (analysis, counts, findings, recommendations) =>
           set({ workspaceAnalysis: analysis, workspaceCounts: counts, workspaceFindings: findings, workspaceRecommendations: recommendations }),
+
+        setProfileFormCompleted: (completed) => set({ profileFormCompleted: completed }),
+        setProfileFormData: (data) => set({ profileFormData: data }),
 
         addMessage: (msg) =>
           set((s) => ({ chatMessages: [...s.chatMessages.slice(-29), msg] })),
@@ -130,6 +144,8 @@ function createSetupStore(workspaceId: string) {
             workspaceCounts: null,
             workspaceFindings: [],
             workspaceRecommendations: [],
+            profileFormCompleted: false,
+            profileFormData: null,
             chatMessages: [],
             businessDescription: '',
             messageCount: 0,
@@ -147,6 +163,8 @@ function createSetupStore(workspaceId: string) {
           workspaceCounts: state.workspaceCounts,
           workspaceFindings: state.workspaceFindings,
           workspaceRecommendations: state.workspaceRecommendations,
+          profileFormCompleted: state.profileFormCompleted,
+          profileFormData: state.profileFormData,
           chatMessages: state.chatMessages,
           businessDescription: state.businessDescription,
           messageCount: state.messageCount,

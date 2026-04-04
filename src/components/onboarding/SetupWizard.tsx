@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
 import { ClickUpConnectStep } from './ClickUpConnectStep';
 import { WorkspaceAnalysis } from './WorkspaceAnalysis';
+import { BusinessProfileForm } from './BusinessProfileForm';
 import { BusinessChatStep } from './BusinessChatStep';
 import { StructurePreview } from './StructurePreview';
 import { ExecutionProgress } from './ExecutionProgress';
@@ -86,8 +87,17 @@ export default function SetupWizard() {
           />
         )}
 
-        {/* Step 2: Business Chat */}
-        {setup.currentStep === 2 && (
+        {/* Step 2: Business Profile Form (before chat) */}
+        {setup.currentStep === 2 && !setup.profileFormCompleted && (
+          <BusinessProfileForm
+            onSubmit={setup.submitProfileForm}
+            isSubmitting={setup.isSending}
+            initialData={setup.profileFormData}
+          />
+        )}
+
+        {/* Step 2: Business Chat (after form completed) */}
+        {setup.currentStep === 2 && setup.profileFormCompleted && (
           <BusinessChatStep
             messages={setup.chatMessages}
             isSending={setup.isSending}

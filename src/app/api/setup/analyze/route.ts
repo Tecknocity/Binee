@@ -85,7 +85,9 @@ Respond with EXACTLY this JSON structure:
 FINDING TYPES:
 - "good": Something working well (e.g. "Engineering space has consistent status workflow across all 4 lists")
 - "warning": A problem or risk (e.g. "135 of 200 tasks (67.5%) are overdue — severe deadline management issue")
-- "info": Neutral observation (e.g. "Workspace has 3 spaces with 8 lists total")
+- "info": Neutral observation about structure quality, naming, or organization (e.g. "All lists use consistent 4-stage status workflows")
+
+IMPORTANT: Do NOT include findings that simply restate counts (e.g. "Workspace has 3 spaces and 8 lists with 200 tasks"). The counts are already displayed separately. Focus on qualitative insights — what's working well, what's broken, what's missing, and patterns you notice.
 
 RECOMMENDATION ACTIONS:
 - "keep": What to preserve (e.g. "Keep the Website & Tech space — active with 29 tasks and clear structure")
@@ -93,8 +95,8 @@ RECOMMENDATION ACTIONS:
 - "add": What to create (e.g. "Add Board views to pipeline lists for better visual workflow tracking")
 
 Be specific with space/folder/list names and task counts. Write like a senior ClickUp consultant.
-Return 3-5 findings and 2-4 recommendations.
-If workspace is empty: {"findings":[{"type":"info","text":"Workspace is empty — ready for setup"}],"recommendations":[{"action":"add","text":"Build workspace structure from scratch based on business needs"}]}`;
+Return EXACTLY 5 findings and 3-4 recommendations. Always provide 5 findings — dig deeper into the workspace structure, statuses, task distribution, naming conventions, and team utilization.
+If workspace is empty: {"findings":[{"type":"info","text":"Clean slate — perfect opportunity to build an optimized structure from day one"},{"type":"good","text":"No legacy clutter to clean up or migrate"},{"type":"info","text":"No existing workflows to work around — full flexibility in design"},{"type":"info","text":"Status workflows can be designed to match your exact process"},{"type":"info","text":"Folder and list hierarchy can be purpose-built for your team size"}],"recommendations":[{"action":"add","text":"Build workspace structure from scratch based on business needs"}]}`;
 
     const result = await executeSubAgent(
       getClient(),
@@ -136,16 +138,50 @@ If workspace is empty: {"findings":[{"type":"info","text":"Workspace is empty �
       console.error('[setup/analyze] JSON parse failed:', parseErr);
     }
 
+    // Filter out findings that just restate counts (redundant with stat cards)
+    findings = findings.filter((f) => {
+      const lower = f.text.toLowerCase();
+      // Remove findings that are just "workspace has X spaces, Y folders, Z lists..."
+      return !/^workspace has \d+ spaces?[,\s]/.test(lower);
+    });
+
     // If parsing failed completely, generate basic findings from counts
     if (findings.length === 0) {
       if (counts.spaces === 0 && counts.lists === 0) {
-        findings = [{ type: 'info', text: 'Workspace is empty — ready for a fresh setup' }];
-      } else {
         findings = [
-          { type: 'info', text: `Workspace has ${counts.spaces} spaces, ${counts.folders} folders, and ${counts.lists} lists with ${counts.tasks} tasks` },
+          { type: 'info', text: 'Clean slate — perfect opportunity to build an optimized structure from day one' },
+          { type: 'good', text: 'No legacy clutter to clean up or migrate' },
+          { type: 'info', text: 'No existing workflows to work around — full flexibility in design' },
+          { type: 'info', text: 'Status workflows can be designed to match your exact process' },
+          { type: 'info', text: 'Folder and list hierarchy can be purpose-built for your team size' },
         ];
+      } else {
+        findings = [];
         if (counts.tasks > 0 && counts.members <= 1) {
           findings.push({ type: 'warning', text: `${counts.tasks} tasks managed by only ${counts.members} team member — consider inviting your team` });
+        }
+        if (counts.lists > 0 && counts.folders === 0) {
+          findings.push({ type: 'info', text: 'Lists are not organized into folders — adding folders would improve navigation' });
+        }
+        if (counts.spaces > 0) {
+          findings.push({ type: 'good', text: `Workspace has an existing foundation with ${counts.spaces > 1 ? 'multiple spaces' : 'a space'} to build on` });
+        }
+        if (counts.tasks === 0) {
+          findings.push({ type: 'info', text: 'No tasks created yet — structure exists but is not actively used' });
+        }
+        if (counts.tasks > 50 && counts.members <= 2) {
+          findings.push({ type: 'warning', text: 'High task-to-member ratio may indicate workload imbalance' });
+        }
+        // Pad to 5 if needed
+        const padFindings = [
+          { type: 'info', text: 'Status workflows should be reviewed to ensure they match your actual process stages' },
+          { type: 'info', text: 'Consider adding descriptions to lists to clarify their purpose for team members' },
+          { type: 'info', text: 'Naming conventions across spaces and lists should follow a consistent pattern' },
+          { type: 'info', text: 'Board and Calendar views can be added to lists for better visual workflow management' },
+          { type: 'info', text: 'Custom fields can be added to track business-specific data like priority, client, or due dates' },
+        ];
+        while (findings.length < 5 && padFindings.length > 0) {
+          findings.push(padFindings.shift()!);
         }
       }
       recommendations = [
@@ -154,6 +190,27 @@ If workspace is empty: {"findings":[{"type":"info","text":"Workspace is empty �
           : "Build a workspace structure tailored to your business needs" },
       ];
     }
+
+    // Ensure we always have exactly 5 findings (pad if AI returned fewer)
+    if (findings.length < 5) {
+      const extraFindings = [
+        { type: 'info', text: 'Status workflows should be reviewed to ensure they match your actual process stages' },
+        { type: 'info', text: 'Consider adding descriptions to lists to clarify their purpose for team members' },
+        { type: 'info', text: 'Board and Calendar views can improve visual workflow tracking' },
+        { type: 'info', text: 'Custom fields can track business-specific data like priority, client, or budget' },
+        { type: 'info', text: 'Naming conventions across spaces and lists should follow a consistent pattern' },
+      ];
+      for (const ef of extraFindings) {
+        if (findings.length >= 5) break;
+        // Don't duplicate existing findings
+        if (!findings.some((f) => f.text === ef.text)) {
+          findings.push(ef);
+        }
+      }
+    }
+
+    // Cap at 5 findings
+    findings = findings.slice(0, 5);
 
     // Step 4: Charge credits (simple tier = 0.55)
     const creditsToCharge = 0.55;
