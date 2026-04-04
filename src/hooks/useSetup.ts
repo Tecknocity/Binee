@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type {
   SetupPlan,
   SetupWizardStep,
-  SetupSessionState,
   ExecutionStep,
   ExecutionProgress,
   ExecutionResult,
@@ -17,10 +16,11 @@ import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { createBrowserClient } from '@/lib/supabase/client';
+import { getSetupStore } from '@/stores/setupStore';
+import type { SetupChatMessage as StoreChatMessage } from '@/stores/setupStore';
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (re-export for consumers)
 // ---------------------------------------------------------------------------
 
 export interface SetupChatMessage {
@@ -32,10 +32,6 @@ export interface SetupChatMessage {
 
 export type SetupStep = 0 | 1 | 2 | 3 | 4 | 5;
 
-/**
- * Structured business profile collected during the discovery conversation.
- * Fields are populated progressively as the AI extracts information.
- */
 export interface BusinessProfile {
   businessDescription: string | null;
   teamSize: string | null;
@@ -47,7 +43,6 @@ export interface BusinessProfile {
 
 export interface UseSetupReturn {
   currentStep: SetupStep;
-  /** Named wizard step (B-079) */
   wizardStep: SetupWizardStep;
   clickUpConnected: boolean;
   clickUpLoading: boolean;
@@ -57,35 +52,25 @@ export interface UseSetupReturn {
   proposedPlan: SetupPlan | null;
   executionProgress: ExecutionProgress | null;
   executionResult: ExecutionResult | null;
-  /** B-079: Typed execution steps with individual status tracking */
   executionSteps: ExecutionStep[];
-  /** Per-item execution data from the executor for rich progress tracking */
   executionItems: ExecutionItem[];
   manualSteps: ManualStep[];
   isExecuting: boolean;
   isSending: boolean;
-  /** Whether workspace is being analyzed after ClickUp connect */
   isAnalyzing: boolean;
-  /** Whether session state has been restored from persistence */
   isRestored: boolean;
-  /** Workspace analysis summary from the analyzer step */
   workspaceAnalysis: string | null;
-  /** Hard counts from Supabase cached tables (reliable, not AI-parsed) */
   workspaceCounts: { spaces: number; folders: number; lists: number; tasks: number; members: number } | null;
-  /** Structured findings from the workspace analyst */
   workspaceFindings: Array<{ type: string; text: string }>;
-  /** Structured recommendations from the workspace analyst */
   workspaceRecommendations: Array<{ action: string; text: string }>;
   handleClickUpConnect: () => void;
   refreshClickUpStatus: () => Promise<void>;
   sendMessage: (msg: string) => void;
   selectTemplate: (template: string) => void;
-  /** Update the plan in-place (editable preview) */
   updatePlan: (plan: SetupPlan) => void;
   approvePlan: () => void;
   requestChanges: (feedback: string) => void;
   markStepComplete: (stepIndex: number) => void;
-  /** Continue from analysis step to chat step */
   continueFromAnalysis: () => void;
   restartSetup: () => void;
   goToDashboard: () => void;
@@ -112,10 +97,6 @@ const WELCOME_MESSAGE: SetupChatMessage = {
   timestamp: new Date(),
 };
 
-/**
- * Discovery questions the AI should ask. Used as fallback prompts when
- * the AI API is unavailable, and to guide the profile extraction logic.
- */
 const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string }> = [
   {
     key: 'businessDescription',
@@ -139,21 +120,9 @@ const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string 
   },
 ];
 
-// ---------------------------------------------------------------------------
-// B-079: Wizard step ↔ numeric step mapping
-// ---------------------------------------------------------------------------
-
-const WIZARD_STEP_TO_NUMERIC: Record<SetupWizardStep, SetupStep> = {
-  business_chat: 2,
-  preview: 3,
-  executing: 4,
-  manual_steps: 5,
-  complete: 5,
-};
-
 const NUMERIC_TO_WIZARD_STEP: Record<SetupStep, SetupWizardStep> = {
-  0: 'business_chat', // connect step maps to business_chat (pre-chat)
-  1: 'business_chat', // analysis step maps to business_chat
+  0: 'business_chat',
+  1: 'business_chat',
   2: 'business_chat',
   3: 'preview',
   4: 'executing',
@@ -161,133 +130,21 @@ const NUMERIC_TO_WIZARD_STEP: Record<SetupStep, SetupWizardStep> = {
 };
 
 // ---------------------------------------------------------------------------
-// B-079: Session persistence helpers
+// Profile extraction
 // ---------------------------------------------------------------------------
 
-// Lazy singleton — avoid calling createBrowserClient() at module scope
-// because it throws when NEXT_PUBLIC_SUPABASE_URL is missing during SSG prerender.
-let _supabase: ReturnType<typeof createBrowserClient> | null = null;
-function getSupabase() {
-  if (!_supabase) _supabase = createBrowserClient();
-  return _supabase;
-}
-
-async function saveSessionState(
-  workspaceId: string,
-  userId: string,
-  conversationId: string,
-  state: Partial<SetupSessionState>
-): Promise<void> {
-  try {
-    const sb = getSupabase();
-    const payload = {
-      workspace_id: workspaceId,
-      user_id: userId,
-      conversation_id: conversationId,
-      status: state.wizardStep === 'complete' ? 'completed' : 'in_progress',
-      setup_type: 'new_space' as const,
-      config: {
-        wizardStep: state.wizardStep,
-        businessProfile: state.businessProfile,
-        plan: state.plan,
-        executionSteps: state.executionSteps,
-        executionResult: state.executionResult,
-        manualStepsCompleted: state.manualStepsCompleted,
-        chatMessages: state.chatMessages,
-      },
-      updated_at: new Date().toISOString(),
-    };
-
-    // Find any existing session for this workspace+user (regardless of status)
-    // and update it, or insert a new one if none exists.
-    const { data: existing } = await sb
-      .from('setup_sessions')
-      .select('id')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existing) {
-      await sb
-        .from('setup_sessions')
-        .update(payload)
-        .eq('id', existing.id);
-    } else {
-      await sb.from('setup_sessions').insert(payload);
-    }
-  } catch {
-    // Non-critical — session persistence is best-effort
-  }
-}
-
-async function loadSessionState(
-  workspaceId: string,
-  userId: string
-): Promise<SetupSessionState | null> {
-  try {
-    const { data } = await getSupabase()
-      .from('setup_sessions')
-      .select('*')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', userId)
-      .eq('status', 'in_progress')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!data?.config) return null;
-
-    const config = data.config as Record<string, unknown>;
-    return {
-      wizardStep: (config.wizardStep as SetupWizardStep) ?? 'business_chat',
-      businessProfile: (config.businessProfile as SetupSessionState['businessProfile']) ?? {
-        businessDescription: null,
-        teamSize: null,
-        departments: null,
-        tools: null,
-        workflows: null,
-        painPoints: null,
-      },
-      plan: (config.plan as SetupSessionState['plan']) ?? null,
-      executionSteps: (config.executionSteps as ExecutionStep[]) ?? [],
-      executionResult: (config.executionResult as SetupSessionState['executionResult']) ?? null,
-      manualStepsCompleted: (config.manualStepsCompleted as number[]) ?? [],
-      chatMessages: (config.chatMessages as SetupSessionState['chatMessages']) ?? undefined,
-      conversationId: data.conversation_id ?? '',
-      startedAt: data.created_at,
-      updatedAt: data.updated_at,
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Profile extraction helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Extract structured business profile data from the conversation history.
- * This runs client-side as a best-effort extraction — the real extraction
- * happens server-side in the setup prompt when generating the plan.
- */
 function extractProfileFromMessages(messages: SetupChatMessage[]): BusinessProfile {
   const userMessages = messages
     .filter((m) => m.role === 'user')
     .map((m) => m.content.toLowerCase());
 
   const allText = userMessages.join(' ');
-
   const profile: BusinessProfile = { ...EMPTY_PROFILE };
 
-  // Business description — first user message is typically the description
   if (userMessages.length > 0) {
     profile.businessDescription = messages.find((m) => m.role === 'user')?.content ?? null;
   }
 
-  // Team size extraction
   const teamSizePatterns = [
     { pattern: /\bjust me\b|\bsolo\b|\bone person\b|\b1 person\b/, value: '1' },
     { pattern: /\b2[-–]5\b|\bsmall team\b|\bfew people\b|\b[2-5]\s*(?:people|members|employees)\b/, value: '2-5' },
@@ -301,54 +158,35 @@ function extractProfileFromMessages(messages: SetupChatMessage[]): BusinessProfi
     }
   }
 
-  // Department extraction
   const deptKeywords = [
     'sales', 'marketing', 'engineering', 'product', 'design', 'hr',
     'human resources', 'finance', 'operations', 'support', 'customer success',
     'legal', 'qa', 'quality', 'research', 'data', 'content', 'growth',
-    'devops', 'infrastructure', 'admin', 'management',
   ];
   const foundDepts = deptKeywords.filter((d) => allText.includes(d));
-  if (foundDepts.length > 0) {
-    profile.departments = foundDepts;
-  }
+  if (foundDepts.length > 0) profile.departments = foundDepts;
 
-  // Tool extraction
   const toolKeywords = [
     'trello', 'asana', 'notion', 'jira', 'monday', 'basecamp', 'linear',
     'slack', 'teams', 'google sheets', 'spreadsheet', 'excel', 'airtable',
     'hubspot', 'salesforce', 'zendesk', 'intercom', 'figma', 'github',
-    'gitlab', 'confluence', 'clickup',
   ];
   const foundTools = toolKeywords.filter((t) => allText.includes(t));
-  if (foundTools.length > 0) {
-    profile.tools = foundTools;
-  }
+  if (foundTools.length > 0) profile.tools = foundTools;
 
-  // Workflow hints
   const workflowKeywords = [
     'onboarding', 'intake', 'pipeline', 'sprint', 'campaign', 'fulfillment',
     'invoicing', 'review', 'approval', 'deployment', 'release', 'hiring',
-    'reporting', 'kickoff', 'retrospective', 'standup', 'planning',
   ];
   const foundWorkflows = workflowKeywords.filter((w) => allText.includes(w));
-  if (foundWorkflows.length > 0) {
-    profile.workflows = foundWorkflows;
-  }
+  if (foundWorkflows.length > 0) profile.workflows = foundWorkflows;
 
   return profile;
 }
 
-/**
- * Count how many profile fields have been filled.
- */
 export function profileCompleteness(profile: BusinessProfile): number {
   const fields: (keyof BusinessProfile)[] = [
-    'businessDescription',
-    'teamSize',
-    'departments',
-    'tools',
-    'workflows',
+    'businessDescription', 'teamSize', 'departments', 'tools', 'workflows',
   ];
   return fields.filter((k) => {
     const val = profile[k];
@@ -356,6 +194,18 @@ export function profileCompleteness(profile: BusinessProfile): number {
     if (Array.isArray(val)) return val.length > 0;
     return val.length > 0;
   }).length;
+}
+
+// ---------------------------------------------------------------------------
+// Store message ↔ UI message conversion
+// ---------------------------------------------------------------------------
+
+function toUiMessage(msg: StoreChatMessage): SetupChatMessage {
+  return { ...msg, timestamp: new Date(msg.timestamp) };
+}
+
+function toStoreMessage(msg: SetupChatMessage): StoreChatMessage {
+  return { ...msg, timestamp: msg.timestamp.toISOString() };
 }
 
 // ---------------------------------------------------------------------------
@@ -367,179 +217,63 @@ export function useSetup(): UseSetupReturn {
   const { workspace_id } = useWorkspace();
   const { user } = useAuth();
 
-  // Stable setup conversation ID — persists for the lifetime of this setup session.
-  // useState lazy initializer runs once and is allowed to call impure functions.
-  const [conversationId, setConversationId] = useState(
-    () => `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  );
+  // Get the zustand store for this workspace — auto-persists to localStorage
+  const store = workspace_id ? getSetupStore(workspace_id) : null;
+  const storeState = store?.getState();
 
-  // Start at step 0 (connect) if ClickUp is not connected, otherwise step 1 (describe)
-  const [currentStep, setCurrentStep] = useState<SetupStep>(0);
-  const [businessDescription, setBusinessDescription] = useState('');
-  const [chatMessages, setChatMessages] = useState<SetupChatMessage[]>([WELCOME_MESSAGE]);
-  const [proposedPlan, setProposedPlan] = useState<SetupPlan | null>(null);
+  // Read persisted state from store (or defaults if no store yet)
+  const currentStep = (storeState?.currentStep ?? 0) as SetupStep;
+  const conversationId = storeState?.conversationId ?? 'setup-fallback';
+  const workspaceAnalysis = storeState?.workspaceAnalysis ?? null;
+  const workspaceCounts = storeState?.workspaceCounts ?? null;
+  const workspaceFindings = storeState?.workspaceFindings ?? [];
+  const workspaceRecommendations = storeState?.workspaceRecommendations ?? [];
+  const storedMessages = storeState?.chatMessages ?? [];
+  const businessDescription = storeState?.businessDescription ?? '';
+  const messageCount = storeState?.messageCount ?? 0;
+  const proposedPlan = storeState?.proposedPlan ?? null;
+  const manualSteps = storeState?.manualSteps ?? [];
+
+  // Force re-render when store changes
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    if (!store) return;
+    return store.subscribe(() => forceUpdate((n) => n + 1));
+  }, [store]);
+
+  // Convert stored messages to UI format (with Date objects)
+  const chatMessages = useMemo(() => {
+    const msgs = storedMessages.map(toUiMessage);
+    // Prepend welcome message if no messages
+    if (msgs.length === 0) return [WELCOME_MESSAGE];
+    return msgs;
+  }, [storedMessages]);
+
+  // Transient UI state — NOT persisted (resets on refresh, that's fine)
   const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
   const [executionItems, setExecutionItems] = useState<ExecutionItem[]>([]);
-  const [manualSteps, setManualSteps] = useState<ManualStep[]>([]);
+  const [executionSteps] = useState<ExecutionStep[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [workspaceAnalysis, setWorkspaceAnalysis] = useState<string | null>(null);
-  const [workspaceCounts, setWorkspaceCounts] = useState<{ spaces: number; folders: number; lists: number; tasks: number; members: number } | null>(null);
-  const [workspaceFindings, setWorkspaceFindings] = useState<Array<{ type: string; text: string }>>([]);
-  const [workspaceRecommendations, setWorkspaceRecommendations] = useState<Array<{ action: string; text: string }>>([]);
-  const [messageCount, setMessageCount] = useState(0);
 
-  // B-079: Named wizard step, execution steps, and restoration state
-  const [wizardStep, setWizardStep] = useState<SetupWizardStep>('business_chat');
-  const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
-  const [isRestored, setIsRestored] = useState(false);
-  const hasRestoredRef = useRef(false);
-  // Indices of completed manual steps restored from persistence — applied once manualSteps are generated
-  const [restoredCompletedIndices, setRestoredCompletedIndices] = useState<number[] | null>(null);
+  const wizardStep = NUMERIC_TO_WIZARD_STEP[currentStep];
 
-  // B-079: Restore session state on mount
-  useEffect(() => {
-    if (!workspace_id || !user?.id || hasRestoredRef.current) return;
-    hasRestoredRef.current = true;
+  // Store setters — wrapped for convenience
+  const setCurrentStep = useCallback((step: SetupStep) => {
+    store?.getState().setStep(step);
+  }, [store]);
 
-    loadSessionState(workspace_id, user.id).then((saved) => {
-      if (!saved) {
-        setIsRestored(true);
-        return;
-      }
-
-      // Restore wizard step and associated state
-      setWizardStep(saved.wizardStep);
-      setCurrentStep(WIZARD_STEP_TO_NUMERIC[saved.wizardStep]);
-      setConversationId(saved.conversationId);
-
-      if (saved.plan) {
-        setProposedPlan(saved.plan);
-      }
-      if (saved.executionSteps.length > 0) {
-        setExecutionSteps(saved.executionSteps);
-      }
-      if (saved.executionResult) {
-        setExecutionResult({
-          success: saved.executionResult.success,
-          spacesCreated: 0,
-          foldersCreated: 0,
-          listsCreated: saved.executionResult.successCount,
-          errors: [],
-        });
-      }
-      if (saved.businessProfile.businessDescription) {
-        setBusinessDescription(saved.businessProfile.businessDescription);
-      }
-
-      // Restore chat messages (Fix 2b)
-      // Timestamps are serialized as strings in JSON — convert back to Date objects
-      if (saved.chatMessages && saved.chatMessages.length > 0) {
-        setChatMessages(
-          saved.chatMessages.map((msg) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp),
-          })) as SetupChatMessage[]
-        );
-      }
-
-      // Queue manual step completion indices for application after steps are generated (Fix 2a)
-      if (saved.manualStepsCompleted && saved.manualStepsCompleted.length > 0) {
-        setRestoredCompletedIndices(saved.manualStepsCompleted);
-      }
-
-      setIsRestored(true);
-    });
-
-    return () => {
-      // Reset on unmount so restore runs again on next mount (Fix 2c)
-      hasRestoredRef.current = false;
-    };
-  }, [workspace_id, user?.id]);
-
-  // B-079: Keep wizardStep in sync with numeric currentStep changes
-  useEffect(() => {
-    setWizardStep(NUMERIC_TO_WIZARD_STEP[currentStep]);
-  }, [currentStep]);
-
-  // B-079: Persist session state on meaningful changes
-  const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!workspace_id || !user?.id || !isRestored) return;
-
-    // Debounce persistence to avoid excessive writes
-    if (persistTimeoutRef.current) {
-      clearTimeout(persistTimeoutRef.current);
-    }
-
-    persistTimeoutRef.current = setTimeout(() => {
-      // Compute profile from current messages for persistence
-      const profile = extractProfileFromMessages(chatMessages);
-      saveSessionState(workspace_id, user.id, conversationId, {
-        wizardStep,
-        businessProfile: {
-          businessDescription: businessDescription || null,
-          teamSize: profile.teamSize,
-          departments: profile.departments,
-          tools: profile.tools,
-          workflows: profile.workflows,
-          painPoints: profile.painPoints,
-        },
-        plan: proposedPlan,
-        executionSteps,
-        executionResult: executionResult
-          ? {
-              success: executionResult.success,
-              totalItems: executionResult.spacesCreated + executionResult.foldersCreated + executionResult.listsCreated + executionResult.errors.length,
-              successCount: executionResult.spacesCreated + executionResult.foldersCreated + executionResult.listsCreated,
-              errorCount: executionResult.errors.length,
-            }
-          : null,
-        manualStepsCompleted: manualSteps
-          .map((s, i) => (s.completed ? i : -1))
-          .filter((i) => i >= 0),
-        // Cap at last 30 messages to avoid bloating the JSONB column
-        chatMessages: chatMessages.slice(-30),
-        conversationId,
-        startedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    }, 1000);
-
-    return () => {
-      if (persistTimeoutRef.current) {
-        clearTimeout(persistTimeoutRef.current);
-      }
-    };
-  }, [wizardStep, proposedPlan, executionSteps, executionResult, businessDescription, manualSteps, chatMessages, workspace_id, user?.id, conversationId, isRestored]);
-
-  // Fix 2a: Apply restored manual step completion indices once manualSteps are generated
-  useEffect(() => {
-    if (restoredCompletedIndices && manualSteps.length > 0) {
-      setManualSteps((prevSteps) =>
-        prevSteps.map((step, index) => ({
-          ...step,
-          completed: restoredCompletedIndices.includes(index),
-        }))
-      );
-      setRestoredCompletedIndices(null);
-    }
-  }, [restoredCompletedIndices, manualSteps.length]);
-
-  // Auto-advance from step 0 to step 1 (analysis) once ClickUp is connected.
+  // Auto-advance from step 0 → step 1 when ClickUp is connected
   useEffect(() => {
     if (!clickUp.loading && clickUp.connected && currentStep === 0) {
       const timer = setTimeout(() => setCurrentStep(1), 800);
       return () => clearTimeout(timer);
     }
-  }, [clickUp.connected, clickUp.loading, currentStep]);
+  }, [clickUp.connected, clickUp.loading, currentStep, setCurrentStep]);
 
-  // Run workspace analysis when we arrive at step 1 and haven't analyzed yet.
-  // Separate effect to avoid the race condition where setCurrentStep(1) triggers
-  // cleanup of the same effect that's running the async fetch.
+  // Run workspace analysis when we arrive at step 1 and haven't analyzed yet
   const analysisStartedRef = useRef(false);
   useEffect(() => {
     if (currentStep !== 1 || workspaceAnalysis || analysisStartedRef.current) return;
@@ -559,21 +293,23 @@ export function useSetup(): UseSetupReturn {
           if (res.ok) {
             const data = await res.json();
             if (!cancelled) {
-              setWorkspaceAnalysis(data.summary || 'No workspace data yet — this appears to be a fresh workspace.');
-              if (data.counts) setWorkspaceCounts(data.counts);
-              if (data.findings) setWorkspaceFindings(data.findings);
-              if (data.recommendations) setWorkspaceRecommendations(data.recommendations);
+              store?.getState().setAnalysis(
+                data.summary || 'No workspace data yet.',
+                data.counts || null,
+                data.findings || [],
+                data.recommendations || [],
+              );
             }
           } else if (!cancelled) {
-            setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
+            store?.getState().setAnalysis('Unable to analyze workspace.', null, [], []);
           }
         } else if (!cancelled) {
-          setWorkspaceAnalysis('No workspace data yet — this appears to be a fresh workspace.');
+          store?.getState().setAnalysis('No workspace data yet — fresh workspace.', null, [], []);
         }
       } catch (err) {
         console.error('[useSetup] Workspace analysis failed:', err);
         if (!cancelled) {
-          setWorkspaceAnalysis('Unable to analyze workspace — it may be empty or not yet synced.');
+          store?.getState().setAnalysis('Unable to analyze workspace.', null, [], []);
         }
       }
       if (!cancelled) {
@@ -582,48 +318,37 @@ export function useSetup(): UseSetupReturn {
     })();
 
     return () => { cancelled = true; };
-  }, [currentStep, workspaceAnalysis, workspace_id]);
+  }, [currentStep, workspaceAnalysis, workspace_id, store]);
 
-  // Derive business profile from messages — no effect needed
+  // Derive business profile from messages
   const businessProfile = useMemo(
     () => extractProfileFromMessages(chatMessages),
     [chatMessages]
   );
 
-  // Build comprehensive analysis context to pass to the Setupper brain.
-  // Includes hard counts, structured findings, recommendations, and raw AI summary
-  // so the Setupper has complete workspace knowledge without running its own analysis.
+  // Build comprehensive analysis context for the Setupper brain
   const fullAnalysisContext = useMemo(() => {
     if (!workspaceAnalysis && !workspaceCounts) return undefined;
 
     const parts: string[] = [];
-
     if (workspaceCounts) {
-      parts.push(`WORKSPACE STRUCTURE COUNTS:
-- Spaces: ${workspaceCounts.spaces}
-- Folders: ${workspaceCounts.folders}
-- Lists: ${workspaceCounts.lists}
-- Tasks: ${workspaceCounts.tasks}
-- Team Members: ${workspaceCounts.members}`);
+      parts.push(`WORKSPACE STRUCTURE COUNTS:\n- Spaces: ${workspaceCounts.spaces}\n- Folders: ${workspaceCounts.folders}\n- Lists: ${workspaceCounts.lists}\n- Tasks: ${workspaceCounts.tasks}\n- Team Members: ${workspaceCounts.members}`);
     }
-
     if (workspaceFindings.length > 0) {
-      parts.push(`KEY FINDINGS:
-${workspaceFindings.map(f => `- [${f.type.toUpperCase()}] ${f.text}`).join('\n')}`);
+      parts.push(`KEY FINDINGS:\n${workspaceFindings.map(f => `- [${f.type.toUpperCase()}] ${f.text}`).join('\n')}`);
     }
-
     if (workspaceRecommendations.length > 0) {
-      parts.push(`RECOMMENDATIONS FROM ANALYSIS:
-${workspaceRecommendations.map(r => `- [${r.action.toUpperCase()}] ${r.text}`).join('\n')}`);
+      parts.push(`RECOMMENDATIONS FROM ANALYSIS:\n${workspaceRecommendations.map(r => `- [${r.action.toUpperCase()}] ${r.text}`).join('\n')}`);
     }
-
     if (workspaceAnalysis) {
-      parts.push(`RAW WORKSPACE ANALYST REPORT:
-${workspaceAnalysis}`);
+      parts.push(`RAW WORKSPACE ANALYST REPORT:\n${workspaceAnalysis}`);
     }
-
     return parts.join('\n\n');
   }, [workspaceAnalysis, workspaceCounts, workspaceFindings, workspaceRecommendations]);
+
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
 
   const handleClickUpConnect = useCallback(() => {
     if (!workspace_id) return;
@@ -641,39 +366,32 @@ ${workspaceAnalysis}`);
       content,
       timestamp: new Date(),
     };
-    setChatMessages((prev) => [...prev, msg]);
+    store?.getState().addMessage(toStoreMessage(msg));
     return msg;
-  }, []);
+  }, [store]);
 
-  // Fallback: if stuck on Review (step 2) without a plan for 15s, go back to Describe
+  // Fallback: if stuck on Review (step 3) without a plan for 15s, go back
   useEffect(() => {
     if (currentStep === 3 && !proposedPlan && !isSending) {
       const timer = setTimeout(() => {
         setCurrentStep(2);
-        addMessage(
-          'assistant',
-          "I wasn't able to generate the workspace structure. Let's try again — tell me more about your business or click **\"Generate Structure\"** when ready."
-        );
+        addMessage('assistant', "I wasn't able to generate the workspace structure. Let's try again — tell me more about your business or click **\"Generate Structure\"** when ready.");
       }, 15000);
       return () => clearTimeout(timer);
     }
-  }, [currentStep, proposedPlan, isSending, addMessage]);
+  }, [currentStep, proposedPlan, isSending, addMessage, setCurrentStep]);
 
-  // ---------------------------------------------------------------------------
-  // Send message — calls /api/chat with setup context, falls back to guided flow
-  // ---------------------------------------------------------------------------
   const sendMessage = useCallback(
     async (msg: string) => {
       if (!msg.trim() || isSending) return;
 
       addMessage('user', msg);
-      setBusinessDescription((prev) => (prev ? `${prev}\n${msg}` : msg));
+      store?.getState().setBusinessDescription(businessDescription ? `${businessDescription}\n${msg}` : msg);
       setIsSending(true);
 
       const idx = messageCount;
-      setMessageCount((c) => c + 1);
+      store?.getState().incrementMessageCount();
 
-      // Call the standalone Setupper brain API
       try {
         const response = await fetch('/api/setup/chat', {
           method: 'POST',
@@ -698,38 +416,29 @@ ${workspaceAnalysis}`);
         // Fall through to guided fallback
       }
 
-      // Fallback: use guided discovery questions
       const fallbackIdx = Math.min(idx, DISCOVERY_QUESTIONS.length - 1);
-      const fallbackResponse = DISCOVERY_QUESTIONS[fallbackIdx].question;
-
-      // Simulate brief delay for natural feel
       await new Promise((r) => setTimeout(r, 800 + Math.random() * 600));
-      addMessage('assistant', fallbackResponse);
+      addMessage('assistant', DISCOVERY_QUESTIONS[fallbackIdx].question);
       setIsSending(false);
     },
-    [addMessage, isSending, messageCount, workspace_id, user, conversationId]
+    [addMessage, isSending, messageCount, workspace_id, conversationId, businessDescription, fullAnalysisContext, store]
   );
 
   const selectTemplate = useCallback(
     async (template: string) => {
       const templateDescriptions: Record<string, string> = {
-        agency:
-          'I run a digital marketing agency. We handle social media, content creation, and paid ads for multiple clients.',
-        startup:
-          "We're a tech startup building a SaaS product. Small team focused on rapid development and growth.",
-        ecommerce:
-          'I run an e-commerce business selling products online. We manage inventory, orders, and marketing campaigns.',
-        consulting:
-          'I run a consulting firm. We take on client engagements for strategy and process improvement.',
+        agency: 'I run a digital marketing agency. We handle social media, content creation, and paid ads for multiple clients.',
+        startup: "We're a tech startup building a SaaS product. Small team focused on rapid development and growth.",
+        ecommerce: 'I run an e-commerce business selling products online. We manage inventory, orders, and marketing campaigns.',
+        consulting: 'I run a consulting firm. We take on client engagements for strategy and process improvement.',
         saas: "We're a SaaS company with engineering, customer success, and growth teams.",
       };
 
       const description = templateDescriptions[template] || templateDescriptions.agency;
       addMessage('user', description);
-      setBusinessDescription(description);
+      store?.getState().setBusinessDescription(description);
       setIsSending(true);
 
-      // Call the standalone Setupper brain for template-based plan generation
       try {
         const response = await fetch('/api/setup/chat', {
           method: 'POST',
@@ -744,47 +453,31 @@ ${workspaceAnalysis}`);
 
         if (response.ok) {
           const data = await response.json();
-          if (data.content) {
-            addMessage('assistant', data.content);
-          }
+          if (data.content) addMessage('assistant', data.content);
         }
       } catch {
         // Fall through to AI plan generation
       }
 
-      // Generate a plan using the AI planner
       try {
         const plan = await generateSetupPlan(
-          {
-            businessDescription: description,
-            teamSize: null,
-            departments: null,
-            tools: null,
-            workflows: null,
-            painPoints: null,
-          },
+          { businessDescription: description, teamSize: null, departments: null, tools: null, workflows: null, painPoints: null },
           workspaceAnalysis ?? undefined,
         );
-        setProposedPlan(plan);
-        addMessage(
-          'assistant',
-          `I've created a workspace structure tailored for your ${template} business. It includes **${plan.spaces.length} spaces** with organized folders and lists.\n\nLet me show you the full structure for review.`
-        );
+        store?.getState().setPlan(plan);
+        addMessage('assistant', `I've created a workspace structure tailored for your ${template} business. It includes **${plan.spaces.length} spaces** with organized folders and lists.\n\nLet me show you the full structure for review.`);
         setIsSending(false);
         setCurrentStep(3);
       } catch {
         addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try describing your business manually.');
         setIsSending(false);
-        // Stay on step 2 — don't advance to Review without a plan
       }
     },
-    [addMessage, workspace_id, user, conversationId, workspaceAnalysis]
+    [addMessage, workspace_id, conversationId, workspaceAnalysis, fullAnalysisContext, store, setCurrentStep]
   );
 
   const generateStructure = useCallback(async () => {
     setIsSending(true);
-
-    // Generate plan using AI planner
     try {
       const plan = await generateSetupPlan(
         {
@@ -797,25 +490,18 @@ ${workspaceAnalysis}`);
         },
         workspaceAnalysis ?? undefined,
       );
-      setProposedPlan(plan);
-      addMessage(
-        'assistant',
-        `I've designed your workspace structure with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`
-      );
+      store?.getState().setPlan(plan);
+      addMessage('assistant', `I've designed your workspace structure with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`);
       setCurrentStep(3);
     } catch {
       addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');
     }
     setIsSending(false);
-  }, [addMessage, businessDescription, businessProfile, workspace_id, user, conversationId, workspaceAnalysis]);
+  }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep]);
 
-  // Expose generateStructure via sendMessage when enough context gathered
   const enhancedSendMessage = useCallback(
     (msg: string) => {
-      if (msg === '__generate_structure__') {
-        generateStructure();
-        return;
-      }
+      if (msg === '__generate_structure__') { generateStructure(); return; }
       sendMessage(msg);
     },
     [sendMessage, generateStructure]
@@ -826,25 +512,18 @@ ${workspaceAnalysis}`);
     setCurrentStep(4);
     setIsExecuting(true);
 
-    // Track items progressively so the UI can show per-item status
     const progressItems: ExecutionItem[] = [];
 
     const executorResult = await executeSetupPlan(
       proposedPlan as SetupPlan,
       workspace_id || '',
-      '', // access token resolved server-side by ClickUpClient
+      '',
       (completedItem, progress) => {
-        // Update the progressItems snapshot and push to state
         const idx = progressItems.findIndex(
           (pi) => pi.type === completedItem.type && pi.name === completedItem.name && pi.parentName === completedItem.parentName
         );
-        if (idx >= 0) {
-          progressItems[idx] = completedItem;
-        } else {
-          progressItems.push(completedItem);
-        }
+        if (idx >= 0) { progressItems[idx] = completedItem; } else { progressItems.push(completedItem); }
         setExecutionItems([...progressItems]);
-
         setExecutionProgress({
           phase: completedItem.type === 'space' ? 'creating_spaces' : completedItem.type === 'folder' ? 'creating_folders' : 'creating_lists',
           current: progress.completed,
@@ -855,7 +534,6 @@ ${workspaceAnalysis}`);
       },
     );
 
-    // Store the final per-item results from the executor
     setExecutionItems(executorResult.items);
     setExecutionResult({
       success: executorResult.success,
@@ -866,17 +544,13 @@ ${workspaceAnalysis}`);
     });
     setIsExecuting(false);
 
-    // Generate manual steps from the plan
     if (proposedPlan) {
       const steps = generateManualSteps(proposedPlan as SetupPlan);
-      setManualSteps(steps);
+      store?.getState().setManualSteps(steps);
     }
 
-    // Auto-advance to manual steps after brief pause
-    setTimeout(() => {
-      setCurrentStep(5);
-    }, 1500);
-  }, [proposedPlan, isExecuting, workspace_id]);
+    setTimeout(() => setCurrentStep(5), 1500);
+  }, [proposedPlan, isExecuting, workspace_id, store, setCurrentStep]);
 
   const requestChanges = useCallback(
     async (feedback: string) => {
@@ -884,7 +558,6 @@ ${workspaceAnalysis}`);
       addMessage('user', feedback);
       setIsSending(true);
 
-      // Call the standalone Setupper brain for structure revision
       try {
         const response = await fetch('/api/setup/chat', {
           method: 'POST',
@@ -899,80 +572,49 @@ ${workspaceAnalysis}`);
 
         if (response.ok) {
           const data = await response.json();
-          if (data.content) {
-            addMessage('assistant', data.content);
-            setIsSending(false);
-            return;
-          }
+          if (data.content) { addMessage('assistant', data.content); setIsSending(false); return; }
         }
       } catch {
         // Fall through to fallback
       }
 
-      // Fallback
       await new Promise((r) => setTimeout(r, 800));
-      addMessage(
-        'assistant',
-        "Got it, I've noted your feedback. Let me revise the structure based on your changes.\n\nClick **\"Generate Structure\"** when you're ready to see the updated plan."
-      );
+      addMessage('assistant', "Got it, I've noted your feedback. Let me revise the structure based on your changes.\n\nClick **\"Generate Structure\"** when you're ready to see the updated plan.");
       setIsSending(false);
     },
-    [addMessage, workspace_id, user, conversationId]
+    [addMessage, workspace_id, conversationId, fullAnalysisContext, setCurrentStep]
   );
 
   const markStepComplete = useCallback((stepIndex: number) => {
-    setManualSteps((prev) =>
-      prev.map((step, i) => (i === stepIndex ? { ...step, completed: !step.completed } : step))
-    );
-  }, []);
+    store?.getState().toggleManualStep(stepIndex);
+  }, [store]);
 
   const restartSetup = useCallback(() => {
-    setCurrentStep(clickUp.connected ? 1 : 0);
-    setBusinessDescription('');
-    setChatMessages([WELCOME_MESSAGE]);
-    setProposedPlan(null);
+    const newId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    store?.getState().reset(newId);
+    analysisStartedRef.current = false;
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);
-    setManualSteps([]);
     setIsExecuting(false);
     setIsSending(false);
     setIsAnalyzing(false);
-    setWorkspaceAnalysis(null);
-    setWorkspaceCounts(null);
-    setWorkspaceFindings([]);
-    setWorkspaceRecommendations([]);
-    analysisStartedRef.current = false;
-    setMessageCount(0);
-    setWizardStep('business_chat');
-    setExecutionSteps([]);
-    // New conversation ID for fresh start
-    setConversationId(`setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-
-    // Mark previous session as abandoned
-    if (workspace_id && user?.id) {
-      getSupabase()
-        .from('setup_sessions')
-        .update({ status: 'abandoned', updated_at: new Date().toISOString() })
-        .eq('workspace_id', workspace_id)
-        .eq('user_id', user.id)
-        .eq('status', 'in_progress')
-        .then(() => { /* best-effort */ });
+    // If ClickUp is connected, go to analysis (step 1), otherwise connect (step 0)
+    if (clickUp.connected) {
+      store?.getState().setStep(1);
     }
-  }, [clickUp.connected, workspace_id, user?.id]);
+  }, [store, clickUp.connected]);
+
+  const continueFromAnalysis = useCallback(() => {
+    setCurrentStep(2);
+  }, [setCurrentStep]);
+
+  const updatePlan = useCallback((newPlan: SetupPlan) => {
+    store?.getState().setPlan(newPlan);
+  }, [store]);
 
   const goToDashboard = useCallback(() => {
     window.location.href = '/';
-  }, []);
-
-  // Continue from analysis step to chat step
-  const continueFromAnalysis = useCallback(() => {
-    setCurrentStep(2);
-  }, []);
-
-  // Update the plan in-place from editable preview
-  const updatePlan = useCallback((newPlan: SetupPlan) => {
-    setProposedPlan(newPlan);
   }, []);
 
   return {
@@ -992,7 +634,7 @@ ${workspaceAnalysis}`);
     isExecuting,
     isSending,
     isAnalyzing,
-    isRestored,
+    isRestored: true, // Always true with localStorage — instant hydration
     workspaceAnalysis,
     workspaceCounts,
     workspaceFindings,

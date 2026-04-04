@@ -74,39 +74,27 @@ export async function POST(request: NextRequest) {
     };
 
     // Step 3: Run workspace_analyst for qualitative analysis (findings, recommendations)
-    // Pass a structured-output instruction so we get parseable JSON back
     const analysisContext = `Analyze this ClickUp workspace as a ClickUp expert and project management consultant.
 Use the tools to inspect the workspace structure, tasks, and team.
 
-After analysis, respond ONLY with a JSON object in this exact format (no markdown, no extra text):
-{
-  "findings": [
-    {"type": "good", "text": "Description of something working well"},
-    {"type": "warning", "text": "Description of a problem or risk"},
-    {"type": "info", "text": "Neutral observation about the workspace"}
-  ],
-  "recommendations": [
-    {"action": "keep", "text": "What to preserve and why"},
-    {"action": "improve", "text": "What to change and why"},
-    {"action": "add", "text": "What to create and why"}
-  ]
-}
+CRITICAL: Your ENTIRE response must be valid JSON. No text before or after. No markdown. No code fences.
+Respond with EXACTLY this JSON structure:
 
-FINDINGS should be specific and actionable like a senior PM consultant:
-- "Marketing space has 15 overdue tasks (37% of total) — bottleneck in review status"
-- "Engineering team has clean sprint workflow with consistent velocity"
-- "Client Work space has 3 empty lists that add clutter"
-- "No custom fields used — missing client tracking and priority data"
-- "Task descriptions are empty on 80% of tasks — low context for team"
+{"findings":[{"type":"good","text":"..."},{"type":"warning","text":"..."}],"recommendations":[{"action":"keep","text":"..."},{"action":"improve","text":"..."}]}
 
-RECOMMENDATIONS should be concrete:
-- keep: "Keep the Engineering space structure — sprint workflow is well-designed"
-- improve: "Consolidate 3 empty lists in Client Work into a single backlog"
-- add: "Add Board views to pipeline-style lists for visual workflow tracking"
+FINDING TYPES:
+- "good": Something working well (e.g. "Engineering space has consistent status workflow across all 4 lists")
+- "warning": A problem or risk (e.g. "135 of 200 tasks (67.5%) are overdue — severe deadline management issue")
+- "info": Neutral observation (e.g. "Workspace has 3 spaces with 8 lists total")
 
-If the workspace is empty, return: {"findings": [{"type": "info", "text": "Workspace is empty — ready for setup"}], "recommendations": [{"action": "add", "text": "Build workspace structure from scratch based on business needs"}]}
+RECOMMENDATION ACTIONS:
+- "keep": What to preserve (e.g. "Keep the Website & Tech space — active with 29 tasks and clear structure")
+- "improve": What to fix (e.g. "Review and close or reschedule the 135 overdue tasks before adding new structure")
+- "add": What to create (e.g. "Add Board views to pipeline lists for better visual workflow tracking")
 
-Return 3-5 findings and 2-4 recommendations. Be specific with names and numbers.`;
+Be specific with space/folder/list names and task counts. Write like a senior ClickUp consultant.
+Return 3-5 findings and 2-4 recommendations.
+If workspace is empty: {"findings":[{"type":"info","text":"Workspace is empty — ready for setup"}],"recommendations":[{"action":"add","text":"Build workspace structure from scratch based on business needs"}]}`;
 
     const result = await executeSubAgent(
       getClient(),
@@ -120,18 +108,51 @@ Return 3-5 findings and 2-4 recommendations. Be specific with names and numbers.
     let recommendations: Array<{ action: string; text: string }> = [];
 
     try {
-      // Try to extract JSON from the response (may be wrapped in markdown code fences)
-      const jsonMatch = result.summary.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        findings = Array.isArray(parsed.findings) ? parsed.findings : [];
-        recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
+      const raw = result.summary || '';
+
+      // Strip markdown code fences if present: ```json ... ``` or ```...```
+      const stripped = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+
+      // Find the outermost JSON object — use a balanced-brace approach
+      const startIdx = stripped.indexOf('{');
+      if (startIdx >= 0) {
+        let depth = 0;
+        let endIdx = startIdx;
+        for (let i = startIdx; i < stripped.length; i++) {
+          if (stripped[i] === '{') depth++;
+          if (stripped[i] === '}') depth--;
+          if (depth === 0) { endIdx = i; break; }
+        }
+        const jsonStr = stripped.slice(startIdx, endIdx + 1);
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed.findings)) {
+          findings = parsed.findings.filter((f: { type?: string; text?: string }) => f.type && f.text);
+        }
+        if (Array.isArray(parsed.recommendations)) {
+          recommendations = parsed.recommendations.filter((r: { action?: string; text?: string }) => r.action && r.text);
+        }
       }
-    } catch {
-      // If JSON parsing fails, treat the whole summary as a single finding
-      if (result.summary && result.summary.length > 10) {
-        findings = [{ type: 'info', text: result.summary.slice(0, 300) }];
+    } catch (parseErr) {
+      console.error('[setup/analyze] JSON parse failed:', parseErr);
+    }
+
+    // If parsing failed completely, generate basic findings from counts
+    if (findings.length === 0) {
+      if (counts.spaces === 0 && counts.lists === 0) {
+        findings = [{ type: 'info', text: 'Workspace is empty — ready for a fresh setup' }];
+      } else {
+        findings = [
+          { type: 'info', text: `Workspace has ${counts.spaces} spaces, ${counts.folders} folders, and ${counts.lists} lists with ${counts.tasks} tasks` },
+        ];
+        if (counts.tasks > 0 && counts.members <= 1) {
+          findings.push({ type: 'warning', text: `${counts.tasks} tasks managed by only ${counts.members} team member — consider inviting your team` });
+        }
       }
+      recommendations = [
+        { action: counts.spaces >= 3 ? 'improve' : 'add', text: counts.spaces >= 3
+          ? "Let's discuss what's working and what could be restructured for better workflow"
+          : "Build a workspace structure tailored to your business needs" },
+      ];
     }
 
     // Step 4: Charge credits (simple tier = 0.55)
