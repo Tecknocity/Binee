@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   FolderOpen,
   Folder,
@@ -16,6 +16,7 @@ import {
   Puzzle,
 } from 'lucide-react';
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
+import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -28,13 +29,15 @@ interface StructurePreviewProps {
   onReject: () => void;
   /** Called when the plan is modified in-place (editable mode) */
   onPlanChange?: (plan: SetupPlan) => void;
+  /** Current workspace structure from ClickUp (for showing existing vs new) */
+  existingStructure?: ExistingWorkspaceStructure | null;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChange }: StructurePreviewProps) {
+export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChange, existingStructure }: StructurePreviewProps) {
   // Count totals for summary
   let totalFolders = 0;
   let totalLists = 0;
@@ -48,6 +51,41 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
       }
     }
   }
+
+  // Build lookup for existing items (case-insensitive matching)
+  const existingLookup = useMemo(() => {
+    const spaces = new Map<string, { folders: Map<string, Set<string>> }>();
+    if (!existingStructure?.spaces) return spaces;
+    for (const space of existingStructure.spaces) {
+      const folders = new Map<string, Set<string>>();
+      for (const folder of space.folders) {
+        const lists = new Set(folder.lists.map((l) => l.name.toLowerCase()));
+        folders.set(folder.name.toLowerCase(), lists);
+      }
+      spaces.set(space.name.toLowerCase(), { folders });
+    }
+    return spaces;
+  }, [existingStructure]);
+
+  const spaceExists = (name: string) => existingLookup.has(name.toLowerCase());
+  const folderExists = (spaceName: string, folderName: string) =>
+    existingLookup.get(spaceName.toLowerCase())?.folders.has(folderName.toLowerCase()) ?? false;
+  const listExists = (spaceName: string, folderName: string, listName: string) =>
+    existingLookup.get(spaceName.toLowerCase())?.folders.get(folderName.toLowerCase())?.has(listName.toLowerCase()) ?? false;
+
+  // Count new vs existing
+  let newItems = 0;
+  let existingItems = 0;
+  for (const space of plan.spaces) {
+    if (spaceExists(space.name)) existingItems++; else newItems++;
+    for (const folder of space.folders) {
+      if (folderExists(space.name, folder.name)) existingItems++; else newItems++;
+      for (const list of folder.lists) {
+        if (listExists(space.name, folder.name, list.name)) existingItems++; else newItems++;
+      }
+    }
+  }
+  const hasExisting = existingItems > 0;
 
   // Helper to mutate plan and notify parent
   const updatePlan = (updater: (draft: SetupPlan) => void) => {
@@ -143,6 +181,11 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
           {totalFolders} {totalFolders === 1 ? 'folder' : 'folders'} &middot;{' '}
           {totalLists} {totalLists === 1 ? 'list' : 'lists'} &middot;{' '}
           {totalStatuses} statuses
+          {hasExisting && (
+            <span className="text-text-muted ml-2">
+              ({newItems} new, {existingItems} already exist)
+            </span>
+          )}
           {editable && (
             <span className="text-accent ml-2">- click names to rename, use +/x to add or remove</span>
           )}
@@ -151,7 +194,9 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
 
       {/* Tree */}
       <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pb-4">
-        {plan.spaces.map((space, si) => (
+        {plan.spaces.map((space, si) => {
+          const sExists = spaceExists(space.name);
+          return (
           <TreeNode
             key={`space-${si}`}
             icon={<FolderOpen className="w-4 h-4 text-accent" />}
@@ -162,8 +207,11 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
             editable={editable}
             onRename={(name) => renameSpace(si, name)}
             onDelete={plan.spaces.length > 1 ? () => deleteSpace(si) : undefined}
+            existsInWorkspace={hasExisting ? sExists : undefined}
           >
-            {space.folders.map((folder, fi) => (
+            {space.folders.map((folder, fi) => {
+              const fExists = folderExists(space.name, folder.name);
+              return (
               <TreeNode
                 key={`folder-${si}-${fi}`}
                 icon={<Folder className="w-4 h-4 text-warning" />}
@@ -173,8 +221,11 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
                 editable={editable}
                 onRename={(name) => renameFolder(si, fi, name)}
                 onDelete={space.folders.length > 1 ? () => deleteFolder(si, fi) : undefined}
+                existsInWorkspace={hasExisting ? fExists : undefined}
               >
-                {folder.lists.map((list, li) => (
+                {folder.lists.map((list, li) => {
+                  const lExists = listExists(space.name, folder.name, list.name);
+                  return (
                   <TreeNode
                     key={`list-${si}-${fi}-${li}`}
                     icon={<List className="w-4 h-4 text-info" />}
@@ -184,6 +235,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
                     editable={editable}
                     onRename={(name) => renameList(si, fi, li, name)}
                     onDelete={folder.lists.length > 1 ? () => deleteList(si, fi, li) : undefined}
+                    existsInWorkspace={hasExisting ? lExists : undefined}
                   >
                     {list.statuses.map((status, sti) => (
                       <StatusRow
@@ -208,7 +260,8 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
                       <p className="text-xs text-text-muted pl-2 pb-1 italic">{list.description}</p>
                     )}
                   </TreeNode>
-                ))}
+                  );
+                })}
                 {/* Add list button */}
                 {editable && (
                   <button
@@ -219,7 +272,8 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
                   </button>
                 )}
               </TreeNode>
-            ))}
+              );
+            })}
             {/* Add folder button */}
             {editable && (
               <button
@@ -230,7 +284,8 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
               </button>
             )}
           </TreeNode>
-        ))}
+          );
+        })}
 
         {/* Add space button */}
         {editable && (
@@ -338,6 +393,7 @@ function TreeNode({
   editable = false,
   onRename,
   onDelete,
+  existsInWorkspace,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -348,6 +404,8 @@ function TreeNode({
   editable?: boolean;
   onRename?: (name: string) => void;
   onDelete?: () => void;
+  /** undefined = don't show indicator, true = exists, false = new */
+  existsInWorkspace?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
@@ -434,6 +492,19 @@ function TreeNode({
           <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${badgeColor}`}>
             {badge}
           </span>
+        )}
+
+        {/* Exists / New indicator */}
+        {existsInWorkspace !== undefined && !editing && (
+          existsInWorkspace ? (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 bg-text-muted/10 text-text-muted">
+              exists - will skip
+            </span>
+          ) : (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 bg-success/10 text-success">
+              new
+            </span>
+          )
         )}
 
         {/* Edit/Delete buttons (visible on hover when editable) */}

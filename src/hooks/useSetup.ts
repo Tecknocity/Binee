@@ -17,7 +17,7 @@ import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getSetupStore } from '@/stores/setupStore';
-import type { SetupChatMessage as StoreChatMessage } from '@/stores/setupStore';
+import type { SetupChatMessage as StoreChatMessage, ExistingWorkspaceStructure } from '@/stores/setupStore';
 
 // ---------------------------------------------------------------------------
 // Types (re-export for consumers)
@@ -60,6 +60,7 @@ export interface UseSetupReturn {
   profileFormData: ProfileFormData | null;
   chatMessages: SetupChatMessage[];
   proposedPlan: SetupPlan | null;
+  existingStructure: ExistingWorkspaceStructure | null;
   executionProgress: ExecutionProgress | null;
   executionResult: ExecutionResult | null;
   executionSteps: ExecutionStep[];
@@ -247,6 +248,7 @@ export function useSetup(): UseSetupReturn {
   const businessDescription = storeState?.businessDescription ?? '';
   const messageCount = storeState?.messageCount ?? 0;
   const proposedPlan = storeState?.proposedPlan ?? null;
+  const existingStructure = storeState?.existingStructure ?? null;
   const manualSteps = storeState?.manualSteps ?? [];
 
   // Force re-render when store changes
@@ -334,6 +336,31 @@ export function useSetup(): UseSetupReturn {
 
     return () => { cancelled = true; };
   }, [currentStep, workspaceAnalysis, workspace_id, store]);
+
+  // Load existing workspace structure when arriving at step 3 (Review)
+  const existingStructureLoadedRef = useRef(false);
+  useEffect(() => {
+    if (currentStep !== 3 || existingStructure || existingStructureLoadedRef.current || !workspace_id) return;
+    existingStructureLoadedRef.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/setup/existing-structure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspace_id }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.structure) {
+            store?.getState().setExistingStructure(data.structure);
+          }
+        }
+      } catch (err) {
+        console.error('[useSetup] Failed to load existing structure:', err);
+      }
+    })();
+  }, [currentStep, existingStructure, workspace_id, store]);
 
   // Derive business profile from messages
   const businessProfile = useMemo(
@@ -539,6 +566,17 @@ export function useSetup(): UseSetupReturn {
     setCurrentStep(4);
     setIsExecuting(true);
 
+    // Take a pre-build snapshot (non-blocking safety net)
+    fetch('/api/setup/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id,
+        snapshot_type: 'pre_build',
+        setup_plan: proposedPlan,
+      }),
+    }).catch((err) => console.error('[useSetup] Pre-build snapshot failed:', err));
+
     const progressItems: ExecutionItem[] = [];
 
     const executorResult = await executeSetupPlan(
@@ -559,14 +597,22 @@ export function useSetup(): UseSetupReturn {
           errors: completedItem.status === 'error' && completedItem.error ? [completedItem.error] : [],
         });
       },
+      existingStructure,
     );
 
     setExecutionItems(executorResult.items);
+    setExecutionProgress({
+      phase: 'complete',
+      current: executorResult.totalItems,
+      total: executorResult.totalItems,
+      currentItem: '',
+      errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
+    });
     setExecutionResult({
       success: executorResult.success,
-      spacesCreated: executorResult.items.filter((i) => i.type === 'space' && i.status === 'success').length,
-      foldersCreated: executorResult.items.filter((i) => i.type === 'folder' && i.status === 'success').length,
-      listsCreated: executorResult.items.filter((i) => i.type === 'list' && i.status === 'success').length,
+      spacesCreated: executorResult.items.filter((i) => i.type === 'space' && (i.status === 'success' || i.status === 'skipped')).length,
+      foldersCreated: executorResult.items.filter((i) => i.type === 'folder' && (i.status === 'success' || i.status === 'skipped')).length,
+      listsCreated: executorResult.items.filter((i) => i.type === 'list' && (i.status === 'success' || i.status === 'skipped')).length,
       errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
     });
     setIsExecuting(false);
@@ -577,13 +623,28 @@ export function useSetup(): UseSetupReturn {
     }
 
     setTimeout(() => setCurrentStep(5), 1500);
-  }, [proposedPlan, isExecuting, workspace_id, store, setCurrentStep]);
+  }, [proposedPlan, isExecuting, workspace_id, store, setCurrentStep, existingStructure]);
 
   const requestChanges = useCallback(
     async (feedback: string) => {
       setCurrentStep(2);
       addMessage('user', feedback);
       setIsSending(true);
+
+      // Build rich context so the AI doesn't start fresh
+      const previousPlanSummary = proposedPlan
+        ? `\n\nPREVIOUS WORKSPACE STRUCTURE (what was generated):\n${proposedPlan.spaces.map(s =>
+            `Space: ${s.name}\n${s.folders.map(f =>
+              `  Folder: ${f.name}\n${f.lists.map(l =>
+                `    List: ${l.name} (statuses: ${l.statuses.map(st => st.name).join(', ')})`
+              ).join('\n')}`
+            ).join('\n')}`
+          ).join('\n')}\n\nThe user has already reviewed this structure and wants to make changes. Do NOT ask them to describe their business again. Ask specifically what they want to change about the structure above.`
+        : '';
+
+      const profileContext = profileFormData
+        ? `\n\nUSER PROFILE (already collected, do NOT re-ask):\n- Industry: ${profileFormData.industry}\n- Work style: ${profileFormData.workStyle}\n- Services: ${profileFormData.services}\n- Team size: ${profileFormData.teamSize}`
+        : '';
 
       try {
         const response = await fetch('/api/setup/chat', {
@@ -592,7 +653,7 @@ export function useSetup(): UseSetupReturn {
           body: JSON.stringify({
             workspace_id,
             conversation_id: conversationId,
-            message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}`,
+            message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}${previousPlanSummary}${profileContext}`,
             workspace_analysis: fullAnalysisContext,
           }),
         });
@@ -606,10 +667,10 @@ export function useSetup(): UseSetupReturn {
       }
 
       await new Promise((r) => setTimeout(r, 800));
-      addMessage('assistant', "Got it, I've noted your feedback. Let me revise the structure based on your changes.\n\nClick **\"Generate Structure\"** when you're ready to see the updated plan.");
+      addMessage('assistant', "I have your previous structure in mind. What specific changes would you like to make? You can ask me to add, remove, or rename spaces, folders, lists, or statuses.\n\nClick **\"Generate Structure\"** when you're ready to see the updated plan.");
       setIsSending(false);
     },
-    [addMessage, workspace_id, conversationId, fullAnalysisContext, setCurrentStep]
+    [addMessage, workspace_id, conversationId, fullAnalysisContext, setCurrentStep, proposedPlan, profileFormData]
   );
 
   const markStepComplete = useCallback((stepIndex: number) => {
@@ -727,6 +788,7 @@ export function useSetup(): UseSetupReturn {
     profileFormData,
     chatMessages,
     proposedPlan,
+    existingStructure,
     executionProgress,
     executionResult,
     executionSteps,

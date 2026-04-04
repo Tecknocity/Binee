@@ -8,12 +8,13 @@ import { ClickUpClient } from "@/lib/clickup/client";
 import { upsertCachedSpaces, upsertCachedFolders, upsertCachedLists } from "@/lib/clickup/sync";
 import type { ClickUpSpace, ClickUpFolder, ClickUpList } from "@/types/clickup";
 import type { SetupPlan, SpacePlan, FolderPlan, ListPlan } from "@/lib/setup/types";
+import type { ExistingWorkspaceStructure } from "@/stores/setupStore";
 
 // ---------------------------------------------------------------------------
 // Result types
 // ---------------------------------------------------------------------------
 
-export type ExecutionItemStatus = "pending" | "success" | "error";
+export type ExecutionItemStatus = "pending" | "success" | "error" | "skipped";
 
 export type ExecutionItemType = "space" | "folder" | "list";
 
@@ -75,9 +76,23 @@ export async function executeSetupPlan(
   plan: SetupPlan,
   workspaceId: string,
   accessToken: string,
-  onProgress?: ExecutionProgressCallback
+  onProgress?: ExecutionProgressCallback,
+  existingStructure?: ExistingWorkspaceStructure | null,
 ): Promise<ExecutionResult> {
   const client = new ClickUpClient(workspaceId);
+
+  // Build lookup maps from existing structure for quick matching (case-insensitive)
+  const existingSpaces = new Map<string, { clickup_id: string; folders: Map<string, { clickup_id: string; lists: Set<string> }> }>();
+  if (existingStructure?.spaces) {
+    for (const space of existingStructure.spaces) {
+      const folderMap = new Map<string, { clickup_id: string; lists: Set<string> }>();
+      for (const folder of space.folders) {
+        const listNames = new Set(folder.lists.map((l) => l.name.toLowerCase()));
+        folderMap.set(folder.name.toLowerCase(), { clickup_id: folder.clickup_id, lists: listNames });
+      }
+      existingSpaces.set(space.name.toLowerCase(), { clickup_id: space.clickup_id, folders: folderMap });
+    }
+  }
 
   // Build the flat list of items for progress tracking
   const items: ExecutionItem[] = buildExecutionItems(plan);
@@ -96,21 +111,26 @@ export async function executeSetupPlan(
   const teamId = await getTeamId(client);
 
   // -------------------------------------------------------------------------
-  // Phase 1: Create Spaces
+  // Phase 1: Create Spaces (or skip if they already exist)
   // -------------------------------------------------------------------------
   for (const spacePlan of plan.spaces) {
     const item = findItem(items, "space", spacePlan.name);
-    try {
-      const space = await client.createSpace(teamId, spacePlan.name);
-      spaceIdMap.set(spacePlan.name, space.id);
-      createdSpaceIds.push(space.id);
+    const existing = existingSpaces.get(spacePlan.name.toLowerCase());
 
-      // Cache the new space
-      await upsertCachedSpaces(workspaceId, [space]);
-
-      markSuccess(item, space.id);
-    } catch (err) {
-      markError(item, err);
+    if (existing) {
+      // Space already exists in ClickUp - skip creation, use existing ID
+      spaceIdMap.set(spacePlan.name, existing.clickup_id);
+      markSkipped(item, existing.clickup_id);
+    } else {
+      try {
+        const space = await client.createSpace(teamId, spacePlan.name);
+        spaceIdMap.set(spacePlan.name, space.id);
+        createdSpaceIds.push(space.id);
+        await upsertCachedSpaces(workspaceId, [space]);
+        markSuccess(item, space.id);
+      } catch (err) {
+        markError(item, err);
+      }
     }
 
     completed++;
@@ -118,10 +138,11 @@ export async function executeSetupPlan(
   }
 
   // -------------------------------------------------------------------------
-  // Phase 2: Create Folders (within their parent spaces)
+  // Phase 2: Create Folders (or skip if they already exist)
   // -------------------------------------------------------------------------
   for (const spacePlan of plan.spaces) {
     const spaceId = spaceIdMap.get(spacePlan.name);
+    const existingSpace = existingSpaces.get(spacePlan.name.toLowerCase());
 
     for (const folderPlan of spacePlan.folders) {
       const item = findItem(items, "folder", folderPlan.name, spacePlan.name);
@@ -133,17 +154,23 @@ export async function executeSetupPlan(
         continue;
       }
 
-      try {
-        const folder = await client.createFolder(spaceId, folderPlan.name);
+      const existingFolder = existingSpace?.folders.get(folderPlan.name.toLowerCase());
+      if (existingFolder) {
+        // Folder already exists - skip creation, use existing ID
         const folderKey = `${spacePlan.name}/${folderPlan.name}`;
-        folderIdMap.set(folderKey, folder.id);
-        createdFolderIds.push(folder.id);
-
-        await upsertCachedFolders(workspaceId, [folder]);
-
-        markSuccess(item, folder.id);
-      } catch (err) {
-        markError(item, err);
+        folderIdMap.set(folderKey, existingFolder.clickup_id);
+        markSkipped(item, existingFolder.clickup_id);
+      } else {
+        try {
+          const folder = await client.createFolder(spaceId, folderPlan.name);
+          const folderKey = `${spacePlan.name}/${folderPlan.name}`;
+          folderIdMap.set(folderKey, folder.id);
+          createdFolderIds.push(folder.id);
+          await upsertCachedFolders(workspaceId, [folder]);
+          markSuccess(item, folder.id);
+        } catch (err) {
+          markError(item, err);
+        }
       }
 
       completed++;
@@ -152,12 +179,15 @@ export async function executeSetupPlan(
   }
 
   // -------------------------------------------------------------------------
-  // Phase 3: Create Lists with Statuses (within their parent folders)
+  // Phase 3: Create Lists with Statuses (or skip if they already exist)
   // -------------------------------------------------------------------------
   for (const spacePlan of plan.spaces) {
+    const existingSpace = existingSpaces.get(spacePlan.name.toLowerCase());
+
     for (const folderPlan of spacePlan.folders) {
       const folderKey = `${spacePlan.name}/${folderPlan.name}`;
       const folderId = folderIdMap.get(folderKey);
+      const existingFolder = existingSpace?.folders.get(folderPlan.name.toLowerCase());
 
       for (const listPlan of folderPlan.lists) {
         const item = findItem(items, "list", listPlan.name, folderPlan.name);
@@ -169,15 +199,19 @@ export async function executeSetupPlan(
           continue;
         }
 
-        try {
-          const list = await createListWithStatuses(client, folderId, listPlan);
-          createdListIds.push(list.id);
-
-          await upsertCachedLists(workspaceId, [list]);
-
-          markSuccess(item, list.id);
-        } catch (err) {
-          markError(item, err);
+        const listExists = existingFolder?.lists.has(listPlan.name.toLowerCase());
+        if (listExists) {
+          // List already exists - skip creation
+          markSkipped(item);
+        } else {
+          try {
+            const list = await createListWithStatuses(client, folderId, listPlan);
+            createdListIds.push(list.id);
+            await upsertCachedLists(workspaceId, [list]);
+            markSuccess(item, list.id);
+          } catch (err) {
+            markError(item, err);
+          }
         }
 
         completed++;
@@ -191,6 +225,7 @@ export async function executeSetupPlan(
   // -------------------------------------------------------------------------
   const successCount = items.filter((i) => i.status === "success").length;
   const errorCount = items.filter((i) => i.status === "error").length;
+  const skippedCount = items.filter((i) => i.status === "skipped").length;
 
   return {
     success: errorCount === 0,
@@ -269,6 +304,11 @@ function markSuccess(item: ExecutionItem, clickupId: string): void {
 function markError(item: ExecutionItem, err: unknown): void {
   item.status = "error";
   item.error = err instanceof Error ? err.message : String(err);
+}
+
+function markSkipped(item: ExecutionItem, clickupId?: string): void {
+  item.status = "skipped";
+  if (clickupId) item.clickupId = clickupId;
 }
 
 /**

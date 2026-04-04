@@ -11,6 +11,7 @@ import {
   Folder,
   List,
   Sparkles,
+  SkipForward,
 } from 'lucide-react';
 import type { ExecutionProgress as ExecutionProgressType, ExecutionResult, SetupPlan } from '@/lib/setup/types';
 import type { ExecutionItem } from '@/lib/setup/executor';
@@ -19,7 +20,7 @@ import type { ExecutionItem } from '@/lib/setup/executor';
 // Types
 // ---------------------------------------------------------------------------
 
-type ItemState = 'pending' | 'in-progress' | 'success' | 'error';
+type ItemState = 'pending' | 'in-progress' | 'success' | 'error' | 'skipped';
 
 interface DerivedItem {
   name: string;
@@ -89,6 +90,7 @@ export function ExecutionProgress({
       return executionItems.map((ei, i) => {
         let state: ItemState = 'pending';
         if (ei.status === 'success') state = 'success';
+        else if (ei.status === 'skipped') state = 'skipped';
         else if (ei.status === 'error') state = 'error';
         else if (i === currentIndex && !isComplete) state = 'in-progress';
 
@@ -142,6 +144,7 @@ export function ExecutionProgress({
   // Count stats
   const successCount = items.filter((i) => i.state === 'success').length;
   const errorCount = items.filter((i) => i.state === 'error').length;
+  const skippedCount = items.filter((i) => i.state === 'skipped').length;
   const totalItems = items.length;
 
   // Auto-scroll to keep active item visible
@@ -181,6 +184,9 @@ export function ExecutionProgress({
             <h2 className="text-xl font-semibold text-text-primary">Workspace Built!</h2>
             <p className="text-sm text-text-secondary mt-1">
               {successCount} of {totalItems} items created
+              {skippedCount > 0 && (
+                <span className="text-text-muted"> ({skippedCount} already existed)</span>
+              )}
               {errorCount > 0 && (
                 <span className="text-error"> ({errorCount} failed)</span>
               )}
@@ -285,7 +291,8 @@ export function ExecutionProgress({
                   ${isActive ? 'bg-accent/10 border border-accent/20' : 'border border-transparent'}
                   ${item.state === 'error' ? 'bg-error/5' : ''}
                   ${item.state === 'success' ? 'animate-item-done' : ''}
-                  ${item.state === 'pending' ? 'opacity-50' : 'opacity-100'}
+                  ${item.state === 'skipped' ? 'opacity-60' : ''}
+                  ${item.state === 'pending' ? 'opacity-50' : ''}
                 `}
                 style={{
                   animationDelay: item.state === 'success' && hasScrolledOnce ? '0ms' : `${i * 30}ms`,
@@ -295,6 +302,9 @@ export function ExecutionProgress({
                 <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
                   {item.state === 'success' && (
                     <CheckCircle2 className="w-4 h-4 text-success" />
+                  )}
+                  {item.state === 'skipped' && (
+                    <SkipForward className="w-4 h-4 text-text-muted" />
                   )}
                   {item.state === 'in-progress' && (
                     <Loader2 className="w-4 h-4 text-accent animate-spin" />
@@ -314,6 +324,8 @@ export function ExecutionProgress({
                       ? 'text-accent'
                       : item.state === 'success'
                       ? 'text-text-secondary'
+                      : item.state === 'skipped'
+                      ? 'text-text-muted/60'
                       : item.state === 'error'
                       ? 'text-error/60'
                       : 'text-text-muted/60'
@@ -329,6 +341,8 @@ export function ExecutionProgress({
                       ? 'text-text-primary font-medium'
                       : item.state === 'success'
                       ? 'text-text-secondary'
+                      : item.state === 'skipped'
+                      ? 'text-text-muted/70'
                       : item.state === 'error'
                       ? 'text-error/80'
                       : 'text-text-muted'
@@ -340,7 +354,9 @@ export function ExecutionProgress({
                 {/* Type badge */}
                 <span
                   className={`text-[11px] font-medium ml-auto flex-shrink-0 uppercase tracking-wider ${
-                    item.state === 'in-progress'
+                    item.state === 'skipped'
+                      ? 'text-text-muted/50'
+                      : item.state === 'in-progress'
                       ? 'text-accent/70'
                       : item.state === 'success'
                       ? 'text-text-muted'
@@ -349,7 +365,7 @@ export function ExecutionProgress({
                       : 'text-text-muted/60'
                   }`}
                 >
-                  {item.type}
+                  {item.state === 'skipped' ? 'exists' : item.type}
                 </span>
               </div>
             );
