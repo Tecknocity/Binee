@@ -45,7 +45,7 @@ export default function WorkspaceSwitcher() {
 
       {open && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-navy-light border border-border rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden">
-          <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted/60">
+          <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-text-muted">
             Workspaces
           </p>
           {workspaces.map((ws) => (
@@ -64,7 +64,7 @@ export default function WorkspaceSwitcher() {
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <span className="text-sm text-text-primary truncate block">{ws.name}</span>
-                <span className="text-[10px] text-text-muted capitalize">{ws.plan} plan</span>
+                <span className="text-[11px] text-text-muted capitalize">{ws.plan} plan</span>
               </div>
               {ws.id === workspace.id && <Check className="w-4 h-4 text-accent shrink-0" />}
             </button>

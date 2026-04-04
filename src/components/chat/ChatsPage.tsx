@@ -105,7 +105,7 @@ export default function ChatsPage() {
 
         {filteredConversations.length === 0 && (
           <div className="text-center py-16">
-            <MessageSquare className="w-10 h-10 text-text-muted/30 mx-auto mb-3" />
+            <MessageSquare className="w-10 h-10 text-text-muted/50 mx-auto mb-3" />
             <p className="text-text-muted text-sm">
               {searchQuery ? 'No chats match your search' : 'No chats yet'}
             </p>

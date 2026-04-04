@@ -563,7 +563,7 @@ export default function Sidebar() {
                   );
                 })}
                 {recentConversations.length === 0 && (
-                  <p className="px-3 py-4 text-xs text-text-muted/60 text-center">
+                  <p className="px-3 py-4 text-xs text-text-muted text-center">
                     No recent chats
                   </p>
                 )}

@@ -201,7 +201,7 @@ export function WorkspaceAnalysis({
                 <div key={i} className="flex items-start gap-3">
                   {ACTION_ICONS[rec.action] || <Wrench className="w-5 h-5 text-text-muted flex-shrink-0 mt-0.5" />}
                   <div className="flex-1 min-w-0">
-                    <span className={`inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded mr-2 ${
+                    <span className={`inline-block text-[11px] font-bold uppercase tracking-widest px-2 py-0.5 rounded mr-2 ${
                       rec.action === 'keep' ? 'bg-success/15 text-success' :
                       rec.action === 'improve' ? 'bg-warning/15 text-warning' :
                       'bg-accent/15 text-accent'

@@ -87,7 +87,7 @@ export default function ChatInput({ onSend, disabled, placeholder, autoFocus = t
             placeholder={placeholder || 'Ask Binee anything about your workspace...'}
             disabled={disabled}
             rows={1}
-            className="w-full resize-none bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full resize-none bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
         <button
@@ -99,12 +99,12 @@ export default function ChatInput({ onSend, disabled, placeholder, autoFocus = t
           <SendHorizontal className="w-4 h-4" />
         </button>
       </div>
-      <p className="text-center text-[11px] text-text-muted/60 mt-1.5">
-        <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Enter</kbd> to send
-        <span className="mx-1.5 text-text-muted/30">|</span>
-        <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">{modKey}</kbd>+<kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Enter</kbd> to send
-        <span className="mx-1.5 text-text-muted/30">|</span>
-        <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Shift</kbd>+<kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[10px]">Enter</kbd> for new line
+      <p className="text-center text-[11px] text-text-muted mt-1.5">
+        <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Enter</kbd> to send
+        <span className="mx-1.5 text-text-muted/50">|</span>
+        <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">{modKey}</kbd>+<kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Enter</kbd> to send
+        <span className="mx-1.5 text-text-muted/50">|</span>
+        <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Shift</kbd>+<kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Enter</kbd> for new line
       </p>
     </div>
   );

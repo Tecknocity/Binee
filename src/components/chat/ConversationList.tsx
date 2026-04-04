@@ -48,7 +48,7 @@ export default function ConversationList({
       {/* Search hint */}
       {conversations.length > 5 && (
         <div className="px-3 pb-2">
-          <p className="text-[10px] text-text-muted/50 text-center">
+          <p className="text-[11px] text-text-muted text-center">
             {conversations.length} conversations
           </p>
         </div>
@@ -86,7 +86,7 @@ export default function ConversationList({
                     <span className="text-[11px] text-text-muted truncate">
                       {formatRelativeDate(conv.updatedAt)}
                     </span>
-                    <span className="text-[11px] text-text-muted/60">
+                    <span className="text-[11px] text-text-muted">
                       {conv.messageCount} msg{conv.messageCount !== 1 ? 's' : ''}
                     </span>
                   </div>
@@ -110,9 +110,9 @@ export default function ConversationList({
 
         {conversations.length === 0 && (
           <div className="text-center py-12 px-4">
-            <MessageSquare className="w-8 h-8 text-text-muted/30 mx-auto mb-3" />
+            <MessageSquare className="w-8 h-8 text-text-muted/50 mx-auto mb-3" />
             <p className="text-sm text-text-muted">No conversations yet</p>
-            <p className="text-xs text-text-muted/60 mt-1">Start a new chat to begin</p>
+            <p className="text-xs text-text-muted mt-1">Start a new chat to begin</p>
           </div>
         )}
       </div>

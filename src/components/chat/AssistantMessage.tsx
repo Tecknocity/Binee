@@ -46,7 +46,7 @@ function renderMarkdown(content: string): React.ReactNode {
       elements.push(
         <pre
           key={`code-${i}`}
-          className="bg-navy-dark/60 rounded-lg px-3 py-2 my-2 text-xs font-mono text-text-secondary overflow-x-auto"
+          className="bg-navy-dark rounded-lg px-3 py-2 my-2 text-xs font-mono text-text-secondary overflow-x-auto"
         >
           {lang && (
             <div className="text-xs text-text-muted mb-1 select-none">{lang}</div>
@@ -214,7 +214,7 @@ function renderInline(text: string): React.ReactNode {
       parts.push(
         <code
           key={match.index}
-          className="bg-navy-dark/60 px-1.5 py-0.5 rounded text-xs font-mono text-accent-light"
+          className="bg-navy-dark px-1.5 py-0.5 rounded text-xs font-mono text-accent-light"
         >
           {match[4]}
         </code>,
@@ -247,7 +247,7 @@ export default function AssistantMessage({
   return (
     <div className="flex gap-3 mb-4">
       {/* Binee avatar */}
-      <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+      <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
         <Image src="/Binee__icon__white.svg" alt="Binee" width={24} height={24} unoptimized />
       </div>
 

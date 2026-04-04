@@ -343,7 +343,7 @@ export default function GeneralSettings() {
                   'flex flex-col items-center gap-2 p-4 rounded-xl border transition-all',
                   isActive
                     ? 'border-accent bg-accent/5'
-                    : 'border-border bg-surface hover:border-border-light'
+                    : 'border-border bg-surface hover:border-text-muted/30'
                 )}
               >
                 <div

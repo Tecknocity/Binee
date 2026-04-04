@@ -80,9 +80,10 @@ export default function ActionConfirmation({
 
         {/* Operation type label + risk tier dot */}
         <span className="ml-auto flex items-center gap-2 text-xs text-text-muted">
-          <span className="bg-navy-dark/60 px-2 py-0.5 rounded font-mono">
+          <span className="bg-navy-dark px-2 py-0.5 rounded font-mono">
             {formatOperationType(data.tool_name)}
           </span>
+
           <span className="flex items-center gap-1">
             <span className={`w-1.5 h-1.5 rounded-full ${tier.dotClass}`} />
             <span className={tier.textClass}>{tier.label}</span>
@@ -93,7 +94,7 @@ export default function ActionConfirmation({
       {/* Body */}
       <div className="px-4 py-3 space-y-2">
         <p className="text-sm text-text-primary">{data.description}</p>
-        <pre className="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-navy-dark/50 rounded-lg px-3 py-2">
+        <pre className="text-xs text-text-secondary font-mono whitespace-pre-wrap bg-navy-dark rounded-lg px-3 py-2">
           {data.details}
         </pre>
       </div>

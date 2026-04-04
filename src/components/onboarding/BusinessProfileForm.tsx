@@ -139,8 +139,8 @@ export function BusinessProfileForm({
                 value={industryCustom}
                 onChange={(e) => setIndustryCustom(e.target.value)}
                 placeholder="Enter your industry..."
-                className="mt-2 w-full bg-navy-base/50 border border-border rounded-xl px-4 py-3 text-sm text-text-primary
-                  placeholder:text-text-muted/50 outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all"
+                className="mt-2 w-full bg-navy-light border border-border rounded-xl px-4 py-3 text-sm text-text-primary
+                  placeholder:text-text-muted outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all"
               />
             )}
           </FormField>
@@ -185,8 +185,8 @@ export function BusinessProfileForm({
               onChange={(e) => setServices(e.target.value)}
               placeholder="e.g., Social media management, content creation, paid advertising, SEO..."
               rows={3}
-              className="w-full bg-navy-base/50 border border-border rounded-xl px-4 py-3 text-sm text-text-primary
-                placeholder:text-text-muted/50 outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20
+              className="w-full bg-navy-light border border-border rounded-xl px-4 py-3 text-sm text-text-primary
+                placeholder:text-text-muted outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20
                 transition-all resize-none"
             />
           </FormField>
@@ -237,7 +237,7 @@ export function BusinessProfileForm({
               disabled={!isValid || isSubmitting}
               className="flex items-center gap-2.5 px-8 py-3.5 bg-accent text-white font-semibold text-base rounded-xl
                 hover:bg-accent-hover transition-colors shadow-lg shadow-accent/20
-                disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
+                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-accent"
             >
               {isSubmitting ? (
                 <>
@@ -306,9 +306,9 @@ function SelectField({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full appearance-none bg-navy-base/50 border border-border rounded-xl px-4 py-3 text-sm
+        className={`w-full appearance-none bg-navy-light border border-border rounded-xl px-4 py-3 text-sm
           outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all pr-10
-          ${value ? 'text-text-primary' : 'text-text-muted/50'}`}
+          ${value ? 'text-text-primary' : 'text-text-muted'}`}
       >
         <option value="" disabled>
           {placeholder}
