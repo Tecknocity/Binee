@@ -135,7 +135,7 @@ export default function ActionConfirmation({
             ) : (
               <span className="text-sm text-text-muted flex items-center gap-1.5">
                 <XCircle className="w-3.5 h-3.5" />
-                Action cancelled — no changes were made
+                Action cancelled. No changes were made.
               </span>
             )}
 
@@ -144,7 +144,7 @@ export default function ActionConfirmation({
               <div className="flex items-start gap-2 text-xs text-text-secondary bg-accent/5 border border-accent/20 rounded-lg px-3 py-2">
                 <Info className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
                 <span>
-                  Got it — I won&apos;t ask again for <strong className="text-text-primary">{formatOperationType(data.tool_name)}</strong>.
+                  Got it! I won&apos;t ask again for <strong className="text-text-primary">{formatOperationType(data.tool_name)}</strong>.
                   You can change this in{' '}
                   <a href="/settings?tab=privacy" className="text-accent hover:text-accent-hover underline underline-offset-2">
                     Settings

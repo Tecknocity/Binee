@@ -43,7 +43,7 @@ export default function CreditBadge() {
         color.bg,
         color.border
       )}
-      aria-label={`${displayBalance} credits remaining — click to view billing`}
+      aria-label={`${displayBalance} credits remaining, click to view billing`}
     >
       <Coins className={cn('w-3.5 h-3.5', color.icon)} />
       <span className={cn('text-xs font-mono font-medium', color.text)}>

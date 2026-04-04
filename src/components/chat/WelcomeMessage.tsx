@@ -89,7 +89,7 @@ export default function WelcomeMessage({
   const greeting = firstName ? `Hi ${firstName}!` : 'Hi there!';
 
   const statsLine = stats
-    ? `I synced your workspace — ${stats.spaces} space${stats.spaces !== 1 ? 's' : ''}, ${stats.lists} list${stats.lists !== 1 ? 's' : ''}, ${stats.tasks.toLocaleString()} task${stats.tasks !== 1 ? 's' : ''}.`
+    ? `I synced your workspace: ${stats.spaces} space${stats.spaces !== 1 ? 's' : ''}, ${stats.lists} list${stats.lists !== 1 ? 's' : ''}, ${stats.tasks.toLocaleString()} task${stats.tasks !== 1 ? 's' : ''}.`
     : null;
 
   return (

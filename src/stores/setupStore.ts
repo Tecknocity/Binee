@@ -81,6 +81,7 @@ interface SetupState {
   setPlan: (plan: SetupPlan | null) => void;
   setManualSteps: (steps: ManualStep[]) => void;
   toggleManualStep: (index: number) => void;
+  resetFromStep: (step: SetupStep) => void;
   reset: (newConversationId: string) => void;
 }
 
@@ -136,6 +137,36 @@ function createSetupStore(workspaceId: string) {
               i === index ? { ...step, completed: !step.completed } : step
             ),
           })),
+
+        resetFromStep: (step) =>
+          set((s) => {
+            const updates: Partial<SetupState> = { currentStep: step };
+            // Clear data from this step onward
+            if (step <= 1) {
+              // Resetting from Analyze: clear analysis + everything after
+              updates.workspaceAnalysis = null;
+              updates.workspaceCounts = null;
+              updates.workspaceFindings = [];
+              updates.workspaceRecommendations = [];
+            }
+            if (step <= 2) {
+              // Resetting from Describe: clear chat + plan + everything after
+              updates.profileFormCompleted = s.profileFormCompleted; // Keep form data
+              updates.profileFormData = s.profileFormData; // Keep form data
+              updates.chatMessages = [];
+              updates.businessDescription = s.businessDescription; // Keep description
+              updates.messageCount = 0;
+            }
+            if (step <= 3) {
+              // Resetting from Review: clear plan + build + manual steps
+              updates.proposedPlan = null;
+            }
+            if (step <= 4) {
+              // Resetting from Build: clear manual steps
+              updates.manualSteps = [];
+            }
+            return updates;
+          }),
 
         reset: (newConversationId) =>
           set({

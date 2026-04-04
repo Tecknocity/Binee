@@ -51,7 +51,7 @@ export default function CreditBalance() {
     return (
       <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-hover/50 border border-border animate-pulse">
         <Coins className="w-3.5 h-3.5 text-text-muted" />
-        <span className="text-xs font-mono font-medium text-text-muted">—</span>
+        <span className="text-xs font-mono font-medium text-text-muted">-</span>
       </div>
     );
   }
@@ -64,7 +64,7 @@ export default function CreditBalance() {
         color.bg,
         color.border
       )}
-      aria-label={`${balance} credits remaining — click to view billing`}
+      aria-label={`${balance} credits remaining, click to view billing`}
     >
       <Coins className={cn('w-3.5 h-3.5', color.icon)} />
       <span className={cn('text-xs font-mono font-medium', color.text)}>

@@ -50,7 +50,7 @@ export function ManualStepsGuide({ steps, onMarkComplete, onFinish }: ManualStep
       <div className="py-6 text-center shrink-0">
         <h2 className="text-xl font-semibold text-text-primary">Final Setup Steps</h2>
         <p className="text-sm text-text-secondary mt-1">
-          These steps can&apos;t be automated — complete them manually in ClickUp
+          These steps can&apos;t be automated. Complete them manually in ClickUp.
         </p>
         <div className="mt-3 flex items-center justify-center gap-3">
           <div className="h-2 w-40 bg-surface border border-border rounded-full overflow-hidden">

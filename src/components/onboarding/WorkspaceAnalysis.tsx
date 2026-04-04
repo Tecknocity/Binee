@@ -112,7 +112,7 @@ export function WorkspaceAnalysis({
         <div className="text-center">
           <h2 className="text-xl font-semibold text-text-primary mb-2">Fresh workspace detected</h2>
           <p className="text-sm text-text-secondary">
-            Your ClickUp workspace is empty — a clean slate! Let&apos;s build the perfect
+            Your ClickUp workspace is empty, a clean slate! Let&apos;s build the perfect
             structure for your business from scratch.
           </p>
         </div>
@@ -185,7 +185,7 @@ export function WorkspaceAnalysis({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-text-muted">No specific findings — workspace looks standard.</p>
+            <p className="text-sm text-text-muted">No specific findings. Workspace looks standard.</p>
           )}
         </div>
 

@@ -104,6 +104,31 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
     });
   };
 
+  // --- Status operations ---
+  const renameStatus = (si: number, fi: number, li: number, sti: number, name: string) => {
+    updatePlan((d) => { d.spaces[si].folders[fi].lists[li].statuses[sti].name = name; });
+  };
+  const deleteStatus = (si: number, fi: number, li: number, sti: number) => {
+    updatePlan((d) => { d.spaces[si].folders[fi].lists[li].statuses.splice(sti, 1); });
+  };
+  const addStatus = (si: number, fi: number, li: number) => {
+    updatePlan((d) => {
+      d.spaces[si].folders[fi].lists[li].statuses.push({
+        name: 'New Status',
+        color: '#a0a0b5',
+        type: 'active',
+      });
+    });
+  };
+  const changeStatusType = (si: number, fi: number, li: number, sti: number, type: StatusPlan['type']) => {
+    updatePlan((d) => {
+      d.spaces[si].folders[fi].lists[li].statuses[sti].type = type;
+      // Auto-assign a default color based on type
+      const typeColors: Record<string, string> = { open: '#d3d3d3', active: '#4194f6', done: '#6bc950', closed: '#6b6b80' };
+      d.spaces[si].folders[fi].lists[li].statuses[sti].color = typeColors[type] || '#a0a0b5';
+    });
+  };
+
   const editable = !!onPlanChange;
 
   return (
@@ -119,7 +144,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
           {totalLists} {totalLists === 1 ? 'list' : 'lists'} &middot;{' '}
           {totalStatuses} statuses
           {editable && (
-            <span className="text-accent ml-2">— click names to rename, use +/x to add or remove</span>
+            <span className="text-accent ml-2">- click names to rename, use +/x to add or remove</span>
           )}
         </p>
       </div>
@@ -161,20 +186,24 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
                     onDelete={folder.lists.length > 1 ? () => deleteList(si, fi, li) : undefined}
                   >
                     {list.statuses.map((status, sti) => (
-                      <div
+                      <StatusRow
                         key={sti}
-                        className="flex items-center gap-2 py-1 pl-2 text-sm text-text-secondary"
-                      >
-                        <Circle
-                          className="w-3 h-3 flex-shrink-0"
-                          style={{ color: status.color, fill: status.color }}
-                        />
-                        <span>{status.name}</span>
-                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-surface text-text-muted">
-                          {status.type}
-                        </span>
-                      </div>
+                        status={status}
+                        editable={editable}
+                        canDelete={list.statuses.length > 2}
+                        onRename={(name) => renameStatus(si, fi, li, sti, name)}
+                        onDelete={() => deleteStatus(si, fi, li, sti)}
+                        onChangeType={(type) => changeStatusType(si, fi, li, sti, type)}
+                      />
                     ))}
+                    {editable && (
+                      <button
+                        onClick={() => addStatus(si, fi, li)}
+                        className="flex items-center gap-1.5 py-1 pl-2 text-xs text-text-muted hover:text-accent transition-colors"
+                      >
+                        <Plus className="w-3 h-3" /> Add Status
+                      </button>
+                    )}
                     {list.description && (
                       <p className="text-xs text-text-muted pl-2 pb-1 italic">{list.description}</p>
                     )}
@@ -253,7 +282,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
       <div className="flex items-center justify-between pt-3 border-t border-border shrink-0">
         <button
           onClick={onReject}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-text-muted hover:text-error transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-error/70 hover:text-error hover:bg-error/10 rounded-lg transition-colors"
         >
           <X className="w-3.5 h-3.5" />
           Start Over
@@ -439,6 +468,127 @@ function TreeNode({
         )}
       </div>
       {open && hasChildren && <div className="ml-6 border-l border-border/50 pl-2">{children}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status Row (editable)
+// ---------------------------------------------------------------------------
+
+const STATUS_TYPES: Array<{ value: StatusPlan['type']; label: string; color: string }> = [
+  { value: 'open', label: 'Open', color: '#d3d3d3' },
+  { value: 'active', label: 'Active', color: '#4194f6' },
+  { value: 'done', label: 'Done', color: '#6bc950' },
+  { value: 'closed', label: 'Closed', color: '#6b6b80' },
+];
+
+function StatusRow({
+  status,
+  editable,
+  canDelete,
+  onRename,
+  onDelete,
+  onChangeType,
+}: {
+  status: StatusPlan;
+  editable: boolean;
+  canDelete: boolean;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+  onChangeType: (type: StatusPlan['type']) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(status.name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commitRename = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== status.name) {
+      onRename(trimmed);
+    } else {
+      setEditValue(status.name);
+    }
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2 py-1 pl-2 text-sm text-text-secondary group/status">
+      <Circle
+        className="w-3 h-3 flex-shrink-0"
+        style={{ color: status.color, fill: status.color }}
+      />
+
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitRename();
+            if (e.key === 'Escape') { setEditValue(status.name); setEditing(false); }
+          }}
+          className="flex-1 min-w-0 text-sm text-text-primary bg-surface border border-accent/40 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-accent"
+        />
+      ) : (
+        <span
+          className={`flex-1 min-w-0 truncate ${editable ? 'cursor-text hover:text-accent' : ''}`}
+          onDoubleClick={() => {
+            if (editable) {
+              setEditValue(status.name);
+              setEditing(true);
+            }
+          }}
+        >
+          {status.name}
+        </span>
+      )}
+
+      {editable ? (
+        <select
+          value={status.type}
+          onChange={(e) => onChangeType(e.target.value as StatusPlan['type'])}
+          className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-surface text-text-muted border-none outline-none cursor-pointer hover:text-accent appearance-none"
+          title="Change status type"
+        >
+          {STATUS_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+      ) : (
+        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-surface text-text-muted">
+          {status.type}
+        </span>
+      )}
+
+      {editable && !editing && (
+        <div className="flex items-center gap-1 opacity-0 group-hover/status:opacity-100 transition-opacity flex-shrink-0">
+          <button
+            onClick={() => { setEditValue(status.name); setEditing(true); }}
+            className="p-0.5 text-text-muted hover:text-accent transition-colors"
+            title="Rename status"
+          >
+            <Pencil className="w-2.5 h-2.5" />
+          </button>
+          {canDelete && (
+            <button
+              onClick={onDelete}
+              className="p-0.5 text-text-muted hover:text-error transition-colors"
+              title="Remove status"
+            >
+              <X className="w-2.5 h-2.5" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

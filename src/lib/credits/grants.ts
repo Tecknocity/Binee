@@ -48,7 +48,7 @@ export async function grantSubscriptionCredits(
 
   // Only subscription tiers get monthly credit grants
   if (!tierConfig) {
-    return { success: false, error: 'No subscription plan — monthly credit grants are not available' };
+    return { success: false, error: 'No subscription plan. Monthly credit grants are not available.' };
   }
 
   const monthlyCredits = tierConfig.credits;

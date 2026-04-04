@@ -84,19 +84,19 @@ Respond with EXACTLY this JSON structure:
 
 FINDING TYPES:
 - "good": Something working well (e.g. "Engineering space has consistent status workflow across all 4 lists")
-- "warning": A problem or risk (e.g. "135 of 200 tasks (67.5%) are overdue — severe deadline management issue")
+- "warning": A problem or risk (e.g. "135 of 200 tasks (67.5%) are overdue, indicating a severe deadline management issue")
 - "info": Neutral observation about structure quality, naming, or organization (e.g. "All lists use consistent 4-stage status workflows")
 
-IMPORTANT: Do NOT include findings that simply restate counts (e.g. "Workspace has 3 spaces and 8 lists with 200 tasks"). The counts are already displayed separately. Focus on qualitative insights — what's working well, what's broken, what's missing, and patterns you notice.
+IMPORTANT: Do NOT include findings that simply restate counts (e.g. "Workspace has 3 spaces and 8 lists with 200 tasks"). The counts are already displayed separately. Focus on qualitative insights: what's working well, what's broken, what's missing, and patterns you notice.
 
 RECOMMENDATION ACTIONS:
-- "keep": What to preserve (e.g. "Keep the Website & Tech space — active with 29 tasks and clear structure")
+- "keep": What to preserve (e.g. "Keep the Website & Tech space, active with 29 tasks and clear structure")
 - "improve": What to fix (e.g. "Review and close or reschedule the 135 overdue tasks before adding new structure")
 - "add": What to create (e.g. "Add Board views to pipeline lists for better visual workflow tracking")
 
 Be specific with space/folder/list names and task counts. Write like a senior ClickUp consultant.
 Return EXACTLY 5 findings and 3-4 recommendations. Always provide 5 findings — dig deeper into the workspace structure, statuses, task distribution, naming conventions, and team utilization.
-If workspace is empty: {"findings":[{"type":"info","text":"Clean slate — perfect opportunity to build an optimized structure from day one"},{"type":"good","text":"No legacy clutter to clean up or migrate"},{"type":"info","text":"No existing workflows to work around — full flexibility in design"},{"type":"info","text":"Status workflows can be designed to match your exact process"},{"type":"info","text":"Folder and list hierarchy can be purpose-built for your team size"}],"recommendations":[{"action":"add","text":"Build workspace structure from scratch based on business needs"}]}`;
+If workspace is empty: {"findings":[{"type":"info","text":"Clean slate, perfect opportunity to build an optimized structure from day one"},{"type":"good","text":"No legacy clutter to clean up or migrate"},{"type":"info","text":"No existing workflows to work around, giving full flexibility in design"},{"type":"info","text":"Status workflows can be designed to match your exact process"},{"type":"info","text":"Folder and list hierarchy can be purpose-built for your team size"}],"recommendations":[{"action":"add","text":"Build workspace structure from scratch based on business needs"}]}`;
 
     const result = await executeSubAgent(
       getClient(),
@@ -149,16 +149,16 @@ If workspace is empty: {"findings":[{"type":"info","text":"Clean slate — perfe
     if (findings.length === 0) {
       if (counts.spaces === 0 && counts.lists === 0) {
         findings = [
-          { type: 'info', text: 'Clean slate — perfect opportunity to build an optimized structure from day one' },
+          { type: 'info', text: 'Clean slate, perfect opportunity to build an optimized structure from day one' },
           { type: 'good', text: 'No legacy clutter to clean up or migrate' },
-          { type: 'info', text: 'No existing workflows to work around — full flexibility in design' },
+          { type: 'info', text: 'No existing workflows to work around, giving full flexibility in design' },
           { type: 'info', text: 'Status workflows can be designed to match your exact process' },
           { type: 'info', text: 'Folder and list hierarchy can be purpose-built for your team size' },
         ];
       } else {
         findings = [];
         if (counts.tasks > 0 && counts.members <= 1) {
-          findings.push({ type: 'warning', text: `${counts.tasks} tasks managed by only ${counts.members} team member — consider inviting your team` });
+          findings.push({ type: 'warning', text: `${counts.tasks} tasks managed by only ${counts.members} team member. Consider inviting your team.` });
         }
         if (counts.lists > 0 && counts.folders === 0) {
           findings.push({ type: 'info', text: 'Lists are not organized into folders — adding folders would improve navigation' });

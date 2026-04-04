@@ -1,4 +1,4 @@
-# Binee — AI Workspace Intelligence Platform
+# Binee - AI Workspace Intelligence Platform
 
 ## Stack
 - Frontend: Next.js 16 (App Router) + React 19 + TypeScript 5
@@ -63,6 +63,11 @@ supabase/
 - NEVER run git reset, git revert, or any destructive git commands without explicit user permission
 - NEVER force push under any circumstances without explicit user permission
 - Only commit locally — the user will decide when and where to push
+
+## Copy & Text Rules
+- NEVER use em dashes (—) or en dashes (–) in user-facing text (UI labels, messages, placeholders, page titles, aria labels, AI prompts shown to users). Use a hyphen (-), a comma, a period, or rephrase the sentence instead.
+- This applies to: JSX text, string literals in components, AI prompt templates, error messages shown to users, page titles, button labels, and accessibility labels.
+- Code comments are exempt from this rule.
 
 ## Key Rules
 - All database queries go through Supabase client, never raw SQL in frontend

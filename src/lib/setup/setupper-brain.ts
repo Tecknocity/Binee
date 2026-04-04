@@ -66,7 +66,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
       totalOutputTokens += analysisResult.outputTokens;
     } catch (error) {
       console.error('[setupper-brain] Workspace analysis failed:', error);
-      workspaceAnalysis = 'Unable to analyze workspace — may be empty or not connected.';
+      workspaceAnalysis = 'Unable to analyze workspace. It may be empty or not connected.';
     }
   }
 

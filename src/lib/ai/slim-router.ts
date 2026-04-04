@@ -80,7 +80,7 @@ export async function routeMessage(
     return {
       route: 'direct',
       agents: [],
-      reasoning: 'Routing failed — defaulting to direct brain response',
+      reasoning: 'Routing failed, defaulting to direct brain response',
       inputTokens: 0,
       outputTokens: 0,
     };

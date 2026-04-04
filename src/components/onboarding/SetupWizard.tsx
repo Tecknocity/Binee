@@ -1,8 +1,10 @@
 'use client';
 
-import { Check, PartyPopper } from 'lucide-react';
+import { useState } from 'react';
+import { Check, PartyPopper, AlertTriangle, RefreshCw, Link2, BarChart3, MessageSquare, Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
+import type { SetupStep } from '@/hooks/useSetup';
 import { ClickUpConnectStep } from './ClickUpConnectStep';
 import { WorkspaceAnalysis } from './WorkspaceAnalysis';
 import { BusinessProfileForm } from './BusinessProfileForm';
@@ -20,9 +22,78 @@ const STEPS = [
   { label: 'Finish', number: 5 },
 ] as const;
 
+// Labels for the redo buttons per step
+const REDO_LABELS: Record<number, { label: string; icon: typeof RefreshCw }> = {
+  0: { label: 'Choose Another Workspace', icon: Link2 },
+  1: { label: 'Re-analyze Workspace', icon: BarChart3 },
+  2: { label: 'Restart Discussion', icon: MessageSquare },
+  3: { label: 'Regenerate Structure', icon: RefreshCw },
+};
+
 export default function SetupWizard() {
   const setup = useSetup();
   const router = useRouter();
+  const [confirmDialog, setConfirmDialog] = useState<{
+    targetStep: number;
+    type: 'navigate' | 'redo';
+  } | null>(null);
+
+  // Determine if a step has been completed (has data)
+  const isStepCompleted = (step: number): boolean => {
+    switch (step) {
+      case 0: return setup.clickUpConnected;
+      case 1: return !!setup.workspaceAnalysis;
+      case 2: return setup.profileFormCompleted && setup.chatMessages.length > 1;
+      case 3: return !!setup.proposedPlan;
+      case 4: return !!setup.executionResult;
+      case 5: return false;
+      default: return false;
+    }
+  };
+
+  // Can we navigate to this step? (must be completed or be the current/next step)
+  const canNavigateToStep = (step: number): boolean => {
+    if (step === setup.currentStep) return false; // Already here
+    if (step > setup.currentStep) return false; // Can't skip forward
+    // Can go back to any completed step
+    return isStepCompleted(step);
+  };
+
+  // Handle step circle click
+  const handleStepClick = (step: number) => {
+    if (!canNavigateToStep(step)) return;
+    // Just navigate to view the completed stage, no data clearing
+    setup.navigateToStep(step as SetupStep);
+  };
+
+  // Handle redo button click - this requires confirmation
+  const handleRedoClick = (step: number) => {
+    setConfirmDialog({ targetStep: step, type: 'redo' });
+  };
+
+  // Confirm the redo action
+  const confirmRedo = () => {
+    if (!confirmDialog) return;
+    setup.resetStage(confirmDialog.targetStep as SetupStep);
+    setConfirmDialog(null);
+  };
+
+  // Get the warning message for the confirmation dialog
+  const getWarningMessage = (step: number): string => {
+    const stepsAfter = STEPS.filter((s) => s.number > step).map((s) => s.label);
+    if (stepsAfter.length === 0) return 'This action cannot be undone.';
+    return `This will reset your progress for ${stepsAfter.join(', ')}. You will need to redo ${stepsAfter.length === 1 ? 'this step' : 'these steps'}.`;
+  };
+
+  // Check if current step is being viewed (not the latest step)
+  const isViewingPastStep = setup.currentStep < getHighestCompletedStep();
+
+  function getHighestCompletedStep(): number {
+    for (let i = 5; i >= 0; i--) {
+      if (isStepCompleted(i)) return i;
+    }
+    return 0;
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -30,7 +101,8 @@ export default function SetupWizard() {
       <div className="flex items-center justify-center gap-0 px-4 pt-8 pb-6 shrink-0">
         {STEPS.map((step, i) => {
           const isActive = setup.currentStep === step.number;
-          const isDone = setup.currentStep > step.number;
+          const isDone = isStepCompleted(step.number);
+          const navigable = canNavigateToStep(step.number);
           return (
             <div key={step.label} className="flex items-center">
               {i > 0 && (
@@ -39,17 +111,19 @@ export default function SetupWizard() {
                 />
               )}
               <div className="flex flex-col items-center gap-2">
-                <div
+                <button
+                  onClick={() => handleStepClick(step.number)}
+                  disabled={!navigable}
                   className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm sm:text-base font-semibold border-2 transition-all ${
-                    isDone
-                      ? 'bg-accent border-accent text-white'
+                    isDone && !isActive
+                      ? `bg-accent border-accent text-white ${navigable ? 'cursor-pointer hover:ring-4 hover:ring-accent/20' : ''}`
                       : isActive
                         ? 'bg-accent border-accent text-white ring-4 ring-accent/20'
                         : 'bg-surface border-border text-text-muted'
-                  }`}
+                  } ${navigable ? '' : 'cursor-default'}`}
                 >
-                  {isDone ? <Check className="w-5 h-5" /> : step.number + 1}
-                </div>
+                  {isDone && !isActive ? <Check className="w-5 h-5" /> : step.number + 1}
+                </button>
                 <span
                   className={`text-xs sm:text-sm font-medium transition-colors ${
                     isActive ? 'text-accent' : isDone ? 'text-text-primary' : 'text-text-muted'
@@ -62,6 +136,26 @@ export default function SetupWizard() {
           );
         })}
       </div>
+
+      {/* Viewing past step banner + redo button */}
+      {isViewingPastStep && setup.currentStep <= 3 && (
+        <div className="flex items-center justify-between px-4 pb-3 max-w-3xl mx-auto w-full shrink-0">
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            <Eye className="w-4 h-4 text-text-muted" />
+            <span>Viewing completed step. You can continue from where you left off.</span>
+          </div>
+          {REDO_LABELS[setup.currentStep] && (
+            <button
+              onClick={() => handleRedoClick(setup.currentStep)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-warning border border-warning/30 rounded-lg
+                hover:bg-warning/10 transition-colors"
+            >
+              {(() => { const Icon = REDO_LABELS[setup.currentStep].icon; return <Icon className="w-3.5 h-3.5" />; })()}
+              {REDO_LABELS[setup.currentStep].label}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Step content */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -102,7 +196,7 @@ export default function SetupWizard() {
             messages={setup.chatMessages}
             isSending={setup.isSending}
             messageCount={setup.chatMessages.filter((m) => m.role === 'user').length}
-            businessProfile={setup.businessProfile}
+            profileFormData={setup.profileFormData}
             onSendMessage={setup.sendMessage}
             onSelectTemplate={setup.selectTemplate}
           />
@@ -162,7 +256,7 @@ export default function SetupWizard() {
           />
         )}
 
-        {/* Step 5: No manual steps — show completion */}
+        {/* Step 5: No manual steps - show completion */}
         {setup.currentStep === 5 && setup.manualSteps.length === 0 && (
           <div className="max-w-lg mx-auto text-center py-16">
             <div className="w-16 h-16 rounded-full bg-accent/15 flex items-center justify-center mx-auto mb-6">
@@ -184,6 +278,43 @@ export default function SetupWizard() {
           </div>
         )}
       </div>
+
+      {/* Confirmation Dialog */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-warning/15 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-warning" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-text-primary">
+                  Reset progress?
+                </h3>
+                <p className="text-sm text-text-secondary mt-1">
+                  {getWarningMessage(confirmDialog.targetStep)}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-6">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2 text-sm text-text-secondary border border-border rounded-lg
+                  hover:bg-surface-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRedo}
+                className="px-4 py-2 text-sm font-medium text-white bg-warning rounded-lg
+                  hover:bg-warning/90 transition-colors"
+              >
+                Yes, reset and redo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
