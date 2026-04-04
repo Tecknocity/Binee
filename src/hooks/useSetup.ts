@@ -183,7 +183,9 @@ async function saveSessionState(
     const payload = {
       workspace_id: workspaceId,
       user_id: userId,
-      conversation_id: conversationId,
+      // conversation_id is a FK to conversations table — pass null since setup
+      // uses its own lightweight conversation IDs that aren't in the DB
+      conversation_id: null as string | null,
       status: state.wizardStep === 'complete' ? 'completed' : 'in_progress',
       setup_type: 'new_space' as const,
       config: {
@@ -198,8 +200,8 @@ async function saveSessionState(
       updated_at: new Date().toISOString(),
     };
 
-    // Find any existing session for this workspace+user (regardless of status)
-    // and update it, or insert a new one if none exists.
+    // Find any existing session for this workspace+user and update it.
+    // If none exists, insert a new one.
     const { data: existing } = await sb
       .from('setup_sessions')
       .select('id')
@@ -210,12 +212,16 @@ async function saveSessionState(
       .maybeSingle();
 
     if (existing) {
-      await sb
-        .from('setup_sessions')
-        .update(payload)
-        .eq('id', existing.id);
+      await sb.from('setup_sessions').update(payload).eq('id', existing.id);
     } else {
-      await sb.from('setup_sessions').insert(payload);
+      // Insert may fail if a constraint exists — silently catch
+      const { error: insertErr } = await sb.from('setup_sessions').insert(payload);
+      if (insertErr) {
+        // If insert failed (e.g. duplicate constraint), try updating any matching row
+        await sb.from('setup_sessions').update(payload)
+          .eq('workspace_id', workspaceId)
+          .eq('user_id', userId);
+      }
     }
   } catch {
     // Non-critical — session persistence is best-effort

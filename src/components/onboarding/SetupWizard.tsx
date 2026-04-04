@@ -26,7 +26,7 @@ export default function SetupWizard() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Step indicator */}
-      <div className="flex items-center justify-center gap-0 pt-6 pb-4 shrink-0">
+      <div className="flex items-center justify-center gap-0 px-4 pt-8 pb-6 shrink-0">
         {STEPS.map((step, i) => {
           const isActive = setup.currentStep === step.number;
           const isDone = setup.currentStep > step.number;
@@ -34,24 +34,24 @@ export default function SetupWizard() {
             <div key={step.label} className="flex items-center">
               {i > 0 && (
                 <div
-                  className={`w-12 h-0.5 ${isDone ? 'bg-accent' : 'bg-border'}`}
+                  className={`w-8 sm:w-16 lg:w-24 h-0.5 transition-colors ${isDone ? 'bg-accent' : 'bg-border'}`}
                 />
               )}
-              <div className="flex flex-col items-center gap-1.5">
+              <div className="flex flex-col items-center gap-2">
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-colors ${
+                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm sm:text-base font-semibold border-2 transition-all ${
                     isDone
                       ? 'bg-accent border-accent text-white'
                       : isActive
-                        ? 'bg-accent border-accent text-white'
-                        : 'bg-surface border-border text-text-secondary'
+                        ? 'bg-accent border-accent text-white ring-4 ring-accent/20'
+                        : 'bg-surface border-border text-text-muted'
                   }`}
                 >
-                  {isDone ? <Check className="w-4 h-4" /> : step.number + 1}
+                  {isDone ? <Check className="w-5 h-5" /> : step.number + 1}
                 </div>
                 <span
-                  className={`text-[10px] font-medium ${
-                    isActive || isDone ? 'text-text-primary' : 'text-text-muted'
+                  className={`text-xs sm:text-sm font-medium transition-colors ${
+                    isActive ? 'text-accent' : isDone ? 'text-text-primary' : 'text-text-muted'
                   }`}
                 >
                   {step.label}
