@@ -83,6 +83,8 @@ export interface UseSetupReturn {
   requestChanges: (feedback: string) => void;
   markStepComplete: (stepIndex: number) => void;
   continueFromAnalysis: () => void;
+  navigateToStep: (step: SetupStep) => void;
+  resetStage: (step: SetupStep) => void;
   restartSetup: () => void;
   goToDashboard: () => void;
 }
@@ -104,7 +106,7 @@ const WELCOME_MESSAGE: SetupChatMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
-    "Welcome! I'm here to help you set up your ClickUp workspace.\n\nTell me about your business — what do you do, what services or products do you offer, and how does your team work? The more detail you share, the better I can tailor your workspace.\n\nOr pick a **quick-start template** below to get started right away.",
+    "Welcome! I'm here to help you set up your ClickUp workspace.\n\nTell me about your business: what do you do, what services or products do you offer, and how does your team work? The more detail you share, the better I can tailor your workspace.\n\nOr pick a **quick-start template** below to get started right away.",
   timestamp: new Date(),
 };
 
@@ -317,7 +319,7 @@ export function useSetup(): UseSetupReturn {
             store?.getState().setAnalysis('Unable to analyze workspace.', null, [], []);
           }
         } else if (!cancelled) {
-          store?.getState().setAnalysis('No workspace data yet — fresh workspace.', null, [], []);
+          store?.getState().setAnalysis('No workspace data yet. Fresh workspace.', null, [], []);
         }
       } catch (err) {
         console.error('[useSetup] Workspace analysis failed:', err);
@@ -388,7 +390,7 @@ export function useSetup(): UseSetupReturn {
     if (currentStep === 3 && !proposedPlan && !isSending) {
       const timer = setTimeout(() => {
         setCurrentStep(2);
-        addMessage('assistant', "I wasn't able to generate the workspace structure. Let's try again — tell me more about your business or click **\"Generate Structure\"** when ready.");
+        addMessage('assistant', "I wasn't able to generate the workspace structure. Let's try again. Tell me more about your business or click **\"Generate Structure\"** when ready.");
       }, 15000);
       return () => clearTimeout(timer);
     }
@@ -459,7 +461,7 @@ export function useSetup(): UseSetupReturn {
           body: JSON.stringify({
             workspace_id,
             conversation_id: conversationId,
-            message: `Please set up my ClickUp workspace. ${description} Create the full structure — Spaces, Folders, Lists, and statuses — tailored for a ${template} business.`,
+            message: `Please set up my ClickUp workspace. ${description} Create the full structure (Spaces, Folders, Lists, and statuses) tailored for a ${template} business.`,
             workspace_analysis: fullAnalysisContext,
           }),
         });
@@ -614,6 +616,25 @@ export function useSetup(): UseSetupReturn {
     store?.getState().toggleManualStep(stepIndex);
   }, [store]);
 
+  const navigateToStep = useCallback((step: SetupStep) => {
+    // Just navigate - no data clearing. Used for viewing completed stages.
+    setCurrentStep(step);
+  }, [setCurrentStep]);
+
+  const resetStage = useCallback((step: SetupStep) => {
+    // Clear data from this step onward and navigate to it
+    store?.getState().resetFromStep(step);
+    if (step === 1) {
+      analysisStartedRef.current = false;
+      setIsAnalyzing(false);
+    }
+    setExecutionProgress(null);
+    setExecutionResult(null);
+    setExecutionItems([]);
+    setIsExecuting(false);
+    setIsSending(false);
+  }, [store]);
+
   const restartSetup = useCallback(() => {
     const newId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     store?.getState().reset(newId);
@@ -729,6 +750,8 @@ export function useSetup(): UseSetupReturn {
     requestChanges,
     markStepComplete,
     continueFromAnalysis,
+    navigateToStep,
+    resetStage,
     restartSetup,
     goToDashboard,
   };

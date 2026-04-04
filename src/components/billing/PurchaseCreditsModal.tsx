@@ -138,7 +138,7 @@ export default function PurchaseCreditsModal({ open, onClose }: PurchaseCreditsM
             )}
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            Purchase {credits} Credits — ${totalDollars}
+            Purchase {credits} Credits - ${totalDollars}
           </button>
         </div>
       </div>

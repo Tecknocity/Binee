@@ -166,8 +166,8 @@ export default function InviteMemberModal({ open, onClose }: InviteMemberModalPr
                   onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
                   className="w-full px-3 py-2.5 bg-navy-base border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                 >
-                  <option value="member">Member — can view and use AI features</option>
-                  <option value="admin">Admin — can manage workspace settings</option>
+                  <option value="member">Member - can view and use AI features</option>
+                  <option value="admin">Admin - can manage workspace settings</option>
                 </select>
               </div>
 

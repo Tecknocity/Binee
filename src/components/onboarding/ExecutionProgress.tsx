@@ -378,7 +378,7 @@ export function ExecutionProgress({
                   <span>
                     <span className="font-medium">{item.name}</span>
                     {item.error && (
-                      <span className="text-error/60"> — {item.error}</span>
+                      <span className="text-error/60">: {item.error}</span>
                     )}
                   </span>
                 </div>

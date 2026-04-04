@@ -20,8 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import type { SetupChatMessage, BusinessProfile } from '@/hooks/useSetup';
-import { profileCompleteness } from '@/hooks/useSetup';
+import type { SetupChatMessage, ProfileFormData } from '@/hooks/useSetup';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -31,7 +30,7 @@ interface BusinessChatStepProps {
   messages: SetupChatMessage[];
   isSending: boolean;
   messageCount: number;
-  businessProfile: BusinessProfile;
+  profileFormData: ProfileFormData | null;
   onSendMessage: (msg: string) => void;
   onSelectTemplate: (template: string) => void;
 }
@@ -52,17 +51,23 @@ const TEMPLATES = [
 // Profile progress items
 // ---------------------------------------------------------------------------
 
-const PROFILE_FIELDS: Array<{
-  key: keyof BusinessProfile;
+const PROFILE_FORM_FIELDS: Array<{
+  key: keyof ProfileFormData;
   label: string;
   icon: typeof Building2;
   hint: string;
 }> = [
   {
-    key: 'businessDescription',
-    label: 'Business type',
-    icon: Building2,
-    hint: 'What does your business do?',
+    key: 'industry',
+    label: 'Industry',
+    icon: Briefcase,
+    hint: 'What industry is your business in?',
+  },
+  {
+    key: 'workStyle',
+    label: 'Work style',
+    icon: GitBranch,
+    hint: 'How is your work structured?',
   },
   {
     key: 'teamSize',
@@ -71,22 +76,10 @@ const PROFILE_FIELDS: Array<{
     hint: 'How many team members?',
   },
   {
-    key: 'departments',
-    label: 'Departments',
-    icon: GitBranch,
-    hint: 'What departments exist?',
-  },
-  {
-    key: 'tools',
-    label: 'Current tools',
+    key: 'services',
+    label: 'Services / Products',
     icon: Wrench,
-    hint: 'What tools do you use?',
-  },
-  {
-    key: 'workflows',
-    label: 'Workflows',
-    icon: GitBranch,
-    hint: 'What are your main workflows?',
+    hint: 'What does your business offer?',
   },
 ];
 
@@ -94,11 +87,18 @@ const PROFILE_FIELDS: Array<{
 // Component
 // ---------------------------------------------------------------------------
 
+const WORK_STYLE_LABELS: Record<string, string> = {
+  'client-based': 'Client-based',
+  'product-based': 'Product-based',
+  'project-based': 'Project-based',
+  'operations-based': 'Operations-based',
+};
+
 export function BusinessChatStep({
   messages,
   isSending,
   messageCount,
-  businessProfile,
+  profileFormData,
   onSendMessage,
   onSelectTemplate,
 }: BusinessChatStepProps) {
@@ -107,7 +107,12 @@ export function BusinessChatStep({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const canGenerate = messageCount >= 2;
-  const completeness = profileCompleteness(businessProfile);
+  const completeness = profileFormData
+    ? PROFILE_FORM_FIELDS.filter((f) => {
+        const val = profileFormData[f.key];
+        return val && val.trim().length > 0;
+      }).length
+    : 0;
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -150,11 +155,18 @@ export function BusinessChatStep({
     }
   };
 
-  const isFieldCollected = (key: keyof BusinessProfile): boolean => {
-    const val = businessProfile[key];
-    if (val === null) return false;
-    if (Array.isArray(val)) return val.length > 0;
-    return val.length > 0;
+  const isFormFieldCollected = (key: keyof ProfileFormData): boolean => {
+    if (!profileFormData) return false;
+    const val = profileFormData[key];
+    return !!val && val.trim().length > 0;
+  };
+
+  const getFormFieldValue = (key: keyof ProfileFormData): string | null => {
+    if (!profileFormData) return null;
+    const val = profileFormData[key];
+    if (!val || !val.trim()) return null;
+    if (key === 'workStyle') return WORK_STYLE_LABELS[val] || val;
+    return val;
   };
 
   const [mobileProgressOpen, setMobileProgressOpen] = useState(false);
@@ -175,7 +187,7 @@ export function BusinessChatStep({
                 Discovery Progress
               </span>
               <span className="text-xs font-medium text-accent">
-                {completeness}/{PROFILE_FIELDS.length}
+                {completeness}/{PROFILE_FORM_FIELDS.length}
               </span>
             </div>
             {mobileProgressOpen ? (
@@ -192,13 +204,14 @@ export function BusinessChatStep({
                 <div className="h-1.5 rounded-full bg-border overflow-hidden">
                   <div
                     className="h-full rounded-full bg-accent transition-all duration-500 ease-out"
-                    style={{ width: `${(completeness / PROFILE_FIELDS.length) * 100}%` }}
+                    style={{ width: `${(completeness / PROFILE_FORM_FIELDS.length) * 100}%` }}
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                {PROFILE_FIELDS.map((field) => {
-                  const collected = isFieldCollected(field.key);
+                {PROFILE_FORM_FIELDS.map((field) => {
+                  const collected = isFormFieldCollected(field.key);
+                  const displayVal = getFormFieldValue(field.key);
                   return (
                     <div key={field.key} className="flex items-start gap-2">
                       {collected ? (
@@ -210,8 +223,10 @@ export function BusinessChatStep({
                         <p className={`text-xs font-medium ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
                           {field.label}
                         </p>
-                        {collected ? (
-                          <ProfileFieldValue profile={businessProfile} field={field.key} />
+                        {collected && displayVal ? (
+                          <p className="text-[11px] text-text-secondary truncate" title={displayVal}>
+                            {displayVal.length > 50 ? `${displayVal.slice(0, 50)}...` : displayVal}
+                          </p>
                         ) : (
                           <p className="text-[11px] text-text-muted italic">{field.hint}</p>
                         )}
@@ -286,7 +301,7 @@ export function BusinessChatStep({
         {messageCount === 0 && (
           <div className="py-3 shrink-0">
             <p className="text-xs text-text-muted mb-2.5 text-center">
-              Quick start — pick a template or describe your business below
+              Quick start - pick a template or describe your business below
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {TEMPLATES.map((t) => {
@@ -380,21 +395,22 @@ export function BusinessChatStep({
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[11px] text-text-muted">Profile completeness</span>
                 <span className="text-[11px] font-medium text-accent">
-                  {completeness}/{PROFILE_FIELDS.length}
+                  {completeness}/{PROFILE_FORM_FIELDS.length}
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-border overflow-hidden">
                 <div
                   className="h-full rounded-full bg-accent transition-all duration-500 ease-out"
-                  style={{ width: `${(completeness / PROFILE_FIELDS.length) * 100}%` }}
+                  style={{ width: `${(completeness / PROFILE_FORM_FIELDS.length) * 100}%` }}
                 />
               </div>
             </div>
 
             {/* Field checklist */}
             <div className="space-y-2.5">
-              {PROFILE_FIELDS.map((field) => {
-                const collected = isFieldCollected(field.key);
+              {PROFILE_FORM_FIELDS.map((field) => {
+                const collected = isFormFieldCollected(field.key);
+                const displayVal = getFormFieldValue(field.key);
                 return (
                   <div key={field.key} className="flex items-start gap-2">
                     {collected ? (
@@ -410,8 +426,10 @@ export function BusinessChatStep({
                       >
                         {field.label}
                       </p>
-                      {collected ? (
-                        <ProfileFieldValue profile={businessProfile} field={field.key} />
+                      {collected && displayVal ? (
+                        <p className="text-[11px] text-text-secondary truncate" title={displayVal}>
+                          {displayVal.length > 50 ? `${displayVal.slice(0, 50)}...` : displayVal}
+                        </p>
                       ) : (
                         <p className="text-[11px] text-text-muted italic">{field.hint}</p>
                       )}
@@ -422,7 +440,7 @@ export function BusinessChatStep({
             </div>
 
             {/* Hint when nearly complete */}
-            {completeness >= 3 && !canGenerate && (
+            {completeness >= 2 && !canGenerate && (
               <div className="mt-4 p-2.5 rounded-lg bg-accent/5 border border-accent/10">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
@@ -451,40 +469,6 @@ export function BusinessChatStep({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Profile field value display
-// ---------------------------------------------------------------------------
-
-function ProfileFieldValue({
-  profile,
-  field,
-}: {
-  profile: BusinessProfile;
-  field: keyof BusinessProfile;
-}) {
-  const val = profile[field];
-  if (val === null) return null;
-
-  if (Array.isArray(val)) {
-    return (
-      <p className="text-[11px] text-text-secondary truncate">
-        {val.slice(0, 3).join(', ')}
-        {val.length > 3 && ` +${val.length - 3}`}
-      </p>
-    );
-  }
-
-  // For string values (businessDescription, teamSize), show a truncated version
-  if (field === 'teamSize') {
-    return <p className="text-[11px] text-text-secondary">{val} people</p>;
-  }
-
-  return (
-    <p className="text-[11px] text-text-secondary truncate" title={val}>
-      {val.length > 40 ? `${val.slice(0, 40)}...` : val}
-    </p>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Markdown-lite renderer

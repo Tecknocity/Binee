@@ -89,15 +89,15 @@ Your task is to analyze a business profile and generate a structured ClickUp wor
 IMPORTANT: Return ONLY valid JSON matching the schema below. No markdown, no explanation outside the JSON.`);
 
   parts.push(`## CURRENT WORKSPACE ANALYSIS
-${workspaceAnalysis || 'No workspace data yet — this may be a fresh workspace.'}
+${workspaceAnalysis || 'No workspace data yet. This may be a fresh workspace.'}
 
-If the workspace already has structures, build AROUND them — do not recreate what already exists. Only add new spaces, folders, and lists that are missing.`);
+If the workspace already has structures, build AROUND them. Do not recreate what already exists. Only add new spaces, folders, and lists that are missing.`);
 
   parts.push(`## OUTPUT SCHEMA
 Return a single JSON object with this exact structure:
 {
-  "business_type": "string — detected industry/business type",
-  "matched_template": "string — which template category was used as the base",
+  "business_type": "string - detected industry/business type",
+  "matched_template": "string - which template category was used as the base",
   "spaces": [
     {
       "name": "Space Name",

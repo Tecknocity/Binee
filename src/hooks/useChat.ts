@@ -122,7 +122,7 @@ function formatResultSummary(toolName: string, result: Record<string, unknown>):
 }
 
 function formatErrorMessage(error: string): string {
-  if (error.toLowerCase().includes('rate limit')) return 'Rate limit reached — try again shortly';
+  if (error.toLowerCase().includes('rate limit')) return 'Rate limit reached. Try again shortly.';
   if (error.toLowerCase().includes('not found')) return 'Resource not found';
   if (error.toLowerCase().includes('permission')) return 'Permission denied';
   if (error.toLowerCase().includes('timeout')) return 'Request timed out';
