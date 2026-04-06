@@ -192,6 +192,7 @@ export default function SetupWizard() {
             profileFormData={setup.profileFormData}
             onSendMessage={setup.sendMessage}
             onSelectTemplate={setup.selectTemplate}
+            onEditProfile={setup.editProfile}
           />
         )}
 

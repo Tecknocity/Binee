@@ -19,6 +19,7 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
+  Pencil,
 } from 'lucide-react';
 import type { SetupChatMessage, ProfileFormData } from '@/hooks/useSetup';
 
@@ -33,6 +34,7 @@ interface BusinessChatStepProps {
   profileFormData: ProfileFormData | null;
   onSendMessage: (msg: string) => void;
   onSelectTemplate: (template: string) => void;
+  onEditProfile: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,12 +103,13 @@ export function BusinessChatStep({
   profileFormData,
   onSendMessage,
   onSelectTemplate,
+  onEditProfile,
 }: BusinessChatStepProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const canGenerate = messageCount >= 2;
+  const canGenerate = messageCount >= 1;
   const completeness = profileFormData
     ? PROFILE_FORM_FIELDS.filter((f) => {
         const val = profileFormData[f.key];
@@ -174,8 +177,7 @@ export function BusinessChatStep({
   return (
     <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden">
       {/* Mobile discovery progress — collapsible banner */}
-      {messageCount > 0 && (
-        <div className="lg:hidden shrink-0 mb-2">
+      <div className="lg:hidden shrink-0 mb-2">
           <button
             type="button"
             onClick={() => setMobileProgressOpen((v) => !v)}
@@ -238,7 +240,6 @@ export function BusinessChatStep({
             </div>
           )}
         </div>
-      )}
 
       <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
       {/* Main chat area — ~70% width when sidebar visible */}
@@ -379,9 +380,8 @@ export function BusinessChatStep({
         </p>
       </div>
 
-      {/* Profile progress sidebar — desktop only */}
-      {messageCount > 0 && (
-        <div className="hidden lg:flex flex-col w-64 shrink-0">
+      {/* Profile progress sidebar — desktop only, always visible */}
+      <div className="hidden lg:flex flex-col w-64 shrink-0">
           <div className="sticky top-4 bg-surface border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <MessageSquare className="w-4 h-4 text-accent" />
@@ -461,9 +461,20 @@ export function BusinessChatStep({
                 </div>
               </div>
             )}
+
+            {/* Update Information button */}
+            <button
+              type="button"
+              onClick={onEditProfile}
+              className="mt-4 w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium
+                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
+                transition-colors"
+            >
+              <Pencil className="w-3 h-3" />
+              Update Information
+            </button>
           </div>
         </div>
-      )}
       </div>
     </div>
   );

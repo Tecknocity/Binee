@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type {
   SetupPlan,
   SetupWizardStep,
-  ExecutionStep,
   ExecutionProgress,
   ExecutionResult,
   ManualStep,
@@ -64,7 +63,6 @@ export interface UseSetupReturn {
   existingStructure: ExistingWorkspaceStructure | null;
   executionProgress: ExecutionProgress | null;
   executionResult: ExecutionResult | null;
-  executionSteps: ExecutionStep[];
   executionItems: ExecutionItem[];
   manualSteps: ManualStep[];
   isExecuting: boolean;
@@ -83,6 +81,7 @@ export interface UseSetupReturn {
   updatePlan: (plan: SetupPlan) => void;
   approvePlan: () => void;
   requestChanges: (feedback: string) => void;
+  editProfile: () => void;
   markStepComplete: (stepIndex: number) => void;
   retryFailedItems: () => void;
   continueFromAnalysis: () => void;
@@ -297,7 +296,6 @@ export function useSetup(): UseSetupReturn {
   const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
   const [executionItems, setExecutionItems] = useState<ExecutionItem[]>([]);
-  const [executionSteps] = useState<ExecutionStep[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -542,6 +540,7 @@ export function useSetup(): UseSetupReturn {
       const description = templateDescriptions[template] || templateDescriptions.agency;
       addMessage('user', description);
       store?.getState().setBusinessDescription(description);
+      store?.getState().incrementMessageCount();
       setIsSending(true);
 
       try {
@@ -551,40 +550,29 @@ export function useSetup(): UseSetupReturn {
           body: JSON.stringify({
             workspace_id,
             conversation_id: conversationId,
-            message: `Please set up my ClickUp workspace. ${description} Create the full structure (Spaces, Folders, Lists, and statuses) tailored for a ${template} business.`,
+            message: `Here is my business profile: ${description}\n\nBased on my current workspace analysis and this profile, please summarize what you'd build for a ${template} business and ask if I want to make any changes before generating the workspace structure.`,
             workspace_analysis: fullAnalysisContext,
           }),
         });
 
         if (response.ok) {
           const data = await response.json();
-          if (data.content) addMessage('assistant', data.content);
+          if (data.content) {
+            addMessage('assistant', data.content);
+            setIsSending(false);
+            return;
+          }
         }
       } catch {
-        // Fall through to AI plan generation
+        // Fall through to fallback
       }
 
-      try {
-        const planRes = await fetchWithTimeout('/api/setup/generate-plan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            businessProfile: { businessDescription: description, teamSize: null, departments: null, tools: null, workflows: null, painPoints: null },
-            workspaceAnalysis: workspaceAnalysis ?? undefined,
-          }),
-        });
-        if (!planRes.ok) throw new Error('Plan generation failed');
-        const { plan } = await planRes.json();
-        store?.getState().setPlan(plan);
-        addMessage('assistant', `I've created a workspace structure tailored for your ${template} business. It includes **${plan.spaces.length} spaces** with organized folders and lists.\n\nLet me show you the full structure for review.`);
-        setIsSending(false);
-        setCurrentStep(3);
-      } catch {
-        addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try describing your business manually.');
-        setIsSending(false);
-      }
+      // Fallback if API fails
+      await new Promise((r) => setTimeout(r, 800));
+      addMessage('assistant', `Great choice! I'll design a workspace structure tailored for a **${template}** business.\n\nWould you like to share any more details about your team, workflows, or specific needs? Or click **"Generate Structure"** when you're ready to see the proposed plan.`);
+      setIsSending(false);
     },
-    [addMessage, workspace_id, conversationId, workspaceAnalysis, fullAnalysisContext, store, setCurrentStep]
+    [addMessage, workspace_id, conversationId, fullAnalysisContext, store]
   );
 
   const generateStructure = useCallback(async () => {
@@ -624,21 +612,9 @@ export function useSetup(): UseSetupReturn {
     [sendMessage, generateStructure]
   );
 
-  const approvePlan = useCallback(async () => {
-    if (!proposedPlan || isExecuting) return;
-    setCurrentStep(4);
-    setIsExecuting(true);
-
-    // Take a pre-build snapshot (non-blocking safety net)
-    fetch('/api/setup/snapshot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        workspace_id,
-        snapshot_type: 'pre_build',
-        setup_plan: proposedPlan,
-      }),
-    }).catch((err) => console.error('[useSetup] Pre-build snapshot failed:', err));
+  // Shared execution runner for approvePlan and retryFailedItems
+  const runExecution = useCallback(async (structure: ExistingWorkspaceStructure | null) => {
+    if (!proposedPlan) return;
 
     const progressItems: ExecutionItem[] = [];
 
@@ -660,7 +636,7 @@ export function useSetup(): UseSetupReturn {
           errors: completedItem.status === 'error' && completedItem.error ? [completedItem.error] : [],
         });
       },
-      existingStructure,
+      structure,
     );
 
     setExecutionItems(executorResult.items);
@@ -690,7 +666,26 @@ export function useSetup(): UseSetupReturn {
     if (!hasErrors) {
       setTimeout(() => setCurrentStep(5), 1500);
     }
-  }, [proposedPlan, isExecuting, workspace_id, store, setCurrentStep, existingStructure]);
+  }, [proposedPlan, workspace_id, store, setCurrentStep]);
+
+  const approvePlan = useCallback(async () => {
+    if (!proposedPlan || isExecuting) return;
+    setCurrentStep(4);
+    setIsExecuting(true);
+
+    // Take a pre-build snapshot (non-blocking safety net)
+    fetch('/api/setup/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id,
+        snapshot_type: 'pre_build',
+        setup_plan: proposedPlan,
+      }),
+    }).catch((err) => console.error('[useSetup] Pre-build snapshot failed:', err));
+
+    await runExecution(existingStructure);
+  }, [proposedPlan, isExecuting, workspace_id, setCurrentStep, existingStructure, runExecution]);
 
   const retryFailedItems = useCallback(async () => {
     if (!proposedPlan || isExecuting) return;
@@ -715,52 +710,8 @@ export function useSetup(): UseSetupReturn {
       console.error('[useSetup] Failed to refresh existing structure for retry:', err);
     }
 
-    const progressItems: ExecutionItem[] = [];
-
-    const executorResult = await executeSetupPlan(
-      proposedPlan as SetupPlan,
-      workspace_id || '',
-      '',
-      (completedItem, progress) => {
-        const idx = progressItems.findIndex(
-          (pi) => pi.type === completedItem.type && pi.name === completedItem.name && pi.parentName === completedItem.parentName
-        );
-        if (idx >= 0) { progressItems[idx] = completedItem; } else { progressItems.push(completedItem); }
-        setExecutionItems([...progressItems]);
-        setExecutionProgress({
-          phase: completedItem.type === 'space' ? 'creating_spaces' : completedItem.type === 'folder' ? 'creating_folders' : 'creating_lists',
-          current: progress.completed,
-          total: progress.total,
-          currentItem: completedItem.name,
-          errors: completedItem.status === 'error' && completedItem.error ? [completedItem.error] : [],
-        });
-      },
-      freshStructure,
-    );
-
-    setExecutionItems(executorResult.items);
-    setExecutionProgress({
-      phase: 'complete',
-      current: executorResult.totalItems,
-      total: executorResult.totalItems,
-      currentItem: '',
-      errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
-    });
-    setExecutionResult({
-      success: executorResult.success,
-      spacesCreated: executorResult.items.filter((i) => i.type === 'space' && (i.status === 'success' || i.status === 'skipped')).length,
-      foldersCreated: executorResult.items.filter((i) => i.type === 'folder' && (i.status === 'success' || i.status === 'skipped')).length,
-      listsCreated: executorResult.items.filter((i) => i.type === 'list' && (i.status === 'success' || i.status === 'skipped')).length,
-      errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
-    });
-    setIsExecuting(false);
-
-    // Only auto-advance if no errors after retry
-    const hasErrors = executorResult.items.some(i => i.status === 'error');
-    if (!hasErrors) {
-      setTimeout(() => setCurrentStep(5), 1500);
-    }
-  }, [proposedPlan, isExecuting, workspace_id, existingStructure, store, setCurrentStep]);
+    await runExecution(freshStructure);
+  }, [proposedPlan, isExecuting, workspace_id, existingStructure, store, runExecution]);
 
   const requestChanges = useCallback(
     async (feedback: string) => {
@@ -874,6 +825,10 @@ export function useSetup(): UseSetupReturn {
     setCurrentStep(2);
   }, [setCurrentStep]);
 
+  const editProfile = useCallback(() => {
+    store?.getState().setProfileFormCompleted(false);
+  }, [store]);
+
   const submitProfileForm = useCallback(
     async (data: ProfileFormData) => {
       store?.getState().setProfileFormData(data);
@@ -950,7 +905,6 @@ export function useSetup(): UseSetupReturn {
     existingStructure,
     executionProgress,
     executionResult,
-    executionSteps,
     executionItems,
     manualSteps,
     isExecuting,
@@ -969,6 +923,7 @@ export function useSetup(): UseSetupReturn {
     updatePlan,
     approvePlan,
     requestChanges,
+    editProfile,
     markStepComplete,
     retryFailedItems,
     continueFromAnalysis,
