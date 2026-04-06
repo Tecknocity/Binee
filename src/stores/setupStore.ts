@@ -62,6 +62,7 @@ interface Recommendation {
 interface SetupState {
   // Progress
   currentStep: SetupStep;
+  furthestStep: SetupStep;
   conversationId: string;
 
   // Step 1: Analysis
@@ -94,6 +95,7 @@ interface SetupState {
 
   // Actions
   setStep: (step: SetupStep) => void;
+  setFurthestStep: (step: SetupStep) => void;
   setConversationId: (id: string) => void;
   setAnalysis: (analysis: string | null, counts: WorkspaceCounts | null, findings: Finding[], recommendations: Recommendation[]) => void;
   setProfileFormCompleted: (completed: boolean) => void;
@@ -120,6 +122,7 @@ function createSetupStore(workspaceId: string) {
     persist(
       (set) => ({
         currentStep: 0,
+        furthestStep: 0,
         conversationId: `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 
         workspaceAnalysis: null,
@@ -138,7 +141,11 @@ function createSetupStore(workspaceId: string) {
 
         manualSteps: [],
 
-        setStep: (step) => set({ currentStep: step }),
+        setStep: (step) => set((s) => ({
+          currentStep: step,
+          furthestStep: step > s.furthestStep ? step as SetupStep : s.furthestStep,
+        })),
+        setFurthestStep: (step) => set({ furthestStep: step }),
         setConversationId: (id) => set({ conversationId: id }),
 
         setAnalysis: (analysis, counts, findings, recommendations) =>
@@ -166,7 +173,10 @@ function createSetupStore(workspaceId: string) {
 
         resetFromStep: (step) =>
           set((s) => {
-            const updates: Partial<SetupState> = { currentStep: step };
+            const updates: Partial<SetupState> = {
+              currentStep: step,
+              furthestStep: step < s.furthestStep ? step as SetupStep : s.furthestStep,
+            };
             // Clear data from this step onward
             if (step <= 1) {
               // Resetting from Analyze: clear analysis + everything after
@@ -197,6 +207,7 @@ function createSetupStore(workspaceId: string) {
         reset: (newConversationId) =>
           set({
             currentStep: 0,
+            furthestStep: 0,
             conversationId: newConversationId,
             workspaceAnalysis: null,
             workspaceCounts: null,
@@ -217,6 +228,7 @@ function createSetupStore(workspaceId: string) {
         // Only persist resumable data, not the action functions
         partialize: (state) => ({
           currentStep: state.currentStep,
+          furthestStep: state.furthestStep,
           conversationId: state.conversationId,
           workspaceAnalysis: state.workspaceAnalysis,
           workspaceCounts: state.workspaceCounts,

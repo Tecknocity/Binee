@@ -74,8 +74,8 @@ export function ClickUpConnectStep({
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 text-accent animate-spin" />
-          <p className="text-sm text-text-muted">Checking ClickUp connection...</p>
+          <Loader2 className="w-6 h-6 text-[#854DF9] animate-spin" />
+          <p className="text-sm text-[#6B6B80]">Checking ClickUp connection...</p>
         </div>
       </div>
     );
@@ -83,15 +83,15 @@ export function ClickUpConnectStep({
 
   if (connected) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center px-4">
         <div className="flex flex-col items-center gap-4 text-center max-w-md">
           <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center">
             <CheckCircle2 className="w-8 h-8 text-success" />
           </div>
-          <h2 className="text-xl font-semibold text-text-primary">
+          <h2 className="text-xl font-semibold text-[#F0F0F5]">
             ClickUp Connected
           </h2>
-          <p className="text-sm text-text-secondary">
+          <p className="text-sm text-[#A0A0B5]">
             Your ClickUp workspace is connected and ready. Let&apos;s set up your workspace structure.
           </p>
         </div>
@@ -101,78 +101,80 @@ export function ClickUpConnectStep({
 
   return (
     <div className="flex-1 flex items-center justify-center px-4">
-      <div className="flex flex-col items-center gap-8 text-center max-w-lg">
-        {/* ClickUp Logo */}
-        <div className="w-20 h-20 rounded-2xl bg-[#7B68EE]/10 flex items-center justify-center">
-          <ClickUpLogo className="h-10 w-10 text-[#7B68EE]" />
-        </div>
-
-        {/* Title & subtitle */}
-        <div>
-          <h2 className="text-2xl font-semibold text-text-primary mb-2">
-            Connect Your ClickUp
-          </h2>
-          <p className="text-text-secondary leading-relaxed">
-            Binee connects to ClickUp to understand your workflow and build
-            a workspace structure tailored to your business.
-          </p>
-        </div>
-
-        {/* What Binee will access */}
-        <div className="w-full rounded-xl border border-border bg-surface p-5">
-          <h3 className="text-sm font-medium text-text-primary mb-4 text-left">
-            What Binee will access
-          </h3>
-          <div className="space-y-4">
-            {ACCESS_ITEMS.map((item) => (
-              <div key={item.label} className="flex items-start gap-3 text-left">
-                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <item.icon className="w-4 h-4 text-accent" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-text-primary">{item.label}</p>
-                  <p className="text-xs text-text-muted mt-0.5">{item.description}</p>
-                </div>
-              </div>
-            ))}
+      <div className="w-full max-w-lg">
+        <div className="flex flex-col items-center gap-8 text-center">
+          {/* ClickUp Logo */}
+          <div className="w-20 h-20 rounded-2xl bg-[#7B68EE]/10 flex items-center justify-center">
+            <ClickUpLogo className="h-10 w-10 text-[#7B68EE]" />
           </div>
-        </div>
 
-        {/* Connect button — large & prominent */}
-        <button
-          onClick={onConnect}
-          className="flex items-center justify-center gap-2.5 w-full px-6 py-4 rounded-xl text-base font-semibold transition-all bg-[#7B68EE] text-white hover:bg-[#6A5ACD] shadow-lg shadow-[#7B68EE]/20 hover:shadow-xl hover:shadow-[#7B68EE]/30"
-        >
-          <ClickUpLogo className="w-5 h-5" />
-          Connect ClickUp
-          <ExternalLink className="w-4 h-4 ml-0.5 opacity-70" />
-        </button>
-
-        {/* Privacy assurance */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center gap-4 text-xs text-text-muted">
-            <span className="flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5" />
-              OAuth 2.0 secured
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5" />
-              Encrypted tokens
-            </span>
+          {/* Title & subtitle */}
+          <div>
+            <h2 className="text-2xl font-semibold text-[#F0F0F5] mb-2">
+              Connect Your ClickUp
+            </h2>
+            <p className="text-[#A0A0B5] leading-relaxed">
+              Binee connects to ClickUp to understand your workflow and build
+              a workspace structure tailored to your business.
+            </p>
           </div>
-          <p className="text-xs text-text-muted leading-relaxed max-w-sm">
-            Binee never stores your ClickUp password. You can revoke access
-            at any time from your ClickUp settings.
-          </p>
-        </div>
 
-        {/* Refresh hint */}
-        <button
-          onClick={onRefresh}
-          className="text-xs text-text-muted hover:text-text-secondary transition-colors"
-        >
-          Already connected? Click to refresh status
-        </button>
+          {/* What Binee will access */}
+          <div className="w-full rounded-xl border border-[#2A2A3A] bg-[#12121A] p-5">
+            <h3 className="text-sm font-medium text-[#F0F0F5] mb-4 text-left">
+              What Binee will access
+            </h3>
+            <div className="space-y-4">
+              {ACCESS_ITEMS.map((item) => (
+                <div key={item.label} className="flex items-start gap-3 text-left">
+                  <div className="w-8 h-8 rounded-lg bg-[#854DF9]/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <item.icon className="w-4 h-4 text-[#854DF9]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-[#F0F0F5]">{item.label}</p>
+                    <p className="text-xs text-[#6B6B80] mt-0.5">{item.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Connect button */}
+          <button
+            onClick={onConnect}
+            className="flex items-center justify-center gap-2.5 w-full px-6 py-4 rounded-xl text-base font-semibold transition-all bg-[#7B68EE] text-white hover:bg-[#6A5ACD]"
+          >
+            <ClickUpLogo className="w-5 h-5" />
+            Connect ClickUp
+            <ExternalLink className="w-4 h-4 ml-0.5 opacity-70" />
+          </button>
+
+          {/* Privacy assurance */}
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex items-center gap-4 text-xs text-[#6B6B80]">
+              <span className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5" />
+                OAuth 2.0 secured
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" />
+                Encrypted tokens
+              </span>
+            </div>
+            <p className="text-xs text-[#6B6B80] leading-relaxed max-w-sm">
+              Binee never stores your ClickUp password. You can revoke access
+              at any time from your ClickUp settings.
+            </p>
+          </div>
+
+          {/* Refresh hint */}
+          <button
+            onClick={onRefresh}
+            className="text-xs text-[#6B6B80] hover:text-[#A0A0B5] transition-colors"
+          >
+            Already connected? Click to refresh status
+          </button>
+        </div>
       </div>
     </div>
   );
