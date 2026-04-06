@@ -403,6 +403,18 @@ export class ClickUpClient {
     await this.request<void>(`/task/${taskId}`, { method: "DELETE" });
   }
 
+  async deleteSpace(spaceId: string): Promise<void> {
+    await this.request<void>(`/space/${spaceId}`, { method: "DELETE" });
+  }
+
+  async deleteFolder(folderId: string): Promise<void> {
+    await this.request<void>(`/folder/${folderId}`, { method: "DELETE" });
+  }
+
+  async deleteList(listId: string): Promise<void> {
+    await this.request<void>(`/list/${listId}`, { method: "DELETE" });
+  }
+
   async createDoc(
     workspaceId: string,
     name: string

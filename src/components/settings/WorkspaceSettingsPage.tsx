@@ -14,6 +14,11 @@ import {
   AlertTriangle,
   Calendar,
   Crown,
+  History,
+  RotateCcw,
+  FolderOpen,
+  Folder,
+  List,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/utils';
@@ -209,6 +214,9 @@ export default function WorkspaceSettingsPage() {
       {/* Team Members */}
       <TeamMembersList onInviteClick={() => setShowInviteModal(true)} />
 
+      {/* Workspace Snapshots */}
+      {isOwner && <WorkspaceSnapshots workspaceId={workspace.id} />}
+
       {/* Danger Zone — owner only */}
       {isOwner && (
         <div className="border border-error/30 rounded-xl p-6">
@@ -280,5 +288,203 @@ export default function WorkspaceSettingsPage() {
         onClose={() => setShowInviteModal(false)}
       />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Workspace Snapshots
+// ---------------------------------------------------------------------------
+
+interface Snapshot {
+  id: string;
+  snapshot_type: string;
+  created_at: string;
+  summary: { spaces: number; folders: number; lists: number };
+}
+
+function WorkspaceSnapshots({ workspaceId }: { workspaceId: string }) {
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const [confirmRestore, setConfirmRestore] = useState<Snapshot | null>(null);
+  const [result, setResult] = useState<{ success: boolean; summary: string } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/setup/snapshot-restore?workspace_id=${encodeURIComponent(workspaceId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSnapshots(data.snapshots || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch snapshots:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [workspaceId]);
+
+  const handleRestore = async (snapshot: Snapshot) => {
+    setRestoring(snapshot.id);
+    setResult(null);
+    try {
+      const res = await fetch('/api/setup/snapshot-restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspaceId, snapshot_id: snapshot.id }),
+      });
+      const data = await res.json();
+      setResult({ success: data.success, summary: data.summary || 'Restore complete' });
+    } catch (err) {
+      setResult({ success: false, summary: `Error: ${err instanceof Error ? err.message : 'Unknown error'}` });
+    } finally {
+      setRestoring(null);
+      setConfirmRestore(null);
+    }
+  };
+
+  const typeLabels: Record<string, string> = {
+    initial_connect: 'Initial Connect',
+    pre_build: 'Pre-Build',
+    manual: 'Manual',
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-lg animate-pulse bg-navy-light" />
+          <div className="space-y-2">
+            <div className="h-4 w-40 animate-pulse rounded bg-navy-light" />
+            <div className="h-3 w-56 animate-pulse rounded bg-navy-light" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (snapshots.length === 0) return null;
+
+  return (
+    <>
+      <div className="bg-surface border border-border rounded-xl p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
+              <History className="w-5 h-5 text-warning" />
+            </div>
+            <div>
+              <h2 className="text-lg font-medium text-text-primary">Workspace Snapshots</h2>
+              <p className="text-sm text-text-secondary">
+                Restore your ClickUp workspace to a previous state
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {result && (
+          <div className={cn(
+            'mb-4 p-3 rounded-lg text-sm',
+            result.success ? 'bg-success/10 text-success border border-success/20' : 'bg-error/10 text-error border border-error/20'
+          )}>
+            {result.summary}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {snapshots.map((snap) => (
+            <div key={snap.id} className="flex items-center justify-between p-3 rounded-lg bg-navy-base/50 border border-border/50">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-2 text-xs text-text-muted shrink-0">
+                  <span className={cn(
+                    'px-2 py-0.5 rounded-full text-[11px] font-medium',
+                    snap.snapshot_type === 'pre_build' ? 'bg-accent/10 text-accent' : 'bg-surface-hover text-text-secondary'
+                  )}>
+                    {typeLabels[snap.snapshot_type] || snap.snapshot_type}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-text-primary">
+                    {formatDate(snap.created_at)}
+                  </p>
+                  <div className="flex items-center gap-3 text-xs text-text-muted mt-0.5">
+                    <span className="flex items-center gap-1">
+                      <FolderOpen className="w-3 h-3" /> {snap.summary.spaces} spaces
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Folder className="w-3 h-3" /> {snap.summary.folders} folders
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <List className="w-3 h-3" /> {snap.summary.lists} lists
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmRestore(snap)}
+                disabled={!!restoring}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-warning border border-warning/30 rounded-lg hover:bg-warning/10 transition-colors disabled:opacity-50 shrink-0"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Restore
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Confirmation Modal */}
+      {confirmRestore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-warning/15 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-warning" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-text-primary">
+                  Restore workspace?
+                </h3>
+                <p className="text-sm text-text-secondary mt-1">
+                  This will delete all ClickUp spaces, folders, and lists that were created
+                  after this snapshot was taken. Items that existed before will be kept.
+                </p>
+                <div className="mt-3 flex items-center gap-3 text-xs text-text-muted">
+                  <span>Snapshot: {typeLabels[confirmRestore.snapshot_type] || confirmRestore.snapshot_type}</span>
+                  <span>{formatDate(confirmRestore.created_at)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-6">
+              <button
+                onClick={() => setConfirmRestore(null)}
+                disabled={!!restoring}
+                className="px-4 py-2 text-sm text-text-secondary border border-border rounded-lg hover:bg-surface-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRestore(confirmRestore)}
+                disabled={!!restoring}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-warning rounded-lg hover:bg-warning/90 transition-colors disabled:opacity-50"
+              >
+                {restoring ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Restoring...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-4 h-4" />
+                    Yes, restore
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

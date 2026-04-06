@@ -51,6 +51,7 @@ export interface ProfileFormData {
 
 export interface UseSetupReturn {
   currentStep: SetupStep;
+  furthestStep: SetupStep;
   wizardStep: SetupWizardStep;
   clickUpConnected: boolean;
   clickUpLoading: boolean;
@@ -83,6 +84,7 @@ export interface UseSetupReturn {
   approvePlan: () => void;
   requestChanges: (feedback: string) => void;
   markStepComplete: (stepIndex: number) => void;
+  retryFailedItems: () => void;
   continueFromAnalysis: () => void;
   navigateToStep: (step: SetupStep) => void;
   resetStage: (step: SetupStep) => void;
@@ -133,6 +135,30 @@ const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string 
       "Perfect, I have a good picture now. Let me build a workspace structure tailored to your business.\n\nI'll include spaces for your core operations and internal workflows. Click **\"Generate Structure\"** below when you're ready to see the proposed plan.",
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Timeout-wrapped fetch helper
+// ---------------------------------------------------------------------------
+
+async function fetchWithTimeout(
+  url: string,
+  opts: RequestInit,
+  timeoutMs = 60000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...opts, signal: controller.signal });
+    clearTimeout(timeout);
+    return res;
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Request timed out. Please check your connection and try again.');
+    }
+    throw err;
+  }
+}
 
 const NUMERIC_TO_WIZARD_STEP: Record<SetupStep, SetupWizardStep> = {
   0: 'business_chat',
@@ -237,6 +263,7 @@ export function useSetup(): UseSetupReturn {
 
   // Read persisted state from store (or defaults if no store yet)
   const currentStep = (storeState?.currentStep ?? 0) as SetupStep;
+  const furthestStep = (storeState?.furthestStep ?? 0) as SetupStep;
   const conversationId = storeState?.conversationId ?? 'setup-fallback';
   const workspaceAnalysis = storeState?.workspaceAnalysis ?? null;
   const workspaceCounts = storeState?.workspaceCounts ?? null;
@@ -302,7 +329,7 @@ export function useSetup(): UseSetupReturn {
     (async () => {
       try {
         if (workspace_id) {
-          const res = await fetch('/api/setup/analyze', {
+          const res = await fetchWithTimeout('/api/setup/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ workspace_id }),
@@ -345,7 +372,7 @@ export function useSetup(): UseSetupReturn {
 
     (async () => {
       try {
-        const res = await fetch('/api/setup/existing-structure', {
+        const res = await fetchWithTimeout('/api/setup/existing-structure', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ workspace_id }),
@@ -361,6 +388,42 @@ export function useSetup(): UseSetupReturn {
       }
     })();
   }, [currentStep, existingStructure, workspace_id, store]);
+
+  // Load saved manual step completions from DB when arriving at step 5
+  useEffect(() => {
+    if (currentStep !== 5 || !workspace_id || manualSteps.length === 0) return;
+
+    (async () => {
+      try {
+        const res = await fetchWithTimeout(`/api/setup/manual-steps?workspace_id=${encodeURIComponent(workspace_id)}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.completions && Array.isArray(data.completions)) {
+            // Merge DB completions into local manual steps
+            const completionMap = new Map<number, boolean>();
+            for (const c of data.completions) {
+              completionMap.set(c.step_index, c.completed);
+            }
+            const currentSteps = store?.getState().manualSteps ?? [];
+            const merged = currentSteps.map((step, i) => {
+              const dbCompleted = completionMap.get(i);
+              if (dbCompleted !== undefined && dbCompleted !== step.completed) {
+                return { ...step, completed: dbCompleted };
+              }
+              return step;
+            });
+            store?.getState().setManualSteps(merged);
+          }
+        }
+      } catch (err) {
+        console.error('[useSetup] Failed to load manual step completions:', err);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, workspace_id]);
 
   // Derive business profile from messages
   const businessProfile = useMemo(
@@ -435,7 +498,7 @@ export function useSetup(): UseSetupReturn {
       store?.getState().incrementMessageCount();
 
       try {
-        const response = await fetch('/api/setup/chat', {
+        const response = await fetchWithTimeout('/api/setup/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -482,7 +545,7 @@ export function useSetup(): UseSetupReturn {
       setIsSending(true);
 
       try {
-        const response = await fetch('/api/setup/chat', {
+        const response = await fetchWithTimeout('/api/setup/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -502,7 +565,7 @@ export function useSetup(): UseSetupReturn {
       }
 
       try {
-        const planRes = await fetch('/api/setup/generate-plan', {
+        const planRes = await fetchWithTimeout('/api/setup/generate-plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -527,7 +590,7 @@ export function useSetup(): UseSetupReturn {
   const generateStructure = useCallback(async () => {
     setIsSending(true);
     try {
-      const res = await fetch('/api/setup/generate-plan', {
+      const res = await fetchWithTimeout('/api/setup/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -622,8 +685,82 @@ export function useSetup(): UseSetupReturn {
       store?.getState().setManualSteps(steps);
     }
 
-    setTimeout(() => setCurrentStep(5), 1500);
+    // Only auto-advance if no errors
+    const hasErrors = executorResult.items.some(i => i.status === 'error');
+    if (!hasErrors) {
+      setTimeout(() => setCurrentStep(5), 1500);
+    }
   }, [proposedPlan, isExecuting, workspace_id, store, setCurrentStep, existingStructure]);
+
+  const retryFailedItems = useCallback(async () => {
+    if (!proposedPlan || isExecuting) return;
+    setIsExecuting(true);
+
+    // Re-fetch existing structure to get fresh state after partial build
+    let freshStructure = existingStructure;
+    try {
+      const structRes = await fetchWithTimeout('/api/setup/existing-structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id }),
+      });
+      if (structRes.ok) {
+        const data = await structRes.json();
+        if (data.structure) {
+          freshStructure = data.structure;
+          store?.getState().setExistingStructure(data.structure);
+        }
+      }
+    } catch (err) {
+      console.error('[useSetup] Failed to refresh existing structure for retry:', err);
+    }
+
+    const progressItems: ExecutionItem[] = [];
+
+    const executorResult = await executeSetupPlan(
+      proposedPlan as SetupPlan,
+      workspace_id || '',
+      '',
+      (completedItem, progress) => {
+        const idx = progressItems.findIndex(
+          (pi) => pi.type === completedItem.type && pi.name === completedItem.name && pi.parentName === completedItem.parentName
+        );
+        if (idx >= 0) { progressItems[idx] = completedItem; } else { progressItems.push(completedItem); }
+        setExecutionItems([...progressItems]);
+        setExecutionProgress({
+          phase: completedItem.type === 'space' ? 'creating_spaces' : completedItem.type === 'folder' ? 'creating_folders' : 'creating_lists',
+          current: progress.completed,
+          total: progress.total,
+          currentItem: completedItem.name,
+          errors: completedItem.status === 'error' && completedItem.error ? [completedItem.error] : [],
+        });
+      },
+      freshStructure,
+    );
+
+    setExecutionItems(executorResult.items);
+    setExecutionProgress({
+      phase: 'complete',
+      current: executorResult.totalItems,
+      total: executorResult.totalItems,
+      currentItem: '',
+      errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
+    });
+    setExecutionResult({
+      success: executorResult.success,
+      spacesCreated: executorResult.items.filter((i) => i.type === 'space' && (i.status === 'success' || i.status === 'skipped')).length,
+      foldersCreated: executorResult.items.filter((i) => i.type === 'folder' && (i.status === 'success' || i.status === 'skipped')).length,
+      listsCreated: executorResult.items.filter((i) => i.type === 'list' && (i.status === 'success' || i.status === 'skipped')).length,
+      errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
+    });
+    setIsExecuting(false);
+
+    // Only auto-advance if no errors after retry
+    const hasErrors = executorResult.items.some(i => i.status === 'error');
+    if (!hasErrors) {
+      setTimeout(() => setCurrentStep(5), 1500);
+    }
+  }, [proposedPlan, isExecuting, workspace_id, existingStructure, store, setCurrentStep]);
 
   const requestChanges = useCallback(
     async (feedback: string) => {
@@ -647,7 +784,7 @@ export function useSetup(): UseSetupReturn {
         : '';
 
       try {
-        const response = await fetch('/api/setup/chat', {
+        const response = await fetchWithTimeout('/api/setup/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -673,9 +810,30 @@ export function useSetup(): UseSetupReturn {
     [addMessage, workspace_id, conversationId, fullAnalysisContext, setCurrentStep, proposedPlan, profileFormData]
   );
 
-  const markStepComplete = useCallback((stepIndex: number) => {
+  const markStepComplete = useCallback(async (stepIndex: number) => {
+    // Update local state immediately
     store?.getState().toggleManualStep(stepIndex);
-  }, [store]);
+
+    // Persist to DB for cross-member visibility
+    const currentSteps = store?.getState().manualSteps;
+    const step = currentSteps?.[stepIndex];
+    if (step && workspace_id) {
+      try {
+        await fetchWithTimeout('/api/setup/manual-steps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspace_id,
+            step_index: stepIndex,
+            step_title: step.title,
+            completed: step.completed, // Already toggled in local state
+          }),
+        });
+      } catch (err) {
+        console.error('[useSetup] Failed to persist manual step completion:', err);
+      }
+    }
+  }, [store, workspace_id]);
 
   const navigateToStep = useCallback((step: SetupStep) => {
     // Just navigate - no data clearing. Used for viewing completed stages.
@@ -738,7 +896,7 @@ export function useSetup(): UseSetupReturn {
       setIsSending(true);
 
       try {
-        const response = await fetch('/api/setup/chat', {
+        const response = await fetchWithTimeout('/api/setup/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -779,6 +937,7 @@ export function useSetup(): UseSetupReturn {
 
   return {
     currentStep,
+    furthestStep,
     wizardStep,
     clickUpConnected: clickUp.connected,
     clickUpLoading: clickUp.loading,
@@ -811,6 +970,7 @@ export function useSetup(): UseSetupReturn {
     approvePlan,
     requestChanges,
     markStepComplete,
+    retryFailedItems,
     continueFromAnalysis,
     navigateToStep,
     resetStage,
