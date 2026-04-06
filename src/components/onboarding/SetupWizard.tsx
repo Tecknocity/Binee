@@ -51,7 +51,7 @@ export default function SetupWizard() {
     }
   };
 
-  // Can we navigate to this step? (must be within furthestStep range and completed)
+  // Can we navigate to this step? (must be within furthest reached step)
   const canNavigateToStep = (step: number): boolean => {
     if (step === setup.currentStep) return false; // Already here
     if (step > setup.furthestStep) return false; // Can't go beyond furthest reached
@@ -90,73 +90,63 @@ export default function SetupWizard() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Step indicator - compact horizontal stepper */}
-      <div className="shrink-0 px-4 pt-6 pb-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex items-center justify-between">
-            {STEPS.map((step, i) => {
-              const isActive = setup.currentStep === step.number;
-              const isDone = isStepCompleted(step.number);
-              const navigable = canNavigateToStep(step.number);
-              return (
-                <div key={step.label} className="flex items-center flex-1 last:flex-none">
-                  <div className="flex flex-col items-center gap-1.5">
-                    <button
-                      onClick={() => handleStepClick(step.number)}
-                      disabled={!navigable}
-                      className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold border-2 transition-all ${
-                        isDone && !isActive
-                          ? `bg-accent border-accent text-white ${navigable ? 'cursor-pointer hover:ring-2 hover:ring-accent/30' : ''}`
-                          : isActive
-                            ? 'bg-accent border-accent text-white ring-2 ring-accent/30'
-                            : 'bg-[#12121A] border-[#2A2A3A] text-[#6B6B80]'
-                      } ${navigable ? '' : 'cursor-default'}`}
-                    >
-                      {isDone && !isActive ? <Check className="w-4 h-4" /> : step.number + 1}
-                    </button>
-                    <span
-                      className={`text-[11px] sm:text-xs font-medium transition-colors ${
-                        isActive ? 'text-[#854DF9]' : isDone ? 'text-[#F0F0F5]' : 'text-[#6B6B80]'
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-                  {i < STEPS.length - 1 && (
-                    <div
-                      className={`flex-1 h-0.5 mx-2 sm:mx-3 transition-colors rounded-full ${
-                        isDone ? 'bg-[#854DF9]' : 'bg-[#2A2A3A]'
-                      }`}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {/* Step indicator */}
+      <div className="flex items-center justify-center gap-0 px-4 pt-8 pb-6 shrink-0">
+        {STEPS.map((step, i) => {
+          const isActive = setup.currentStep === step.number;
+          const isDone = isStepCompleted(step.number);
+          const navigable = canNavigateToStep(step.number);
+          return (
+            <div key={step.label} className="flex items-center">
+              {i > 0 && (
+                <div
+                  className={`w-8 sm:w-16 lg:w-24 h-0.5 transition-colors ${isDone ? 'bg-accent' : 'bg-border'}`}
+                />
+              )}
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  onClick={() => handleStepClick(step.number)}
+                  disabled={!navigable}
+                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm sm:text-base font-semibold border-2 transition-all ${
+                    isDone && !isActive
+                      ? `bg-accent border-accent text-white ${navigable ? 'cursor-pointer hover:ring-4 hover:ring-accent/20' : ''}`
+                      : isActive
+                        ? 'bg-accent border-accent text-white ring-4 ring-accent/20'
+                        : 'bg-surface border-border text-text-muted'
+                  } ${navigable ? '' : 'cursor-default'}`}
+                >
+                  {isDone && !isActive ? <Check className="w-5 h-5" /> : step.number + 1}
+                </button>
+                <span
+                  className={`text-xs sm:text-sm font-medium transition-colors ${
+                    isActive ? 'text-accent' : isDone ? 'text-text-primary' : 'text-text-muted'
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Viewing past step banner + redo button */}
       {isViewingPastStep && setup.currentStep <= 3 && (
-        <div className="shrink-0 px-4 pb-3">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex items-center justify-between gap-3 bg-[#12121A] border border-[#2A2A3A] rounded-xl px-4 py-2.5">
-              <div className="flex items-center gap-2 text-sm text-[#A0A0B5] min-w-0">
-                <Eye className="w-4 h-4 text-[#6B6B80] shrink-0" />
-                <span className="truncate">Viewing completed step. You can continue from where you left off.</span>
-              </div>
-              {REDO_LABELS[setup.currentStep] && (
-                <button
-                  onClick={() => handleRedoClick(setup.currentStep)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-warning border border-warning/30 rounded-lg
-                    hover:bg-warning/10 transition-colors shrink-0"
-                >
-                  {(() => { const Icon = REDO_LABELS[setup.currentStep].icon; return <Icon className="w-3.5 h-3.5" />; })()}
-                  {REDO_LABELS[setup.currentStep].label}
-                </button>
-              )}
-            </div>
+        <div className="flex items-center justify-between px-4 pb-3 max-w-3xl mx-auto w-full shrink-0">
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            <Eye className="w-4 h-4 text-text-muted" />
+            <span>Viewing completed step. You can continue from where you left off.</span>
           </div>
+          {REDO_LABELS[setup.currentStep] && (
+            <button
+              onClick={() => handleRedoClick(setup.currentStep)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-warning border border-warning/30 rounded-lg
+                hover:bg-warning/10 transition-colors"
+            >
+              {(() => { const Icon = REDO_LABELS[setup.currentStep].icon; return <Icon className="w-3.5 h-3.5" />; })()}
+              {REDO_LABELS[setup.currentStep].label}
+            </button>
+          )}
         </div>
       )}
 
@@ -222,17 +212,17 @@ export default function SetupWizard() {
           <div className="flex-1 flex flex-col items-center justify-center gap-4">
             {setup.isSending ? (
               <>
-                <div className="w-8 h-8 border-2 border-[#854DF9] border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-[#A0A0B5]">Generating your workspace structure...</p>
+                <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-text-secondary">Generating your workspace structure...</p>
               </>
             ) : (
               <>
-                <p className="text-sm text-[#A0A0B5]">
+                <p className="text-sm text-text-secondary">
                   No workspace structure available. Please go back and describe your business.
                 </p>
                 <button
                   onClick={setup.restartSetup}
-                  className="text-sm text-[#854DF9] hover:text-[#9D6FFA] transition-colors"
+                  className="text-sm text-accent hover:text-accent-hover transition-colors"
                 >
                   Go Back
                 </button>
@@ -264,25 +254,23 @@ export default function SetupWizard() {
 
         {/* Step 5: No manual steps - show completion */}
         {setup.currentStep === 5 && setup.manualSteps.length === 0 && (
-          <div className="flex-1 flex items-center justify-center px-4">
-            <div className="max-w-md text-center">
-              <div className="w-16 h-16 rounded-full bg-[#854DF9]/15 flex items-center justify-center mx-auto mb-6">
-                <PartyPopper className="w-8 h-8 text-[#854DF9]" />
-              </div>
-              <h2 className="text-2xl font-semibold text-[#F0F0F5] mb-3">
-                Workspace Ready!
-              </h2>
-              <p className="text-[#A0A0B5] mb-8">
-                Your ClickUp workspace has been set up. You can now start chatting
-                with Binee to manage your tasks and projects.
-              </p>
-              <button
-                onClick={() => router.push('/chat')}
-                className="px-6 py-3 bg-[#854DF9] hover:bg-[#9D6FFA] text-white rounded-xl font-medium transition-colors"
-              >
-                Start Chatting
-              </button>
+          <div className="max-w-lg mx-auto text-center py-16">
+            <div className="w-16 h-16 rounded-full bg-accent/15 flex items-center justify-center mx-auto mb-6">
+              <PartyPopper className="w-8 h-8 text-accent" />
             </div>
+            <h2 className="text-2xl font-semibold text-text-primary mb-3">
+              Workspace Ready!
+            </h2>
+            <p className="text-text-secondary mb-8">
+              Your ClickUp workspace has been set up. You can now start chatting
+              with Binee to manage your tasks and projects.
+            </p>
+            <button
+              onClick={() => router.push('/chat')}
+              className="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl font-medium transition-colors"
+            >
+              Start Chatting
+            </button>
           </div>
         )}
       </div>
@@ -290,16 +278,16 @@ export default function SetupWizard() {
       {/* Confirmation Dialog */}
       {confirmDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#12121A] border border-[#2A2A3A] rounded-2xl p-6 max-w-md w-full mx-4">
+          <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-warning/15 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5 text-warning" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-[#F0F0F5]">
+                <h3 className="text-base font-semibold text-text-primary">
                   Reset progress?
                 </h3>
-                <p className="text-sm text-[#A0A0B5] mt-1">
+                <p className="text-sm text-text-secondary mt-1">
                   {getWarningMessage(confirmDialog.targetStep)}
                 </p>
               </div>
@@ -307,8 +295,8 @@ export default function SetupWizard() {
             <div className="flex items-center justify-end gap-2 mt-6">
               <button
                 onClick={() => setConfirmDialog(null)}
-                className="px-4 py-2 text-sm text-[#A0A0B5] border border-[#2A2A3A] rounded-lg
-                  hover:bg-[#1A1A25] transition-colors"
+                className="px-4 py-2 text-sm text-text-secondary border border-border rounded-lg
+                  hover:bg-surface-hover transition-colors"
               >
                 Cancel
               </button>
