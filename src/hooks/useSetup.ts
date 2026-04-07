@@ -294,13 +294,27 @@ export function useSetup(): UseSetupReturn {
     return msgs;
   }, [storedMessages]);
 
-  // Execution state — initialized from persisted store, updated during execution
-  const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(
-    buildCompleted ? { phase: 'complete', current: persistedExecutionItems.length, total: persistedExecutionItems.length, currentItem: '', errors: persistedExecutionItems.filter(i => i.status === 'error').map(i => i.error || i.name) } : null
-  );
-  const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(persistedExecutionResult);
-  const [executionItems, setExecutionItems] = useState<ExecutionItem[]>(persistedExecutionItems);
+  // Execution state — synced from persisted store after hydration
+  const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null);
+  const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
+  const [executionItems, setExecutionItems] = useState<ExecutionItem[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
+
+  // Restore execution state from persisted store (handles async Zustand hydration)
+  const buildRestoredRef = useRef(false);
+  useEffect(() => {
+    if (buildRestoredRef.current || !buildCompleted || persistedExecutionItems.length === 0) return;
+    buildRestoredRef.current = true;
+    setExecutionItems(persistedExecutionItems);
+    setExecutionResult(persistedExecutionResult);
+    setExecutionProgress({
+      phase: 'complete',
+      current: persistedExecutionItems.length,
+      total: persistedExecutionItems.length,
+      currentItem: '',
+      errors: persistedExecutionItems.filter(i => i.status === 'error').map(i => i.error || i.name),
+    });
+  }, [buildCompleted, persistedExecutionItems, persistedExecutionResult]);
   const [isSending, setIsSending] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -718,6 +732,7 @@ export function useSetup(): UseSetupReturn {
     setIsExecuting(true);
 
     // Reset progress state so UI shows building animation
+    buildRestoredRef.current = false;
     setExecutionProgress(null);
     setExecutionItems([]);
     setExecutionResult(null);
