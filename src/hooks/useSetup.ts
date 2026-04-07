@@ -75,6 +75,8 @@ export interface UseSetupReturn {
   workspaceRecommendations: Array<{ action: string; text: string }>;
   handleClickUpConnect: () => void;
   refreshClickUpStatus: () => Promise<void>;
+  isRefreshingClickUp: boolean;
+  continueFromConnect: () => void;
   sendMessage: (msg: string) => void;
   selectTemplate: (template: string) => void;
   submitProfileForm: (data: ProfileFormData) => void;
@@ -326,13 +328,33 @@ export function useSetup(): UseSetupReturn {
     store?.getState().setStep(step);
   }, [store]);
 
-  // Auto-advance from step 0 → step 1 when ClickUp is connected (first visit only)
+  // Auto-advance from step 0 → step 1 when ClickUp is connected
+  // On first visit (furthestStep === 0): always auto-advance after 800ms
+  // On revisit after OAuth: auto-advance if URL has success=clickup_connected
   useEffect(() => {
-    if (!clickUp.loading && clickUp.connected && currentStep === 0 && furthestStep === 0) {
-      const timer = setTimeout(() => setCurrentStep(1), 800);
-      return () => clearTimeout(timer);
+    if (!clickUp.loading && clickUp.connected && currentStep === 0) {
+      const isFirstVisit = furthestStep === 0;
+      const isReturningFromOAuth = typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('success') === 'clickup_connected';
+
+      if (isFirstVisit || isReturningFromOAuth) {
+        const timer = setTimeout(() => {
+          // Clear the URL param so it doesn't re-trigger
+          if (isReturningFromOAuth) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('success');
+            window.history.replaceState({}, '', url.toString());
+          }
+          // Reset analysis so it re-runs with fresh data
+          if (isReturningFromOAuth && furthestStep > 0) {
+            store?.getState().resetFromStep(1);
+          }
+          setCurrentStep(1);
+        }, 800);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [clickUp.connected, clickUp.loading, currentStep, furthestStep, setCurrentStep]);
+  }, [clickUp.connected, clickUp.loading, currentStep, furthestStep, setCurrentStep, store]);
 
   // Run workspace analysis when we arrive at step 1 and haven't analyzed yet
   const analysisStartedRef = useRef(false);
@@ -474,12 +496,27 @@ export function useSetup(): UseSetupReturn {
 
   const handleClickUpConnect = useCallback(() => {
     if (!workspace_id) return;
-    window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}`;
+    window.location.href = `/api/clickup/auth?workspace_id=${encodeURIComponent(workspace_id)}&source=setup`;
   }, [workspace_id]);
 
+  const [isRefreshingClickUp, setIsRefreshingClickUp] = useState(false);
+
   const refreshClickUpStatus = useCallback(async () => {
-    await clickUp.refetch();
+    setIsRefreshingClickUp(true);
+    try {
+      await clickUp.refetch();
+    } finally {
+      setIsRefreshingClickUp(false);
+    }
   }, [clickUp]);
+
+  const continueFromConnect = useCallback(() => {
+    // Reset analysis so it re-runs with fresh data, then move to step 1
+    store?.getState().resetFromStep(1);
+    analysisStartedRef.current = false;
+    setIsAnalyzing(false);
+    setCurrentStep(1);
+  }, [store, setCurrentStep]);
 
   const addMessage = useCallback((role: 'user' | 'assistant', content: string) => {
     const msg: SetupChatMessage = {
@@ -968,6 +1005,8 @@ export function useSetup(): UseSetupReturn {
     workspaceRecommendations,
     handleClickUpConnect,
     refreshClickUpStatus,
+    isRefreshingClickUp,
+    continueFromConnect,
     sendMessage: enhancedSendMessage,
     selectTemplate,
     submitProfileForm,

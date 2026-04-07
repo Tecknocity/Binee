@@ -74,8 +74,14 @@ export default function SetupWizard() {
   // Confirm the redo action
   const confirmRedo = () => {
     if (!confirmDialog) return;
-    setup.resetStage(confirmDialog.targetStep as SetupStep);
-    setConfirmDialog(null);
+    if (confirmDialog.targetStep === 0) {
+      // Step 0 redo: trigger OAuth flow to connect a different workspace
+      setConfirmDialog(null);
+      setup.handleClickUpConnect();
+    } else {
+      setup.resetStage(confirmDialog.targetStep as SetupStep);
+      setConfirmDialog(null);
+    }
   };
 
   // Get the warning message for the confirmation dialog
@@ -159,8 +165,10 @@ export default function SetupWizard() {
             loading={setup.clickUpLoading}
             onConnect={setup.handleClickUpConnect}
             onRefresh={setup.refreshClickUpStatus}
+            onContinue={setup.continueFromConnect}
             teamName={setup.clickUpTeamName}
             isRevisit={setup.furthestStep > 0}
+            isRefreshing={setup.isRefreshingClickUp}
           />
         )}
 

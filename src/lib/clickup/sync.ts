@@ -603,6 +603,35 @@ export async function performInitialSync(
       message: `Synced ${result.timeEntries} time entries`,
     });
 
+    // Step 8: Clean up stale cached entries that no longer exist in ClickUp
+    // This handles items deleted in ClickUp since the last sync
+    try {
+      const supabaseCleanup = getSupabaseAdmin();
+      const spaceIds = spaces.map(s => s.id);
+      const folderIds = allFolders.map(f => f.id);
+      const listIds = allLists.map(l => l.id);
+      const taskIds = allTasks.map(t => t.id);
+
+      if (spaceIds.length > 0) {
+        await supabaseCleanup.from("cached_spaces").delete()
+          .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${spaceIds.join(",")})`);
+      }
+      if (folderIds.length > 0) {
+        await supabaseCleanup.from("cached_folders").delete()
+          .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${folderIds.join(",")})`);
+      }
+      if (listIds.length > 0) {
+        await supabaseCleanup.from("cached_lists").delete()
+          .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${listIds.join(",")})`);
+      }
+      if (taskIds.length > 0) {
+        await supabaseCleanup.from("cached_tasks").delete()
+          .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${taskIds.join(",")})`);
+      }
+    } catch (cleanupErr) {
+      console.error("[ClickUp Sync] Stale data cleanup error (non-fatal):", cleanupErr);
+    }
+
     // Done — NOTE: callers (sync route, OAuth callback) set the final
     // "complete" status on the workspaces table after this returns.
     // We skip updating workspaces.clickup_sync_status here to avoid

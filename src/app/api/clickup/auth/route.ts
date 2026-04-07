@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const authUrl = getClickUpAuthUrl(workspaceId);
+    const source = request.nextUrl.searchParams.get("source") || "settings";
+    const authUrl = getClickUpAuthUrl(workspaceId, source);
     return NextResponse.redirect(authUrl);
   } catch (error) {
     return NextResponse.json(
