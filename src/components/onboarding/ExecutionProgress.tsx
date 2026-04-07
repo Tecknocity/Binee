@@ -36,6 +36,8 @@ interface ExecutionProgressProps {
   plan: SetupPlan | null;
   /** Optional B-075 per-item execution data for richer status tracking */
   executionItems?: ExecutionItem[];
+  /** Whether execution is currently in-flight (API call pending) */
+  isExecuting?: boolean;
   /** Called when user clicks "Retry Failed Items" after a build with errors */
   onRetry?: () => void;
   /** Called when user clicks "Continue Anyway" or "Continue" after build */
@@ -77,6 +79,7 @@ export function ExecutionProgress({
   result: _result,
   plan,
   executionItems,
+  isExecuting,
   onRetry,
   onContinue,
 }: ExecutionProgressProps) {
@@ -85,6 +88,7 @@ export function ExecutionProgress({
   const [hasScrolledOnce, setHasScrolledOnce] = useState(false);
 
   const isComplete = progress?.phase === 'complete';
+  const isBuilding = !isComplete && isExecuting && !progress;
   const currentIndex = progress ? progress.current : 0;
   const total = progress ? Math.max(progress.total, 1) : 1;
   const percentage = progress ? Math.round((progress.current / total) * 100) : 0;
@@ -138,6 +142,9 @@ export function ExecutionProgress({
       let state: ItemState = 'pending';
       if (isComplete) {
         state = 'success';
+      } else if (isBuilding) {
+        // During server-side execution, show all items as in-progress
+        state = 'in-progress';
       } else if (i < currentIndex) {
         state = 'success';
       } else if (i === currentIndex) {
@@ -145,7 +152,7 @@ export function ExecutionProgress({
       }
       return { ...item, state };
     });
-  }, [plan, executionItems, currentIndex, isComplete]);
+  }, [plan, executionItems, currentIndex, isComplete, isBuilding]);
 
   // Count stats
   const successCount = items.filter((i) => i.state === 'success').length;
@@ -207,9 +214,11 @@ export function ExecutionProgress({
               Building your workspace...
             </h2>
             <p className="text-sm text-text-secondary mt-1">
-              {progress?.currentItem
-                ? `Creating ${progress.currentItem}`
-                : 'Starting...'}
+              {isBuilding
+                ? 'Creating your spaces, folders, and lists in ClickUp'
+                : progress?.currentItem
+                  ? `Creating ${progress.currentItem}`
+                  : 'Starting...'}
             </p>
           </>
         )}
@@ -222,20 +231,24 @@ export function ExecutionProgress({
             {isComplete ? 'Complete' : 'Progress'}
           </span>
           <span className="text-xs font-semibold text-text-secondary tabular-nums font-mono">
-            {progress ? progress.current : 0}/{total} ({percentage}%)
+            {isBuilding ? 'Working...' : `${progress ? progress.current : 0}/${total} (${percentage}%)`}
           </span>
         </div>
         <div className="h-2.5 bg-surface border border-border rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ease-out ${
-              isComplete
-                ? errorCount > 0
-                  ? 'bg-warning'
-                  : 'bg-success'
-                : 'bg-accent'
-            }`}
-            style={{ width: `${percentage}%` }}
-          />
+          {isBuilding ? (
+            <div className="h-full w-1/3 rounded-full bg-accent animate-indeterminate" />
+          ) : (
+            <div
+              className={`h-full rounded-full transition-all duration-500 ease-out ${
+                isComplete
+                  ? errorCount > 0
+                    ? 'bg-warning'
+                    : 'bg-success'
+                  : 'bg-accent'
+              }`}
+              style={{ width: `${percentage}%` }}
+            />
+          )}
         </div>
       </div>
 
@@ -243,7 +256,7 @@ export function ExecutionProgress({
       <div className="flex items-center gap-1 mb-4">
         {PHASE_ORDER.map((phase, i) => {
           const isDone = isComplete || currentPhaseIdx > i;
-          const isCurrent = currentPhaseIdx === i;
+          const isCurrent = isBuilding ? i === 0 : currentPhaseIdx === i;
 
           return (
             <div key={phase} className="flex items-center flex-1">
@@ -286,7 +299,8 @@ export function ExecutionProgress({
       >
         <div className="space-y-0.5">
           {items.map((item, i) => {
-            const isActive = item.state === 'in-progress';
+            const isActive = item.state === 'in-progress' && !isBuilding;
+            const isBuildingItem = isBuilding && item.state === 'in-progress';
             return (
               <div
                 key={i}
@@ -295,13 +309,18 @@ export function ExecutionProgress({
                   flex items-center gap-2.5 py-1.5 px-2.5 rounded-lg text-sm
                   transition-all duration-300 ease-out
                   ${isActive ? 'bg-accent/10 border border-accent/20' : 'border border-transparent'}
+                  ${isBuildingItem ? 'animate-pulse' : ''}
                   ${item.state === 'error' ? 'bg-error/5' : ''}
                   ${item.state === 'success' ? 'animate-item-done' : ''}
                   ${item.state === 'skipped' ? 'opacity-60' : ''}
                   ${item.state === 'pending' ? 'opacity-50' : ''}
                 `}
                 style={{
-                  animationDelay: item.state === 'success' && hasScrolledOnce ? '0ms' : `${i * 30}ms`,
+                  animationDelay: isBuildingItem
+                    ? `${i * 150}ms`
+                    : item.state === 'success' && hasScrolledOnce
+                      ? '0ms'
+                      : `${i * 30}ms`,
                 }}
               >
                 {/* Status icon */}
@@ -312,8 +331,11 @@ export function ExecutionProgress({
                   {item.state === 'skipped' && (
                     <SkipForward className="w-4 h-4 text-text-muted" />
                   )}
-                  {item.state === 'in-progress' && (
+                  {item.state === 'in-progress' && !isBuilding && (
                     <Loader2 className="w-4 h-4 text-accent animate-spin" />
+                  )}
+                  {isBuildingItem && (
+                    <Circle className="w-4 h-4 text-accent/60" />
                   )}
                   {item.state === 'error' && (
                     <XCircle className="w-4 h-4 text-error" />
@@ -326,7 +348,9 @@ export function ExecutionProgress({
                 {/* Type icon */}
                 <div
                   className={`flex-shrink-0 ${
-                    item.state === 'in-progress'
+                    isBuildingItem
+                      ? 'text-accent/60'
+                      : item.state === 'in-progress'
                       ? 'text-accent'
                       : item.state === 'success'
                       ? 'text-text-secondary'
@@ -343,7 +367,9 @@ export function ExecutionProgress({
                 {/* Item name */}
                 <span
                   className={`truncate ${
-                    item.state === 'in-progress'
+                    isBuildingItem
+                      ? 'text-text-secondary'
+                      : item.state === 'in-progress'
                       ? 'text-text-primary font-medium'
                       : item.state === 'success'
                       ? 'text-text-secondary'
@@ -362,6 +388,8 @@ export function ExecutionProgress({
                   className={`text-[11px] font-medium ml-auto flex-shrink-0 uppercase tracking-wider ${
                     item.state === 'skipped'
                       ? 'text-text-muted/50'
+                      : isBuildingItem
+                      ? 'text-accent/50'
                       : item.state === 'in-progress'
                       ? 'text-accent/70'
                       : item.state === 'success'

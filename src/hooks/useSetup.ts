@@ -8,8 +8,7 @@ import type {
   ExecutionResult,
   ManualStep,
 } from '@/lib/setup/types';
-import { executeSetupPlan } from '@/lib/setup/executor';
-import type { ExecutionItem } from '@/lib/setup/executor';
+import type { ExecutionItem, ExecutionResult as ExecutorResult } from '@/lib/setup/executor';
 // generateSetupPlan is called via /api/setup/generate-plan (server-side only)
 import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
@@ -616,28 +615,31 @@ export function useSetup(): UseSetupReturn {
   const runExecution = useCallback(async (structure: ExistingWorkspaceStructure | null) => {
     if (!proposedPlan) return;
 
-    const progressItems: ExecutionItem[] = [];
+    // Execute server-side to avoid client-side Supabase service key issues
+    const response = await fetchWithTimeout('/api/setup/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_id,
+        plan: proposedPlan,
+        existing_structure: structure,
+      }),
+    }, 120_000);
 
-    const executorResult = await executeSetupPlan(
-      proposedPlan as SetupPlan,
-      workspace_id || '',
-      '',
-      (completedItem, progress) => {
-        const idx = progressItems.findIndex(
-          (pi) => pi.type === completedItem.type && pi.name === completedItem.name && pi.parentName === completedItem.parentName
-        );
-        if (idx >= 0) { progressItems[idx] = completedItem; } else { progressItems.push(completedItem); }
-        setExecutionItems([...progressItems]);
-        setExecutionProgress({
-          phase: completedItem.type === 'space' ? 'creating_spaces' : completedItem.type === 'folder' ? 'creating_folders' : 'creating_lists',
-          current: progress.completed,
-          total: progress.total,
-          currentItem: completedItem.name,
-          errors: completedItem.status === 'error' && completedItem.error ? [completedItem.error] : [],
-        });
-      },
-      structure,
-    );
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({ error: 'Execution failed' }));
+      setExecutionProgress({
+        phase: 'complete',
+        current: 0,
+        total: 0,
+        currentItem: '',
+        errors: [errData.error || 'Execution failed'],
+      });
+      setIsExecuting(false);
+      return;
+    }
+
+    const { result: executorResult } = await response.json() as { result: ExecutorResult };
 
     setExecutionItems(executorResult.items);
     setExecutionProgress({
