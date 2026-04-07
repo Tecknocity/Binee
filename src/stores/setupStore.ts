@@ -2,7 +2,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { SetupPlan, ManualStep } from '@/lib/setup/types';
+import type { SetupPlan, ManualStep, ExecutionResult } from '@/lib/setup/types';
+import type { ExecutionItem } from '@/lib/setup/executor';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,6 +91,11 @@ interface SetupState {
   // Existing workspace structure (from cached tables)
   existingStructure: ExistingWorkspaceStructure | null;
 
+  // Step 4: Build execution results (persisted so they survive navigation)
+  executionResult: ExecutionResult | null;
+  executionItems: ExecutionItem[];
+  buildCompleted: boolean;
+
   // Step 5: Manual steps
   manualSteps: ManualStep[];
 
@@ -105,6 +111,9 @@ interface SetupState {
   incrementMessageCount: () => void;
   setPlan: (plan: SetupPlan | null) => void;
   setExistingStructure: (structure: ExistingWorkspaceStructure | null) => void;
+  setExecutionResult: (result: ExecutionResult | null) => void;
+  setExecutionItems: (items: ExecutionItem[]) => void;
+  setBuildCompleted: (completed: boolean) => void;
   setManualSteps: (steps: ManualStep[]) => void;
   toggleManualStep: (index: number) => void;
   resetFromStep: (step: SetupStep) => void;
@@ -139,6 +148,10 @@ function createSetupStore(workspaceId: string) {
         proposedPlan: null,
         existingStructure: null,
 
+        executionResult: null,
+        executionItems: [],
+        buildCompleted: false,
+
         manualSteps: [],
 
         setStep: (step) => set((s) => ({
@@ -163,6 +176,9 @@ function createSetupStore(workspaceId: string) {
         setPlan: (plan) => set({ proposedPlan: plan }),
         setExistingStructure: (structure) => set({ existingStructure: structure }),
 
+        setExecutionResult: (result) => set({ executionResult: result }),
+        setExecutionItems: (items) => set({ executionItems: items }),
+        setBuildCompleted: (completed) => set({ buildCompleted: completed }),
         setManualSteps: (steps) => set({ manualSteps: steps }),
         toggleManualStep: (index) =>
           set((s) => ({
@@ -198,7 +214,10 @@ function createSetupStore(workspaceId: string) {
               updates.proposedPlan = null;
             }
             if (step <= 4) {
-              // Resetting from Build: clear manual steps
+              // Resetting from Build: clear build results + manual steps
+              updates.executionResult = null;
+              updates.executionItems = [];
+              updates.buildCompleted = false;
               updates.manualSteps = [];
             }
             return updates;
@@ -220,6 +239,9 @@ function createSetupStore(workspaceId: string) {
             messageCount: 0,
             proposedPlan: null,
             existingStructure: null,
+            executionResult: null,
+            executionItems: [],
+            buildCompleted: false,
             manualSteps: [],
           }),
       }),
@@ -241,6 +263,9 @@ function createSetupStore(workspaceId: string) {
           messageCount: state.messageCount,
           proposedPlan: state.proposedPlan,
           existingStructure: state.existingStructure,
+          executionResult: state.executionResult,
+          executionItems: state.executionItems,
+          buildCompleted: state.buildCompleted,
           manualSteps: state.manualSteps,
         }),
       }
