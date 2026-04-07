@@ -615,9 +615,7 @@ export function useSetup(): UseSetupReturn {
   const runExecution = useCallback(async (structure: ExistingWorkspaceStructure | null) => {
     if (!proposedPlan) return;
 
-    const progressItems: ExecutionItem[] = [];
-
-    // Execute server-side via streaming API to avoid client-side Supabase service key issues
+    // Execute server-side to avoid client-side Supabase service key issues
     const response = await fetchWithTimeout('/api/setup/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -641,63 +639,7 @@ export function useSetup(): UseSetupReturn {
       return;
     }
 
-    // Read NDJSON stream for real-time progress
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-    let executorResult: ExecutorResult | null = null;
-    let buffer = '';
-
-    if (reader) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const event = JSON.parse(line);
-            if (event.type === 'progress') {
-              const completedItem = event.item as ExecutionItem;
-              const idx = progressItems.findIndex(
-                (pi) => pi.type === completedItem.type && pi.name === completedItem.name && pi.parentName === completedItem.parentName
-              );
-              if (idx >= 0) { progressItems[idx] = completedItem; } else { progressItems.push(completedItem); }
-              setExecutionItems([...progressItems]);
-              setExecutionProgress({
-                phase: completedItem.type === 'space' ? 'creating_spaces' : completedItem.type === 'folder' ? 'creating_folders' : 'creating_lists',
-                current: event.progress.completed,
-                total: event.progress.total,
-                currentItem: completedItem.name,
-                errors: completedItem.status === 'error' && completedItem.error ? [completedItem.error] : [],
-              });
-            } else if (event.type === 'complete') {
-              executorResult = event.result as ExecutorResult;
-            } else if (event.type === 'error') {
-              setExecutionProgress({
-                phase: 'complete',
-                current: 0,
-                total: 0,
-                currentItem: '',
-                errors: [event.error],
-              });
-              setIsExecuting(false);
-              return;
-            }
-          } catch {
-            // Skip malformed JSON lines
-          }
-        }
-      }
-    }
-
-    if (!executorResult) {
-      setIsExecuting(false);
-      return;
-    }
+    const { result: executorResult } = await response.json() as { result: ExecutorResult };
 
     setExecutionItems(executorResult.items);
     setExecutionProgress({
