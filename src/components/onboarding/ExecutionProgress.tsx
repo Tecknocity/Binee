@@ -12,6 +12,9 @@ import {
   List,
   Sparkles,
   SkipForward,
+  RefreshCw,
+  ArrowRight,
+  Info,
 } from 'lucide-react';
 import type { ExecutionProgress as ExecutionProgressType, ExecutionResult, SetupPlan } from '@/lib/setup/types';
 import type { ExecutionItem } from '@/lib/setup/executor';
@@ -20,7 +23,7 @@ import type { ExecutionItem } from '@/lib/setup/executor';
 // Types
 // ---------------------------------------------------------------------------
 
-type ItemState = 'pending' | 'in-progress' | 'success' | 'error' | 'skipped';
+type ItemState = 'pending' | 'in-progress' | 'success' | 'error' | 'cascade' | 'skipped';
 
 interface DerivedItem {
   name: string;
@@ -70,6 +73,12 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   list: <List className="w-3.5 h-3.5" />,
 };
 
+/** Detect cascade errors (child failed because parent failed, not a real error) */
+function isCascadeError(error?: string): boolean {
+  if (!error) return false;
+  return error.startsWith('Skipped: parent ');
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -101,7 +110,9 @@ export function ExecutionProgress({
         let state: ItemState = 'pending';
         if (ei.status === 'success') state = 'success';
         else if (ei.status === 'skipped') state = 'skipped';
-        else if (ei.status === 'error') state = 'error';
+        else if (ei.status === 'error') {
+          state = isCascadeError(ei.error) ? 'cascade' : 'error';
+        }
         else if (i === currentIndex && !isComplete) state = 'in-progress';
 
         return {
@@ -143,7 +154,6 @@ export function ExecutionProgress({
       if (isComplete) {
         state = 'success';
       } else if (isBuilding) {
-        // During server-side execution, show all items as in-progress
         state = 'in-progress';
       } else if (i < currentIndex) {
         state = 'success';
@@ -156,9 +166,11 @@ export function ExecutionProgress({
 
   // Count stats
   const successCount = items.filter((i) => i.state === 'success').length;
-  const errorCount = items.filter((i) => i.state === 'error').length;
+  const realErrorCount = items.filter((i) => i.state === 'error').length;
+  const cascadeCount = items.filter((i) => i.state === 'cascade').length;
   const skippedCount = items.filter((i) => i.state === 'skipped').length;
   const totalItems = items.length;
+  const hasErrors = realErrorCount > 0;
 
   // Auto-scroll to keep active item visible
   useEffect(() => {
@@ -168,7 +180,6 @@ export function ExecutionProgress({
       const containerRect = container.getBoundingClientRect();
       const elementRect = element.getBoundingClientRect();
 
-      // Scroll if active item is below the visible area
       if (
         elementRect.bottom > containerRect.bottom - 16 ||
         elementRect.top < containerRect.top + 16
@@ -186,9 +197,9 @@ export function ExecutionProgress({
     : -1;
 
   return (
-    <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pb-6">
-      {/* Header */}
-      <div className="py-6 text-center">
+    <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pb-6 overflow-hidden">
+      {/* Header - fixed height, no shrink */}
+      <div className="py-5 text-center flex-shrink-0">
         {isComplete ? (
           <>
             <div className="w-14 h-14 rounded-full bg-success/15 flex items-center justify-center mx-auto mb-3 animate-scale-in">
@@ -196,12 +207,12 @@ export function ExecutionProgress({
             </div>
             <h2 className="text-xl font-semibold text-text-primary">Workspace Built!</h2>
             <p className="text-sm text-text-secondary mt-1">
-              {successCount} of {totalItems} items created
+              {successCount + skippedCount} of {totalItems} items created
               {skippedCount > 0 && (
                 <span className="text-text-muted"> ({skippedCount} already existed)</span>
               )}
-              {errorCount > 0 && (
-                <span className="text-error"> ({errorCount} failed)</span>
+              {hasErrors && (
+                <span className="text-error"> ({realErrorCount} failed)</span>
               )}
             </p>
           </>
@@ -224,8 +235,8 @@ export function ExecutionProgress({
         )}
       </div>
 
-      {/* Overall progress bar */}
-      <div className="mb-5">
+      {/* Overall progress bar - fixed height */}
+      <div className="mb-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-xs text-text-muted font-medium">
             {isComplete ? 'Complete' : 'Progress'}
@@ -241,7 +252,7 @@ export function ExecutionProgress({
             <div
               className={`h-full rounded-full transition-all duration-500 ease-out ${
                 isComplete
-                  ? errorCount > 0
+                  ? hasErrors
                     ? 'bg-warning'
                     : 'bg-success'
                   : 'bg-accent'
@@ -252,8 +263,8 @@ export function ExecutionProgress({
         </div>
       </div>
 
-      {/* Phase indicators */}
-      <div className="flex items-center gap-1 mb-4">
+      {/* Phase indicators - fixed height */}
+      <div className="flex items-center gap-1 mb-4 flex-shrink-0">
         {PHASE_ORDER.map((phase, i) => {
           const isDone = isComplete || currentPhaseIdx > i;
           const isCurrent = isBuilding ? i === 0 : currentPhaseIdx === i;
@@ -292,7 +303,7 @@ export function ExecutionProgress({
         })}
       </div>
 
-      {/* Item log */}
+      {/* Item log - SCROLLABLE, takes remaining space */}
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto bg-surface border border-border rounded-xl p-2 min-h-0"
@@ -301,6 +312,7 @@ export function ExecutionProgress({
           {items.map((item, i) => {
             const isActive = item.state === 'in-progress' && !isBuilding;
             const isBuildingItem = isBuilding && item.state === 'in-progress';
+            const isCascade = item.state === 'cascade';
             return (
               <div
                 key={i}
@@ -311,6 +323,7 @@ export function ExecutionProgress({
                   ${isActive ? 'bg-accent/10 border border-accent/20' : 'border border-transparent'}
                   ${isBuildingItem ? 'animate-pulse' : ''}
                   ${item.state === 'error' ? 'bg-error/5' : ''}
+                  ${isCascade ? 'bg-warning/5 opacity-70' : ''}
                   ${item.state === 'success' ? 'animate-item-done' : ''}
                   ${item.state === 'skipped' ? 'opacity-60' : ''}
                   ${item.state === 'pending' ? 'opacity-50' : ''}
@@ -340,6 +353,9 @@ export function ExecutionProgress({
                   {item.state === 'error' && (
                     <XCircle className="w-4 h-4 text-error" />
                   )}
+                  {isCascade && (
+                    <Info className="w-4 h-4 text-warning/70" />
+                  )}
                   {item.state === 'pending' && (
                     <Circle className="w-4 h-4 text-text-muted/60" />
                   )}
@@ -358,6 +374,8 @@ export function ExecutionProgress({
                       ? 'text-text-muted/60'
                       : item.state === 'error'
                       ? 'text-error/60'
+                      : isCascade
+                      ? 'text-warning/50'
                       : 'text-text-muted/60'
                   }`}
                 >
@@ -377,6 +395,8 @@ export function ExecutionProgress({
                       ? 'text-text-muted/70'
                       : item.state === 'error'
                       ? 'text-error/80'
+                      : isCascade
+                      ? 'text-warning/70'
                       : 'text-text-muted'
                   }`}
                 >
@@ -396,10 +416,12 @@ export function ExecutionProgress({
                       ? 'text-text-muted'
                       : item.state === 'error'
                       ? 'text-error/50'
+                      : isCascade
+                      ? 'text-warning/40'
                       : 'text-text-muted/60'
                   }`}
                 >
-                  {item.state === 'skipped' ? 'exists' : item.type}
+                  {item.state === 'skipped' ? 'exists' : isCascade ? 'skipped' : item.type}
                 </span>
               </div>
             );
@@ -407,41 +429,59 @@ export function ExecutionProgress({
         </div>
       </div>
 
-      {/* Error summary */}
-      {errorCount > 0 && (
-        <div className="mt-3 bg-error/10 border border-error/20 rounded-xl p-3 animate-item-done">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-4 h-4 text-error" />
-            <p className="text-sm font-medium text-error">
-              {errorCount} item{errorCount !== 1 ? 's' : ''} failed
-            </p>
-          </div>
-          <div className="space-y-1">
-            {items
-              .filter((i) => i.state === 'error')
-              .map((item, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-2 text-xs text-error/80 pl-1"
-                >
-                  <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                  <span>
-                    <span className="font-medium">{item.name}</span>
-                    {item.error && (
-                      <span className="text-error/60">: {item.error}</span>
-                    )}
-                  </span>
-                </div>
-              ))}
-          </div>
+      {/* Error + cascade summary - fixed at bottom, scrollable if tall */}
+      {isComplete && (hasErrors || cascadeCount > 0) && (
+        <div className="mt-3 flex-shrink-0 max-h-40 overflow-y-auto space-y-2">
+          {/* Root errors */}
+          {hasErrors && (
+            <div className="bg-error/10 border border-error/20 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-error" />
+                <p className="text-sm font-medium text-error">
+                  {realErrorCount} item{realErrorCount !== 1 ? 's' : ''} failed
+                </p>
+              </div>
+              <div className="space-y-1">
+                {items
+                  .filter((i) => i.state === 'error')
+                  .map((item, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-2 text-xs text-error/80 pl-1"
+                    >
+                      <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span>
+                        <span className="font-medium">{item.name}</span>
+                        {item.error && (
+                          <span className="text-error/60">: {item.error}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cascade info (not errors, just informational) */}
+          {cascadeCount > 0 && (
+            <div className="bg-warning/5 border border-warning/15 rounded-xl p-3">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-warning/70" />
+                <p className="text-xs text-warning/80">
+                  {cascadeCount} item{cascadeCount !== 1 ? 's were' : ' was'} skipped because {cascadeCount !== 1 ? 'their' : 'its'} parent failed to create.
+                  Retrying the failed items will also create these.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Legacy error display (from progress.errors) */}
       {progress &&
         progress.errors.length > 0 &&
-        errorCount === 0 && (
-          <div className="mt-3 bg-error/10 border border-error/20 rounded-xl p-3">
+        !hasErrors && cascadeCount === 0 && (
+          <div className="mt-3 bg-error/10 border border-error/20 rounded-xl p-3 flex-shrink-0">
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-4 h-4 text-error" />
               <p className="text-sm font-medium text-error">Errors</p>
@@ -458,31 +498,34 @@ export function ExecutionProgress({
           </div>
         )}
 
-      {/* Action buttons after build completes */}
+      {/* Action buttons - ALWAYS visible at bottom */}
       {isComplete && (onRetry || onContinue) && (
-        <div className="mt-4 flex items-center justify-center gap-3">
-          {errorCount > 0 && onRetry && (
+        <div className="mt-4 flex items-center justify-center gap-3 flex-shrink-0">
+          {hasErrors && onRetry && (
             <button
               onClick={onRetry}
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-accent hover:bg-accent-hover rounded-xl transition-colors"
             >
+              <RefreshCw className="w-4 h-4" />
               Retry Failed Items
             </button>
           )}
-          {errorCount > 0 && onContinue && (
+          {hasErrors && onContinue && (
             <button
               onClick={onContinue}
-              className="px-5 py-2.5 text-sm font-medium text-text-secondary border border-border rounded-xl hover:bg-surface-hover transition-colors"
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-text-secondary border border-border rounded-xl hover:bg-surface-hover transition-colors"
             >
               Continue Anyway
+              <ArrowRight className="w-4 h-4" />
             </button>
           )}
-          {errorCount === 0 && onContinue && (
+          {!hasErrors && onContinue && (
             <button
               onClick={onContinue}
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-accent hover:bg-accent-hover rounded-xl transition-colors"
             >
               Continue
+              <ArrowRight className="w-4 h-4" />
             </button>
           )}
         </div>
