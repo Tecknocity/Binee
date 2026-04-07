@@ -4,7 +4,7 @@
 // Creates Spaces, Folders, Lists, Statuses in dependency order.
 // ---------------------------------------------------------------------------
 
-import { ClickUpClient } from "@/lib/clickup/client";
+import { ClickUpClient, ClickUpApiError } from "@/lib/clickup/client";
 import { upsertCachedSpaces, upsertCachedFolders, upsertCachedLists } from "@/lib/clickup/sync";
 import type { ClickUpSpace, ClickUpFolder, ClickUpList } from "@/types/clickup";
 import type { SetupPlan, SpacePlan, FolderPlan, ListPlan } from "@/lib/setup/types";
@@ -303,7 +303,11 @@ function markSuccess(item: ExecutionItem, clickupId: string): void {
 
 function markError(item: ExecutionItem, err: unknown): void {
   item.status = "error";
-  item.error = err instanceof Error ? err.message : String(err);
+  if (err instanceof ClickUpApiError && err.statusCode === 403) {
+    item.error = `Not allowed by ClickUp. Your plan may limit the number of ${item.type === 'space' ? 'spaces' : item.type === 'folder' ? 'folders' : 'lists'} you can create.`;
+  } else {
+    item.error = err instanceof Error ? err.message : String(err);
+  }
 }
 
 function markSkipped(item: ExecutionItem, clickupId?: string): void {
@@ -313,7 +317,8 @@ function markSkipped(item: ExecutionItem, clickupId?: string): void {
 
 /**
  * Retry an async operation up to maxAttempts times with exponential backoff.
- * Returns the result on success, or throws the last error on exhaustion.
+ * Only retries on transient errors (network, 5xx, 429). Permanent errors
+ * (4xx except 429) are thrown immediately without wasting retries.
  */
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -326,6 +331,10 @@ async function withRetry<T>(
       return await fn();
     } catch (err) {
       lastError = err;
+      // Don't retry permanent client errors (400, 401, 403, 404, etc.)
+      if (err instanceof ClickUpApiError && err.statusCode >= 400 && err.statusCode < 500 && err.statusCode !== 429) {
+        throw err;
+      }
       if (attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
       }
