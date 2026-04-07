@@ -615,18 +615,29 @@ export async function performInitialSync(
       if (spaceIds.length > 0) {
         await supabaseCleanup.from("cached_spaces").delete()
           .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${spaceIds.join(",")})`);
+      } else {
+        await supabaseCleanup.from("cached_spaces").delete().eq("workspace_id", workspaceId);
       }
+
       if (folderIds.length > 0) {
         await supabaseCleanup.from("cached_folders").delete()
           .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${folderIds.join(",")})`);
+      } else {
+        await supabaseCleanup.from("cached_folders").delete().eq("workspace_id", workspaceId);
       }
+
       if (listIds.length > 0) {
         await supabaseCleanup.from("cached_lists").delete()
           .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${listIds.join(",")})`);
+      } else {
+        await supabaseCleanup.from("cached_lists").delete().eq("workspace_id", workspaceId);
       }
+
       if (taskIds.length > 0) {
         await supabaseCleanup.from("cached_tasks").delete()
           .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${taskIds.join(",")})`);
+      } else {
+        await supabaseCleanup.from("cached_tasks").delete().eq("workspace_id", workspaceId);
       }
     } catch (cleanupErr) {
       console.error("[ClickUp Sync] Stale data cleanup error (non-fatal):", cleanupErr);
@@ -940,6 +951,38 @@ export async function syncWorkspaceStructure(workspaceId: string): Promise<{
 
   await upsertCachedFolders(workspaceId, allFolders);
   await upsertCachedLists(workspaceId, allLists);
+
+  // Clean up stale entries that no longer exist in ClickUp
+  try {
+    const supabaseCleanup = getSupabaseAdmin();
+    const spaceIds = spaces.map(s => s.id);
+    const folderIds = allFolders.map(f => f.id);
+    const listIds = allLists.map(l => l.id);
+
+    if (spaceIds.length > 0) {
+      await supabaseCleanup.from("cached_spaces").delete()
+        .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${spaceIds.join(",")})`);
+    } else {
+      // No spaces at all — purge everything
+      await supabaseCleanup.from("cached_spaces").delete().eq("workspace_id", workspaceId);
+    }
+
+    if (folderIds.length > 0) {
+      await supabaseCleanup.from("cached_folders").delete()
+        .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${folderIds.join(",")})`);
+    } else {
+      await supabaseCleanup.from("cached_folders").delete().eq("workspace_id", workspaceId);
+    }
+
+    if (listIds.length > 0) {
+      await supabaseCleanup.from("cached_lists").delete()
+        .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${listIds.join(",")})`);
+    } else {
+      await supabaseCleanup.from("cached_lists").delete().eq("workspace_id", workspaceId);
+    }
+  } catch (cleanupErr) {
+    console.error("[ClickUp Sync] Structure cleanup error (non-fatal):", cleanupErr);
+  }
 
   return {
     spaces: spaces.length,
