@@ -54,8 +54,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Step 1: Parse state to get workspace ID
-    const { workspaceId } = parseOAuthState(state);
+    // Step 1: Parse state to get workspace ID and source
+    const { workspaceId, source } = parseOAuthState(state);
 
     // Step 2: Exchange code for tokens (server-side only, no PKCE)
     const tokens = await exchangeCodeForToken(code);
@@ -80,6 +80,14 @@ export async function GET(request: NextRequest) {
     );
     let teamId: string | null = null;
 
+    // Fetch the previous team ID to detect workspace changes
+    const { data: prevWorkspace } = await supabase
+      .from("workspaces")
+      .select("clickup_team_id")
+      .eq("id", workspaceId)
+      .single();
+    const previousTeamId = prevWorkspace?.clickup_team_id ?? null;
+
     try {
       const teams = await client.getTeams();
       if (teams.length > 0) {
@@ -88,6 +96,24 @@ export async function GET(request: NextRequest) {
         // Detect plan tier from team response
         const rawPlan = teams[0].plan?.name ?? teams[0].plan?.tier ?? "free";
         const planTier = normalizePlanTier(rawPlan);
+
+        // If connecting a different ClickUp workspace, purge old cached data
+        if (previousTeamId && previousTeamId !== teamId) {
+          console.log(`[OAuth] Team changed from ${previousTeamId} to ${teamId}, purging old cached data`);
+          const cacheTables = [
+            "cached_tasks",
+            "cached_time_entries",
+            "cached_lists",
+            "cached_folders",
+            "cached_spaces",
+            "cached_team_members",
+          ] as const;
+          for (const table of cacheTables) {
+            await supabase.from(table).delete().eq("workspace_id", workspaceId);
+          }
+          // Also clear workspace analysis snapshots since they reference old structure
+          await supabase.from("workspace_structure_snapshots").delete().eq("workspace_id", workspaceId);
+        }
 
         await supabase
           .from("workspaces")
@@ -168,8 +194,9 @@ export async function GET(request: NextRequest) {
           .eq("id", workspaceId);
       });
 
-    // Step 8: Redirect to settings with success
-    const redirectUrl = new URL("/settings", APP_URL);
+    // Step 8: Redirect back to where the user came from
+    const redirectPath = source === "setup" ? "/setup" : "/settings";
+    const redirectUrl = new URL(redirectPath, APP_URL);
     redirectUrl.searchParams.set("success", "clickup_connected");
     return NextResponse.redirect(redirectUrl.toString());
   } catch (err) {

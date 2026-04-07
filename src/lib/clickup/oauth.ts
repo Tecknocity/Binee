@@ -28,7 +28,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
  * The state parameter encodes the workspace ID so we can associate
  * the callback with the correct workspace.
  */
-export function getClickUpAuthUrl(workspaceId: string): string {
+export function getClickUpAuthUrl(workspaceId: string, source?: string): string {
   if (!CLICKUP_CLIENT_ID) {
     throw new Error("CLICKUP_CLIENT_ID environment variable is not configured");
   }
@@ -39,7 +39,7 @@ export function getClickUpAuthUrl(workspaceId: string): string {
   }
 
   const state = Buffer.from(
-    JSON.stringify({ workspaceId, ts: Date.now() })
+    JSON.stringify({ workspaceId, ts: Date.now(), source: source || "settings" })
   ).toString("base64url");
 
   const params = new URLSearchParams({
@@ -55,7 +55,7 @@ export function getClickUpAuthUrl(workspaceId: string): string {
 /**
  * Parses the state parameter from the OAuth callback to extract the workspace ID.
  */
-export function parseOAuthState(state: string): { workspaceId: string } {
+export function parseOAuthState(state: string): { workspaceId: string; source: string } {
   try {
     const decoded = JSON.parse(
       Buffer.from(state, "base64url").toString("utf-8")
@@ -63,7 +63,7 @@ export function parseOAuthState(state: string): { workspaceId: string } {
     if (!decoded.workspaceId) {
       throw new Error("Missing workspaceId in OAuth state");
     }
-    return { workspaceId: decoded.workspaceId };
+    return { workspaceId: decoded.workspaceId, source: decoded.source || "settings" };
   } catch {
     throw new Error("Invalid OAuth state parameter");
   }

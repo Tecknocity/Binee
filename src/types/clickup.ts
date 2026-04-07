@@ -220,6 +220,23 @@ export interface UpdateTaskParams {
 }
 
 // ---------------------------------------------------------------------------
+// Time-in-Status types
+// ---------------------------------------------------------------------------
+
+export interface StatusDuration {
+  status: string;
+  color: string;
+  total_time: number;
+  type: string;
+  orderindex: number;
+}
+
+export interface TaskTimeInStatus {
+  current_status: StatusDuration;
+  status_history: StatusDuration[];
+}
+
+// ---------------------------------------------------------------------------
 // Sync types
 // ---------------------------------------------------------------------------
 

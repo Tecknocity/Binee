@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 // Vercel Cron: runs weekly on Sundays at 3 AM UTC
-// Prunes cached_tasks and webhook_events older than 90 days
-// Does NOT prune structural data (cached_spaces, cached_folders, cached_lists)
+// Prunes cached_tasks (90 days) and webhook_events (30 days).
+// webhook_events are pruned aggressively because structured data is
+// permanently stored in task_activity_log.
+// Does NOT prune structural data or task_activity_log (permanent).
 export const dynamic = 'force-dynamic';
 
 const RETENTION_DAYS = 90;
+const WEBHOOK_RETENTION_DAYS = 30;
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -38,12 +41,17 @@ export async function GET(request: Request) {
     errors.push(`cached_tasks: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 
-  // Prune webhook_events older than 90 days
+  // Prune raw webhook_events older than 30 days
+  // (structured data already extracted into task_activity_log)
+  const webhookCutoffDate = new Date();
+  webhookCutoffDate.setDate(webhookCutoffDate.getDate() - WEBHOOK_RETENTION_DAYS);
+  const webhookCutoff = webhookCutoffDate.toISOString();
+
   try {
     const { count } = await supabase
       .from('webhook_events')
       .delete({ count: 'exact' })
-      .lt('created_at', cutoff);
+      .lt('created_at', webhookCutoff);
 
     results.webhook_events_deleted = count ?? 0;
   } catch (error) {
