@@ -239,6 +239,7 @@ export default function SetupWizard() {
             result={setup.executionResult}
             plan={setup.proposedPlan}
             executionItems={setup.executionItems}
+            isExecuting={setup.isExecuting}
             onRetry={setup.retryFailedItems}
             onContinue={() => setup.navigateToStep(5 as SetupStep)}
           />
