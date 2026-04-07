@@ -10,6 +10,7 @@ import type {
   CreateTaskParams,
   UpdateTaskParams,
   RateLimitStatus,
+  TaskTimeInStatus,
 } from "@/types/clickup";
 import { getAccessToken } from "@/lib/clickup/oauth";
 import { refreshTokenIfNeeded, forceRefreshToken } from "@/lib/clickup/token-refresh";
@@ -298,6 +299,33 @@ export class ClickUpClient {
 
   async getTask(taskId: string): Promise<ClickUpTask> {
     return this.request<ClickUpTask>(`/task/${taskId}`);
+  }
+
+  /**
+   * Get time spent in each status for a single task.
+   * Requires the "Total time in Status" ClickApp to be enabled.
+   */
+  async getTaskTimeInStatus(taskId: string): Promise<TaskTimeInStatus> {
+    return this.request<TaskTimeInStatus>(`/task/${taskId}/time_in_status`);
+  }
+
+  /**
+   * Get time spent in each status for multiple tasks at once.
+   * Requires the "Total time in Status" ClickApp to be enabled.
+   * Max ~100 task IDs per request (URL length limit).
+   */
+  async getBulkTasksTimeInStatus(
+    taskIds: string[]
+  ): Promise<Record<string, TaskTimeInStatus>> {
+    if (taskIds.length === 0) return {};
+    const params: Record<string, string> = {};
+    taskIds.forEach((id, i) => {
+      params[`task_ids[${i}]`] = id;
+    });
+    return this.request<Record<string, TaskTimeInStatus>>(
+      `/task/bulk_time_in_status`,
+      { params }
+    );
   }
 
   async getTeamMembers(teamId: string): Promise<ClickUpMember[]> {

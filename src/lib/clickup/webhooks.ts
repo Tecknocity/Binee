@@ -221,6 +221,74 @@ async function cleanupStaleWebhooks(
 }
 
 // ---------------------------------------------------------------------------
+// Task activity logging
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps webhook event types to a simplified field name for the activity log.
+ * Only task-related events are logged.
+ */
+const EVENT_TO_FIELD: Record<string, string> = {
+  taskStatusUpdated: "status",
+  taskAssigneeUpdated: "assignee",
+  taskPriorityUpdated: "priority",
+  taskDueDateUpdated: "due_date",
+  taskTimeEstimateUpdated: "time_estimate",
+  taskTimeTrackedUpdated: "time_tracked",
+  taskUpdated: "general",
+  taskCreated: "created",
+  taskDeleted: "deleted",
+};
+
+/**
+ * Parses webhook history_items and inserts structured rows into
+ * task_activity_log. This is the permanent, queryable record of all
+ * task changes. Non-fatal - errors are logged but don't break processing.
+ */
+async function logTaskActivity(
+  event: ClickUpWebhookPayload,
+  workspaceId: string
+): Promise<void> {
+  const eventType = event.event;
+  const field = EVENT_TO_FIELD[eventType];
+  if (!field) return; // Not a task event
+
+  const taskId = extractEntityId(event, "task");
+  if (!taskId) return;
+
+  const rows = event.history_items
+    .filter((item) => item.date) // Must have a timestamp
+    .map((item) => ({
+      workspace_id: workspaceId,
+      task_id: taskId,
+      event_type: eventType,
+      field: item.field || field,
+      before_value: item.before != null ? item.before : null,
+      after_value: item.after != null ? item.after : null,
+      changed_by_id: item.user?.id != null ? String(item.user.id) : null,
+      changed_by_name: item.user?.username || null,
+      changed_by_email: item.user?.email || null,
+      changed_at: new Date(Number(item.date)).toISOString(),
+      webhook_event_id: item.id || null,
+    }));
+
+  if (rows.length === 0) return;
+
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from("task_activity_log")
+      .insert(rows);
+
+    if (error) {
+      console.error("[Webhook] Failed to log task activity:", error.message);
+    }
+  } catch (err) {
+    console.error("[Webhook] Error logging task activity:", err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Event processing — router
 // ---------------------------------------------------------------------------
 
@@ -235,6 +303,11 @@ export async function processWebhookEvent(
 
   console.log(
     `[Webhook] Processing event: ${eventType} for workspace: ${workspaceId}`
+  );
+
+  // Log task activity to the permanent structured log (non-blocking)
+  logTaskActivity(event, workspaceId).catch((err) =>
+    console.error("[Webhook] Activity logging failed:", err)
   );
 
   switch (eventType) {
