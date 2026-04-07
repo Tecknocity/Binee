@@ -255,67 +255,64 @@ export function BusinessChatStep({
 
         {/* Discovery progress strip — three-column layout above input */}
         <div className="shrink-0 bg-surface border border-border rounded-xl px-4 py-3 mb-2">
-          <div className="flex items-start gap-4">
-            {/* Left column: Title + count */}
-            <div className="shrink-0">
-              <h3 className="text-[11px] font-semibold text-text-primary uppercase tracking-wide">
-                Discovery Progress
-              </h3>
-              <span className="text-[11px] font-medium text-accent">
-                {completeness}/{PROFILE_FORM_FIELDS.length}
-              </span>
+          <div className="flex items-center gap-4">
+            {/* Column 1: Title, count, and checklist */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <h3 className="text-[11px] font-semibold text-text-primary uppercase tracking-wide">
+                  Discovery Progress
+                </h3>
+                <span className="text-[11px] font-medium text-accent">
+                  {completeness}/{PROFILE_FORM_FIELDS.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {PROFILE_FORM_FIELDS.map((field) => {
+                  const collected = isFormFieldCollected(field.key);
+                  const displayVal = getFormFieldValue(field.key);
+                  return (
+                    <div
+                      key={field.key}
+                      className="flex items-center gap-1.5 min-w-0"
+                      title={collected && displayVal ? `${field.label}: ${displayVal}` : field.hint}
+                    >
+                      {collected ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                      ) : (
+                        <Circle className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                      )}
+                      <span className={`text-xs truncate ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
+                        {field.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Center column: Checklist items */}
-            <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-1 min-w-0">
-              {PROFILE_FORM_FIELDS.map((field) => {
-                const collected = isFormFieldCollected(field.key);
-                const displayVal = getFormFieldValue(field.key);
-                return (
-                  <div
-                    key={field.key}
-                    className="flex items-center gap-1.5 min-w-0"
-                    title={collected && displayVal ? `${field.label}: ${displayVal}` : field.hint}
-                  >
-                    {collected ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                    ) : (
-                      <Circle className="w-3.5 h-3.5 text-text-muted shrink-0" />
-                    )}
-                    <span className={`text-xs truncate ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
-                      {field.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            {/* Column 2: Update Information button */}
+            <button
+              type="button"
+              onClick={onEditProfile}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium
+                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
+                transition-colors whitespace-nowrap"
+            >
+              <Pencil className="w-3 h-3" />
+              Update Information
+            </button>
 
-            {/* Right column: Action buttons */}
-            <div className="shrink-0 flex flex-col gap-1.5">
+            {/* Column 3: Generate Structure button */}
+            {canGenerate && !isSending && (
               <button
-                type="button"
-                onClick={onEditProfile}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium
-                  text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
-                  transition-colors whitespace-nowrap"
+                onClick={() => onSendMessage('__generate_structure__')}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-[11px]
+                  hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
               >
-                <Pencil className="w-3 h-3" />
-                Update Information
+                <Sparkles className="w-3 h-3" />
+                Generate Structure
               </button>
-
-              {canGenerate && !isSending ? (
-                <button
-                  onClick={() => onSendMessage('__generate_structure__')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-[11px]
-                    hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  Generate Structure
-                </button>
-              ) : (
-                <div className="h-[26px]" />
-              )}
-            </div>
+            )}
           </div>
         </div>
 
