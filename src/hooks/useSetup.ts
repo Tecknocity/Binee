@@ -615,58 +615,69 @@ export function useSetup(): UseSetupReturn {
   const runExecution = useCallback(async (structure: ExistingWorkspaceStructure | null) => {
     if (!proposedPlan) return;
 
-    // Execute server-side to avoid client-side Supabase service key issues
-    const response = await fetchWithTimeout('/api/setup/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        workspace_id,
-        plan: proposedPlan,
-        existing_structure: structure,
-      }),
-    }, 120_000);
+    try {
+      // Execute server-side to avoid client-side Supabase service key issues
+      const response = await fetchWithTimeout('/api/setup/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id,
+          plan: proposedPlan,
+          existing_structure: structure,
+        }),
+      }, 120_000);
 
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({ error: 'Execution failed' }));
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'Execution failed' }));
+        setExecutionProgress({
+          phase: 'complete',
+          current: 0,
+          total: 0,
+          currentItem: '',
+          errors: [errData.error || 'Execution failed'],
+        });
+        return;
+      }
+
+      const { result: executorResult } = await response.json() as { result: ExecutorResult };
+
+      setExecutionItems(executorResult.items);
+      setExecutionProgress({
+        phase: 'complete',
+        current: executorResult.totalItems,
+        total: executorResult.totalItems,
+        currentItem: '',
+        errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
+      });
+      setExecutionResult({
+        success: executorResult.success,
+        spacesCreated: executorResult.items.filter((i) => i.type === 'space' && (i.status === 'success' || i.status === 'skipped')).length,
+        foldersCreated: executorResult.items.filter((i) => i.type === 'folder' && (i.status === 'success' || i.status === 'skipped')).length,
+        listsCreated: executorResult.items.filter((i) => i.type === 'list' && (i.status === 'success' || i.status === 'skipped')).length,
+        errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
+      });
+
+      if (proposedPlan) {
+        const steps = generateManualSteps(proposedPlan as SetupPlan);
+        store?.getState().setManualSteps(steps);
+      }
+
+      // Only auto-advance if no errors
+      const hasErrors = executorResult.items.some(i => i.status === 'error');
+      if (!hasErrors) {
+        setTimeout(() => setCurrentStep(5), 1500);
+      }
+    } catch (err) {
+      console.error('[useSetup] Execution failed:', err);
       setExecutionProgress({
         phase: 'complete',
         current: 0,
         total: 0,
         currentItem: '',
-        errors: [errData.error || 'Execution failed'],
+        errors: [err instanceof Error ? err.message : 'Execution failed unexpectedly'],
       });
+    } finally {
       setIsExecuting(false);
-      return;
-    }
-
-    const { result: executorResult } = await response.json() as { result: ExecutorResult };
-
-    setExecutionItems(executorResult.items);
-    setExecutionProgress({
-      phase: 'complete',
-      current: executorResult.totalItems,
-      total: executorResult.totalItems,
-      currentItem: '',
-      errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
-    });
-    setExecutionResult({
-      success: executorResult.success,
-      spacesCreated: executorResult.items.filter((i) => i.type === 'space' && (i.status === 'success' || i.status === 'skipped')).length,
-      foldersCreated: executorResult.items.filter((i) => i.type === 'folder' && (i.status === 'success' || i.status === 'skipped')).length,
-      listsCreated: executorResult.items.filter((i) => i.type === 'list' && (i.status === 'success' || i.status === 'skipped')).length,
-      errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
-    });
-    setIsExecuting(false);
-
-    if (proposedPlan) {
-      const steps = generateManualSteps(proposedPlan as SetupPlan);
-      store?.getState().setManualSteps(steps);
-    }
-
-    // Only auto-advance if no errors
-    const hasErrors = executorResult.items.some(i => i.status === 'error');
-    if (!hasErrors) {
-      setTimeout(() => setCurrentStep(5), 1500);
     }
   }, [proposedPlan, workspace_id, store, setCurrentStep]);
 
@@ -692,6 +703,11 @@ export function useSetup(): UseSetupReturn {
   const retryFailedItems = useCallback(async () => {
     if (!proposedPlan || isExecuting) return;
     setIsExecuting(true);
+
+    // Reset progress state so UI shows building animation
+    setExecutionProgress(null);
+    setExecutionItems([]);
+    setExecutionResult(null);
 
     // Re-fetch existing structure to get fresh state after partial build
     let freshStructure = existingStructure;

@@ -123,7 +123,7 @@ export async function executeSetupPlan(
       markSkipped(item, existing.clickup_id);
     } else {
       try {
-        const space = await client.createSpace(teamId, spacePlan.name);
+        const space = await withRetry(() => client.createSpace(teamId, spacePlan.name));
         spaceIdMap.set(spacePlan.name, space.id);
         createdSpaceIds.push(space.id);
         await upsertCachedSpaces(workspaceId, [space]);
@@ -162,7 +162,7 @@ export async function executeSetupPlan(
         markSkipped(item, existingFolder.clickup_id);
       } else {
         try {
-          const folder = await client.createFolder(spaceId, folderPlan.name);
+          const folder = await withRetry(() => client.createFolder(spaceId, folderPlan.name));
           const folderKey = `${spacePlan.name}/${folderPlan.name}`;
           folderIdMap.set(folderKey, folder.id);
           createdFolderIds.push(folder.id);
@@ -205,7 +205,7 @@ export async function executeSetupPlan(
           markSkipped(item);
         } else {
           try {
-            const list = await createListWithStatuses(client, folderId, listPlan);
+            const list = await withRetry(() => createListWithStatuses(client, folderId, listPlan));
             createdListIds.push(list.id);
             await upsertCachedLists(workspaceId, [list]);
             markSuccess(item, list.id);
@@ -309,6 +309,29 @@ function markError(item: ExecutionItem, err: unknown): void {
 function markSkipped(item: ExecutionItem, clickupId?: string): void {
   item.status = "skipped";
   if (clickupId) item.clickupId = clickupId;
+}
+
+/**
+ * Retry an async operation up to maxAttempts times with exponential backoff.
+ * Returns the result on success, or throws the last error on exhaustion.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelayMs = 1000,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
+      }
+    }
+  }
+  throw lastError;
 }
 
 /**
