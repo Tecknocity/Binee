@@ -632,6 +632,24 @@ export function useSetup(): UseSetupReturn {
   const generateStructure = useCallback(async () => {
     setIsSending(true);
     try {
+      // Save current plan to history before generating a new one
+      const currentPlan = store?.getState().proposedPlan;
+      if (currentPlan) {
+        store?.getState().pushPlanToHistory(currentPlan);
+      }
+
+      // Build conversation context for the planner
+      const recentMessages = store?.getState().chatMessages
+        .slice(-6)
+        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 300)}`)
+        .join('\n') || '';
+
+      // Build plan history summary so the planner knows what was tried before
+      const history = store?.getState().planHistory || [];
+      const planHistorySummary = history.length > 0
+        ? history.map((p, i) => `Plan v${i + 1}: ${p.spaces.map(s => s.name).join(', ')} (${p.reasoning?.slice(0, 100) || 'no reasoning'})`).join('\n')
+        : undefined;
+
       const res = await fetchWithTimeout('/api/setup/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -645,12 +663,16 @@ export function useSetup(): UseSetupReturn {
             painPoints: businessProfile.painPoints,
           },
           workspaceAnalysis: workspaceAnalysis ?? undefined,
+          conversationContext: recentMessages || undefined,
+          previousPlan: currentPlan ?? undefined,
+          planHistorySummary: planHistorySummary || undefined,
         }),
       });
       if (!res.ok) throw new Error('Plan generation failed');
       const { plan } = await res.json();
       store?.getState().setPlan(plan);
-      addMessage('assistant', `I've designed your workspace structure with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`);
+      const version = (history.length || 0) + (currentPlan ? 2 : 1);
+      addMessage('assistant', `I've designed your workspace structure (v${version}) with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`);
       setCurrentStep(3);
     } catch {
       addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');

@@ -19,19 +19,29 @@ function getAdminClient() {
   );
 }
 
-const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Given a conversation between a user and an AI assistant about their ClickUp workspace, produce a concise 2-3 sentence summary that captures:
-1. The main topics discussed
-2. Any decisions made or actions taken
-3. Any pending questions or next steps
+const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Given a conversation between a user and an AI assistant about their ClickUp workspace, produce a JSON response with two fields.
 
-Be factual and specific. Include names, numbers, and key details. Do not include greetings or pleasantries.
+Return ONLY valid JSON matching this format:
+{
+  "summary": "2-3 sentence summary capturing main topics, decisions, actions taken, and pending questions",
+  "facts": ["fact 1", "fact 2"]
+}
+
+Summary rules:
+- Be factual and specific. Include names, numbers, and key details.
+- Do not include greetings or pleasantries.
+
+Facts rules:
+- Extract user preferences, decisions, and important context that should be remembered across conversations.
+- Examples: "User runs a solo consulting business", "User prefers 3 separate spaces over 1 space with folders", "Team size is just 1 person"
+- Only include facts explicitly stated by the user, not inferred.
+- If no new facts are found, return an empty array.
+- Keep each fact to one concise sentence.
 
 Previous summary (if any): {previous_summary}
 
 Recent messages to incorporate:
-{messages}
-
-Write your updated summary:`;
+{messages}`;
 
 /**
  * Check if summarization is needed and run it if so.
@@ -97,21 +107,67 @@ export async function maybeSummarizeConversation(
     const client = getClient();
     const response = await client.messages.create({
       model: HAIKU_MODEL_ID,
-      max_tokens: 200,
+      max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const summary = response.content
+    const rawText = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map(b => b.text)
       .join('')
       .trim();
+
+    // Parse JSON response; fall back to raw text as summary if JSON parse fails
+    let summary = rawText;
+    let facts: string[] = [];
+
+    try {
+      // Strip markdown fences if present
+      let jsonStr = rawText;
+      if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.summary) summary = parsed.summary;
+      if (Array.isArray(parsed.facts)) facts = parsed.facts.filter((f: unknown) => typeof f === 'string' && f.length > 0);
+    } catch {
+      // Haiku returned plain text instead of JSON — use as summary, no facts
+    }
 
     if (summary) {
       await supabase
         .from('conversations')
         .update({ summary })
         .eq('id', conversationId);
+    }
+
+    // Save extracted facts to user_memories (if any)
+    if (facts.length > 0) {
+      // Look up workspace to get user_id for the memory
+      const { data: conv } = await supabase
+        .from('conversations')
+        .select('user_id, workspace_id')
+        .eq('id', conversationId)
+        .single();
+
+      if (conv?.user_id) {
+        const memoryRows = facts.map(fact => ({
+          user_id: conv.user_id,
+          workspace_id: conv.workspace_id,
+          category: 'auto_extracted',
+          content: fact,
+          source_conversation_id: conversationId,
+        }));
+
+        const { error: memErr } = await supabase
+          .from('user_memories')
+          .insert(memoryRows);
+
+        if (memErr) {
+          // Table may not exist yet — log and continue
+          console.error('[conversation-summary] Failed to save facts:', memErr.message);
+        }
+      }
     }
   } catch (error) {
     // Summarization is non-critical — log and continue

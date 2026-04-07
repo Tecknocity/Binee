@@ -87,6 +87,7 @@ interface SetupState {
 
   // Step 3: Plan
   proposedPlan: SetupPlan | null;
+  planHistory: SetupPlan[]; // All previously generated plans (v1, v2, ...)
 
   // Existing workspace structure (from cached tables)
   existingStructure: ExistingWorkspaceStructure | null;
@@ -110,6 +111,7 @@ interface SetupState {
   setBusinessDescription: (desc: string) => void;
   incrementMessageCount: () => void;
   setPlan: (plan: SetupPlan | null) => void;
+  pushPlanToHistory: (plan: SetupPlan) => void;
   setExistingStructure: (structure: ExistingWorkspaceStructure | null) => void;
   setExecutionResult: (result: ExecutionResult | null) => void;
   setExecutionItems: (items: ExecutionItem[]) => void;
@@ -146,6 +148,7 @@ function createSetupStore(workspaceId: string) {
         messageCount: 0,
 
         proposedPlan: null,
+        planHistory: [],
         existingStructure: null,
 
         executionResult: null,
@@ -174,6 +177,9 @@ function createSetupStore(workspaceId: string) {
         incrementMessageCount: () => set((s) => ({ messageCount: s.messageCount + 1 })),
 
         setPlan: (plan) => set({ proposedPlan: plan }),
+        pushPlanToHistory: (plan) => set((s) => ({
+          planHistory: [...s.planHistory.slice(-4), plan], // Keep last 5 max
+        })),
         setExistingStructure: (structure) => set({ existingStructure: structure }),
 
         setExecutionResult: (result) => set({ executionResult: result }),
@@ -202,15 +208,17 @@ function createSetupStore(workspaceId: string) {
               updates.workspaceRecommendations = [];
             }
             if (step <= 2) {
-              // Resetting from Describe: clear chat + plan + everything after
+              // Resetting from Describe: keep chat history for context continuity,
+              // clear plan + everything after. Messages are preserved so the AI
+              // and user can reference earlier discussion.
               updates.profileFormCompleted = s.profileFormCompleted; // Keep form data
               updates.profileFormData = s.profileFormData; // Keep form data
-              updates.chatMessages = [];
               updates.businessDescription = s.businessDescription; // Keep description
-              updates.messageCount = 0;
+              // chatMessages and messageCount intentionally preserved
             }
             if (step <= 3) {
               // Resetting from Review: clear plan + existing structure + build + manual steps
+              // planHistory intentionally preserved so user can reference earlier plans
               updates.proposedPlan = null;
               updates.existingStructure = null;
             }
@@ -239,6 +247,7 @@ function createSetupStore(workspaceId: string) {
             businessDescription: '',
             messageCount: 0,
             proposedPlan: null,
+            planHistory: [],
             existingStructure: null,
             executionResult: null,
             executionItems: [],
@@ -263,6 +272,7 @@ function createSetupStore(workspaceId: string) {
           businessDescription: state.businessDescription,
           messageCount: state.messageCount,
           proposedPlan: state.proposedPlan,
+          planHistory: state.planHistory,
           existingStructure: state.existingStructure,
           executionResult: state.executionResult,
           executionItems: state.executionItems,

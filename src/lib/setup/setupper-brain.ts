@@ -5,6 +5,7 @@ import { BINEE_TOOLS } from '@/lib/ai/tools';
 import { executeTool } from '@/lib/ai/tool-executor';
 import { classifyMessageCost } from '@/billing/engine/flat-credit-classifier';
 import { calculateAnthropicCost } from '@/billing/engine/token-converter';
+import { loadUserMemories } from '@/lib/ai/user-memory';
 
 const SONNET_MODEL_ID = 'claude-sonnet-4-20250514';
 const MAX_TOOL_ROUNDS = 5;
@@ -70,8 +71,10 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     }
   }
 
-  // Step 2: Build system prompt with analysis + templates
-  const systemPrompt = buildSetupperPrompt(workspaceAnalysis, input.templates);
+  // Step 2: Build system prompt with analysis + templates + user memories
+  const userMemories = await loadUserMemories(input.userId, input.workspaceId);
+  const basePrompt = buildSetupperPrompt(workspaceAnalysis, input.templates);
+  const systemPrompt = userMemories ? `${basePrompt}\n\n${userMemories}` : basePrompt;
 
   // Step 3: Get read-only tools for the Setupper to gather workspace context.
   // Write operations (create spaces/folders/lists) are handled by the separate

@@ -4,6 +4,7 @@ import { executeSubAgents, type SubAgentResult } from '@/lib/ai/sub-agents/execu
 import { generateBrainResponse } from '@/lib/ai/brain';
 import { classifyMessageCost, type MessageClassification } from '@/billing/engine/flat-credit-classifier';
 import { calculateAnthropicCost, type TokenCostResult } from '@/billing/engine/token-converter';
+import { loadUserMemories } from '@/lib/ai/user-memory';
 
 export interface OrchestrationInput {
   userMessage: string;
@@ -74,6 +75,9 @@ export async function orchestrate(input: OrchestrationInput): Promise<Orchestrat
   }
 
   // ---- Step 3: Brain generates final response ----
+  // Load user memories in parallel with sub-agents (or here if no sub-agents)
+  const userMemories = await loadUserMemories(input.userId, input.workspaceId);
+
   const brainResult = await generateBrainResponse(client, {
     userMessage: input.userMessage,
     userContext: input.userContext,
@@ -83,6 +87,7 @@ export async function orchestrate(input: OrchestrationInput): Promise<Orchestrat
       agent: r.agent,
       summary: r.summary,
     })),
+    userMemories: userMemories || undefined,
   });
 
   // ---- Step 4: Classify credit tier ----

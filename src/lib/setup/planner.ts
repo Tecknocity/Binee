@@ -28,14 +28,21 @@ async function getAnthropicClient(): Promise<Anthropic> {
 // B-073: Generate a structured workspace plan from a business profile
 // ---------------------------------------------------------------------------
 
+interface PlanContext {
+  conversationContext?: string;
+  previousPlan?: Record<string, unknown>;
+  planHistorySummary?: string;
+}
+
 /**
  * Generate a ClickUp workspace plan tailored to the user's business.
  */
 export async function generateSetupPlan(
   businessProfile: BusinessProfile,
   workspaceAnalysis?: string,
+  planContext?: PlanContext,
 ): Promise<SetupPlan> {
-  const systemPrompt = buildSystemPrompt(workspaceAnalysis);
+  const systemPrompt = buildSystemPrompt(workspaceAnalysis, planContext);
   const userMessage = buildUserMessage(businessProfile);
 
   let responseText: string;
@@ -79,7 +86,7 @@ export async function generateSetupPlan(
 // Prompt construction
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(workspaceAnalysis?: string): string {
+function buildSystemPrompt(workspaceAnalysis?: string, planContext?: PlanContext): string {
   const parts: string[] = [];
 
   parts.push(`You are Binee, an AI workspace intelligence assistant specializing in ClickUp workspace setup.
@@ -87,6 +94,41 @@ function buildSystemPrompt(workspaceAnalysis?: string): string {
 Your task is to analyze a business profile and generate a structured ClickUp workspace plan as JSON.
 
 IMPORTANT: Return ONLY valid JSON matching the schema below. No markdown, no explanation outside the JSON.`);
+
+  // Include conversation context so the planner knows what was discussed
+  if (planContext?.conversationContext) {
+    parts.push(`## CONVERSATION CONTEXT
+The user had the following recent discussion with the AI about their workspace needs. Use this context to tailor the plan to match what was discussed and agreed upon:
+
+${planContext.conversationContext}`);
+  }
+
+  // Include previous plan so the planner can refine rather than start from scratch
+  if (planContext?.previousPlan) {
+    const prev = planContext.previousPlan;
+    const spaces = Array.isArray(prev.spaces) ? prev.spaces : [];
+    const summary = spaces.map((s: Record<string, unknown>) => {
+      const folders = Array.isArray(s.folders) ? s.folders : [];
+      return `Space: ${s.name}\n${folders.map((f: Record<string, unknown>) => {
+        const lists = Array.isArray(f.lists) ? f.lists : [];
+        return `  Folder: ${f.name}\n${lists.map((l: Record<string, unknown>) => `    List: ${l.name}`).join('\n')}`;
+      }).join('\n')}`;
+    }).join('\n');
+
+    parts.push(`## PREVIOUS PLAN (most recent)
+The user has already reviewed this structure and is asking for a new version. Unless they indicated specific changes, generate a plan that closely follows this structure while incorporating any conversation feedback:
+
+${summary}
+Reasoning: ${prev.reasoning || 'none provided'}`);
+  }
+
+  // Include plan history summary so the planner knows the full evolution
+  if (planContext?.planHistorySummary) {
+    parts.push(`## PLAN VERSION HISTORY
+These are all previously generated plans. The user may reference them by version number:
+
+${planContext.planHistorySummary}`);
+  }
 
   parts.push(`## CURRENT WORKSPACE ANALYSIS
 ${workspaceAnalysis || 'No workspace data yet. This may be a fresh workspace.'}
