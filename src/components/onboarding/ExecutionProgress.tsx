@@ -98,6 +98,8 @@ export function ExecutionProgress({
 
   const isComplete = progress?.phase === 'complete';
   const isBuilding = !isComplete && isExecuting && !progress;
+  // Orphaned state: at step 4 but nothing is running and no results exist
+  const isStuck = !isComplete && !isExecuting && !progress && (!executionItems || executionItems.length === 0);
   const currentIndex = progress ? progress.current : 0;
   const total = progress ? Math.max(progress.total, 1) : 1;
   const percentage = progress ? Math.round((progress.current / total) * 100) : 0;
@@ -195,6 +197,40 @@ export function ExecutionProgress({
   const currentPhaseIdx = progress
     ? PHASE_ORDER.indexOf(progress.phase as (typeof PHASE_ORDER)[number])
     : -1;
+
+  // Recovery UI: stuck at step 4 with no execution state
+  if (isStuck) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full px-4 gap-4 text-center">
+        <div className="w-14 h-14 rounded-full bg-warning/15 flex items-center justify-center">
+          <AlertTriangle className="w-7 h-7 text-warning" />
+        </div>
+        <h2 className="text-lg font-semibold text-text-primary">Build interrupted</h2>
+        <p className="text-sm text-text-secondary">
+          It looks like the build was interrupted or this page was reloaded. You can retry the build to continue setting up your workspace.
+        </p>
+        <div className="flex items-center gap-3 mt-2">
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-accent hover:bg-accent-hover rounded-xl transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Retry Build
+            </button>
+          )}
+          {onContinue && (
+            <button
+              onClick={onContinue}
+              className="px-5 py-2.5 text-sm font-medium text-text-secondary border border-border rounded-xl hover:bg-surface-hover transition-colors"
+            >
+              Skip
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pb-6 overflow-hidden">

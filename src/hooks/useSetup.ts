@@ -275,6 +275,9 @@ export function useSetup(): UseSetupReturn {
   const proposedPlan = storeState?.proposedPlan ?? null;
   const existingStructure = storeState?.existingStructure ?? null;
   const manualSteps = storeState?.manualSteps ?? [];
+  const persistedExecutionResult = storeState?.executionResult ?? null;
+  const persistedExecutionItems = storeState?.executionItems ?? [];
+  const buildCompleted = storeState?.buildCompleted ?? false;
 
   // Force re-render when store changes
   const [, forceUpdate] = useState(0);
@@ -291,11 +294,27 @@ export function useSetup(): UseSetupReturn {
     return msgs;
   }, [storedMessages]);
 
-  // Transient UI state — NOT persisted (resets on refresh, that's fine)
+  // Execution state — synced from persisted store after hydration
   const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
   const [executionItems, setExecutionItems] = useState<ExecutionItem[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
+
+  // Restore execution state from persisted store (handles async Zustand hydration)
+  const buildRestoredRef = useRef(false);
+  useEffect(() => {
+    if (buildRestoredRef.current || !buildCompleted || persistedExecutionItems.length === 0) return;
+    buildRestoredRef.current = true;
+    setExecutionItems(persistedExecutionItems);
+    setExecutionResult(persistedExecutionResult);
+    setExecutionProgress({
+      phase: 'complete',
+      current: persistedExecutionItems.length,
+      total: persistedExecutionItems.length,
+      currentItem: '',
+      errors: persistedExecutionItems.filter(i => i.status === 'error').map(i => i.error || i.name),
+    });
+  }, [buildCompleted, persistedExecutionItems, persistedExecutionResult]);
   const [isSending, setIsSending] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -641,21 +660,29 @@ export function useSetup(): UseSetupReturn {
 
       const { result: executorResult } = await response.json() as { result: ExecutorResult };
 
-      setExecutionItems(executorResult.items);
+      const resultItems = executorResult.items;
+      const executionResultData: ExecutionResult = {
+        success: executorResult.success,
+        spacesCreated: resultItems.filter((i) => i.type === 'space' && (i.status === 'success' || i.status === 'skipped')).length,
+        foldersCreated: resultItems.filter((i) => i.type === 'folder' && (i.status === 'success' || i.status === 'skipped')).length,
+        listsCreated: resultItems.filter((i) => i.type === 'list' && (i.status === 'success' || i.status === 'skipped')).length,
+        errors: resultItems.filter((i) => i.status === 'error').map((i) => i.error || i.name),
+      };
+
+      setExecutionItems(resultItems);
       setExecutionProgress({
         phase: 'complete',
         current: executorResult.totalItems,
         total: executorResult.totalItems,
         currentItem: '',
-        errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
+        errors: executionResultData.errors,
       });
-      setExecutionResult({
-        success: executorResult.success,
-        spacesCreated: executorResult.items.filter((i) => i.type === 'space' && (i.status === 'success' || i.status === 'skipped')).length,
-        foldersCreated: executorResult.items.filter((i) => i.type === 'folder' && (i.status === 'success' || i.status === 'skipped')).length,
-        listsCreated: executorResult.items.filter((i) => i.type === 'list' && (i.status === 'success' || i.status === 'skipped')).length,
-        errors: executorResult.items.filter((i) => i.status === 'error').map((i) => i.error || i.name),
-      });
+      setExecutionResult(executionResultData);
+
+      // Persist build results to store so they survive navigation
+      store?.getState().setExecutionItems(resultItems);
+      store?.getState().setExecutionResult(executionResultData);
+      store?.getState().setBuildCompleted(true);
 
       if (proposedPlan) {
         const steps = generateManualSteps(proposedPlan as SetupPlan);
@@ -663,7 +690,7 @@ export function useSetup(): UseSetupReturn {
       }
 
       // Only auto-advance if no errors
-      const hasErrors = executorResult.items.some(i => i.status === 'error');
+      const hasErrors = resultItems.some(i => i.status === 'error');
       if (!hasErrors) {
         setTimeout(() => setCurrentStep(5), 1500);
       }
@@ -705,9 +732,13 @@ export function useSetup(): UseSetupReturn {
     setIsExecuting(true);
 
     // Reset progress state so UI shows building animation
+    buildRestoredRef.current = false;
     setExecutionProgress(null);
     setExecutionItems([]);
     setExecutionResult(null);
+    store?.getState().setBuildCompleted(false);
+    store?.getState().setExecutionResult(null);
+    store?.getState().setExecutionItems([]);
 
     // Re-fetch existing structure to get fresh state after partial build
     let freshStructure = existingStructure;
