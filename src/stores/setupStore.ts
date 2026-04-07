@@ -210,8 +210,9 @@ function createSetupStore(workspaceId: string) {
               updates.messageCount = 0;
             }
             if (step <= 3) {
-              // Resetting from Review: clear plan + build + manual steps
+              // Resetting from Review: clear plan + existing structure + build + manual steps
               updates.proposedPlan = null;
+              updates.existingStructure = null;
             }
             if (step <= 4) {
               // Resetting from Build: clear build results + manual steps

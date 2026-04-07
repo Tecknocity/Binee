@@ -130,7 +130,15 @@ export function ClickUpConnectStep({
 
           {/* Actions */}
           <div className="flex flex-col items-center gap-3 w-full">
-            {/* Continue button - always shown when connected and revisiting */}
+            {/* First visit: auto-advancing indicator */}
+            {!isRevisit && (
+              <div className="flex items-center gap-2 text-sm text-text-secondary">
+                <Loader2 className="w-4 h-4 text-accent animate-spin" />
+                <span>Preparing workspace analysis...</span>
+              </div>
+            )}
+
+            {/* Continue button - shown when connected and revisiting */}
             {isRevisit && onContinue && (
               <button
                 onClick={onContinue}

@@ -113,6 +113,23 @@ export async function GET(request: NextRequest) {
           }
           // Also clear workspace analysis snapshots since they reference old structure
           await supabase.from("workspace_structure_snapshots").delete().eq("workspace_id", workspaceId);
+          // Reset sync progress tracking for the new team
+          await supabase.from("clickup_connections").update({
+            sync_status: "idle",
+            sync_phase: null,
+            sync_current: null,
+            sync_total: null,
+            sync_message: null,
+            sync_error: null,
+            sync_started_at: null,
+            sync_completed_at: null,
+            synced_spaces: null,
+            synced_folders: null,
+            synced_lists: null,
+            synced_tasks: null,
+            synced_members: null,
+            synced_time_entries: null,
+          }).eq("workspace_id", workspaceId);
         }
 
         await supabase

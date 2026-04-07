@@ -13,7 +13,6 @@ import type { ExecutionItem, ExecutionResult as ExecutorResult } from '@/lib/set
 import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { useAuth } from '@/components/auth/AuthProvider';
 import { getSetupStore } from '@/stores/setupStore';
 import type { SetupChatMessage as StoreChatMessage, ExistingWorkspaceStructure } from '@/stores/setupStore';
 
@@ -256,7 +255,6 @@ function toStoreMessage(msg: SetupChatMessage): StoreChatMessage {
 export function useSetup(): UseSetupReturn {
   const clickUp = useClickUpStatus();
   const { workspace_id } = useWorkspace();
-  const { user } = useAuth();
 
   // Get the zustand store for this workspace — auto-persists to localStorage
   const store = workspace_id ? getSetupStore(workspace_id) : null;
