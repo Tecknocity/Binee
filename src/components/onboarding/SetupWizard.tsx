@@ -46,7 +46,7 @@ export default function SetupWizard() {
       case 2: return setup.profileFormCompleted && setup.chatMessages.length > 1;
       case 3: return !!setup.proposedPlan;
       case 4: return !!setup.executionResult;
-      case 5: return false;
+      case 5: return !!setup.executionResult;
       default: return false;
     }
   };
@@ -131,7 +131,7 @@ export default function SetupWizard() {
       </div>
 
       {/* Viewing past step banner + redo button */}
-      {isViewingPastStep && setup.currentStep <= 3 && (
+      {isViewingPastStep && setup.currentStep <= 4 && (
         <div className="flex items-center justify-between px-4 pb-3 max-w-3xl mx-auto w-full shrink-0">
           <div className="flex items-center gap-2 text-sm text-text-secondary">
             <Eye className="w-4 h-4 text-text-muted" />
@@ -159,6 +159,8 @@ export default function SetupWizard() {
             loading={setup.clickUpLoading}
             onConnect={setup.handleClickUpConnect}
             onRefresh={setup.refreshClickUpStatus}
+            teamName={setup.clickUpTeamName}
+            isRevisit={setup.furthestStep > 0}
           />
         )}
 

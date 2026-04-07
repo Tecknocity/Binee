@@ -305,6 +305,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
             label="Recommended ClickApps"
             badge={`${plan.recommended_clickapps.length}`}
             badgeColor="bg-success/15 text-success"
+            defaultOpen
           >
             <div className="flex flex-wrap gap-1.5 py-1 pl-2">
               {plan.recommended_clickapps.map((app, i) => (
@@ -321,12 +322,12 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
 
         {/* AI Reasoning */}
         {plan.reasoning && (
-          <div className="bg-accent/5 border border-accent/15 rounded-xl p-3 mt-2">
-            <div className="flex items-start gap-2">
-              <Lightbulb className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+          <div className="bg-accent/5 border border-accent/15 rounded-xl p-4 mt-2">
+            <div className="flex items-start gap-2.5">
+              <Lightbulb className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-medium text-accent mb-1">Why this structure?</p>
-                <p className="text-xs text-text-secondary leading-relaxed">{plan.reasoning}</p>
+                <p className="text-sm font-semibold text-accent mb-1">Why this structure?</p>
+                <p className="text-sm text-text-secondary leading-relaxed">{plan.reasoning}</p>
               </div>
             </div>
           </div>

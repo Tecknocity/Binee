@@ -53,6 +53,7 @@ export interface UseSetupReturn {
   wizardStep: SetupWizardStep;
   clickUpConnected: boolean;
   clickUpLoading: boolean;
+  clickUpTeamName: string | null;
   businessDescription: string;
   businessProfile: BusinessProfile;
   profileFormCompleted: boolean;
@@ -325,13 +326,13 @@ export function useSetup(): UseSetupReturn {
     store?.getState().setStep(step);
   }, [store]);
 
-  // Auto-advance from step 0 → step 1 when ClickUp is connected
+  // Auto-advance from step 0 → step 1 when ClickUp is connected (first visit only)
   useEffect(() => {
-    if (!clickUp.loading && clickUp.connected && currentStep === 0) {
+    if (!clickUp.loading && clickUp.connected && currentStep === 0 && furthestStep === 0) {
       const timer = setTimeout(() => setCurrentStep(1), 800);
       return () => clearTimeout(timer);
     }
-  }, [clickUp.connected, clickUp.loading, currentStep, setCurrentStep]);
+  }, [clickUp.connected, clickUp.loading, currentStep, furthestStep, setCurrentStep]);
 
   // Run workspace analysis when we arrive at step 1 and haven't analyzed yet
   const analysisStartedRef = useRef(false);
@@ -945,6 +946,7 @@ export function useSetup(): UseSetupReturn {
     wizardStep,
     clickUpConnected: clickUp.connected,
     clickUpLoading: clickUp.loading,
+    clickUpTeamName: clickUp.teamName,
     businessDescription,
     businessProfile,
     profileFormCompleted,

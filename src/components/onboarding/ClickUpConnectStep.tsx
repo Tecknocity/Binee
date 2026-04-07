@@ -58,6 +58,8 @@ interface ClickUpConnectStepProps {
   loading: boolean;
   onConnect: () => void;
   onRefresh: () => void;
+  teamName?: string | null;
+  isRevisit?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +71,8 @@ export function ClickUpConnectStep({
   loading,
   onConnect,
   onRefresh,
+  teamName,
+  isRevisit,
 }: ClickUpConnectStepProps) {
   if (loading) {
     return (
@@ -83,17 +87,63 @@ export function ClickUpConnectStep({
 
   if (connected) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center max-w-md">
-          <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center">
-            <CheckCircle2 className="w-8 h-8 text-success" />
+      <div className="flex-1 flex items-center justify-center px-4">
+        <div className="flex flex-col items-center gap-6 text-center max-w-md">
+          {/* Connection status card */}
+          <div className="w-full rounded-xl border border-success/20 bg-success/5 p-6">
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <div className="w-12 h-12 rounded-xl bg-[#7B68EE]/10 flex items-center justify-center">
+                <ClickUpLogo className="h-6 w-6 text-[#7B68EE]" />
+              </div>
+              <div className="text-left">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-text-primary">
+                    {teamName || 'ClickUp Workspace'}
+                  </h3>
+                  <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-success/15 text-success">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Connected
+                  </span>
+                </div>
+                <p className="text-xs text-text-muted mt-0.5">
+                  OAuth 2.0 secured connection
+                </p>
+              </div>
+            </div>
           </div>
-          <h2 className="text-xl font-semibold text-text-primary">
-            ClickUp Connected
-          </h2>
-          <p className="text-sm text-text-secondary">
-            Your ClickUp workspace is connected and ready. Let&apos;s set up your workspace structure.
-          </p>
+
+          {/* Message */}
+          <div>
+            <h2 className="text-xl font-semibold text-text-primary mb-2">
+              {isRevisit ? 'ClickUp Connected' : 'Connection Successful!'}
+            </h2>
+            <p className="text-sm text-text-secondary leading-relaxed">
+              {isRevisit
+                ? 'Your ClickUp workspace is connected. You can switch to a different workspace or continue where you left off.'
+                : 'Your ClickUp workspace is connected and ready. Let\'s set up your workspace structure.'}
+            </p>
+          </div>
+
+          {/* Actions for revisit */}
+          {isRevisit && (
+            <div className="flex flex-col items-center gap-3 w-full">
+              <button
+                onClick={onConnect}
+                className="flex items-center justify-center gap-2 w-full px-5 py-3 rounded-xl text-sm font-medium transition-all
+                  border border-border text-text-secondary hover:border-accent/40 hover:text-text-primary"
+              >
+                <ClickUpLogo className="w-4 h-4" />
+                Connect Different Workspace
+                <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+              </button>
+              <button
+                onClick={onRefresh}
+                className="text-xs text-text-muted hover:text-text-secondary transition-colors"
+              >
+                Refresh connection status
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
