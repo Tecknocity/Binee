@@ -11,6 +11,8 @@ import {
   Settings2,
   Columns3,
   ArrowRight,
+  MessageSquare,
+  ListChecks,
 } from 'lucide-react';
 import type { ManualStep } from '@/lib/setup/types';
 
@@ -44,13 +46,19 @@ export function ManualStepsGuide({ steps, onMarkComplete, onFinish }: ManualStep
   const totalCount = steps.length;
   const allDone = completedCount === totalCount;
 
+  const markAllComplete = () => {
+    steps.forEach((step, i) => {
+      if (!step.completed) onMarkComplete(i);
+    });
+  };
+
   return (
     <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pb-6 overflow-hidden">
       {/* Header */}
       <div className="py-6 text-center shrink-0">
-        <h2 className="text-xl font-semibold text-text-primary">Final Setup Steps</h2>
+        <h2 className="text-xl font-semibold text-text-primary">Almost There!</h2>
         <p className="text-sm text-text-secondary mt-1">
-          These steps can&apos;t be automated. Complete them manually in ClickUp.
+          We&apos;ve done the heavy lifting. Finish these steps in ClickUp to complete your setup.
         </p>
         <div className="mt-3 flex items-center justify-center gap-3">
           <div className="h-2 w-40 bg-surface border border-border rounded-full overflow-hidden">
@@ -70,29 +78,40 @@ export function ManualStepsGuide({ steps, onMarkComplete, onFinish }: ManualStep
         {steps.map((step, i) => (
           <StepCard key={i} step={step} index={i} onToggle={() => onMarkComplete(i)} />
         ))}
+
+        {/* Mark all as done */}
+        {!allDone && (
+          <button
+            onClick={markAllComplete}
+            className="flex items-center justify-center gap-2 w-full py-2 text-sm text-text-muted hover:text-text-secondary transition-colors"
+          >
+            <ListChecks className="w-4 h-4" />
+            Mark all as done
+          </button>
+        )}
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between pt-3 border-t border-border shrink-0">
-        <button
-          onClick={onFinish}
-          className="text-sm text-text-muted hover:text-text-secondary transition-colors"
-        >
-          Skip all &rarr; Go to Chat
-        </button>
-
-        <button
-          onClick={onFinish}
-          disabled={!allDone}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-colors
-            ${allDone
-              ? 'bg-accent text-white hover:bg-accent-hover shadow-lg shadow-accent/20'
-              : 'bg-surface border border-border text-text-muted cursor-not-allowed'
-            }`}
-        >
-          {allDone ? 'Finish Setup' : `Complete all steps (${completedCount}/${totalCount})`}
-          {allDone && <ArrowRight className="w-4 h-4" />}
-        </button>
+      {/* Ready to Start CTA */}
+      <div className="shrink-0 border-t border-border pt-5">
+        <div className="text-center">
+          <h3 className="text-lg font-semibold text-text-primary mb-1">Ready to Start</h3>
+          <p className="text-sm text-text-secondary leading-relaxed mb-4">
+            Your AI workspace assistant is ready for everyday use! Ask questions,
+            interact with tasks, manage your workspace, and get live business insights.
+          </p>
+          <button
+            onClick={onFinish}
+            className="flex items-center justify-center gap-2 w-full px-6 py-3 bg-accent text-white rounded-xl font-medium text-sm
+              hover:bg-accent-hover transition-colors shadow-lg shadow-accent/20"
+          >
+            <MessageSquare className="w-4 h-4" />
+            Go to Chat
+            <ArrowRight className="w-4 h-4" />
+          </button>
+          <p className="text-xs text-text-muted mt-2">
+            You can complete remaining steps anytime from Settings
+          </p>
+        </div>
       </div>
     </div>
   );
