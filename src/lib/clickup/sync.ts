@@ -23,6 +23,44 @@ function getSupabaseAdmin() {
 }
 
 // ---------------------------------------------------------------------------
+// Stale data cleanup helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes cached entries that no longer exist in ClickUp.
+ * If the current IDs array is empty, all cached entries for the workspace
+ * are deleted (workspace was emptied in ClickUp).
+ */
+async function cleanupStaleCachedData(
+  workspaceId: string,
+  currentIds: {
+    spaces?: string[];
+    folders?: string[];
+    lists?: string[];
+    tasks?: string[];
+  }
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const cleanup = async (table: string, ids: string[] | undefined) => {
+    if (ids === undefined) return; // Skip if not provided
+    if (ids.length > 0) {
+      await supabase.from(table).delete()
+        .eq("workspace_id", workspaceId)
+        .not("clickup_id", "in", `(${ids.join(",")})`);
+    } else {
+      await supabase.from(table).delete()
+        .eq("workspace_id", workspaceId);
+    }
+  };
+
+  await cleanup("cached_spaces", currentIds.spaces);
+  await cleanup("cached_folders", currentIds.folders);
+  await cleanup("cached_lists", currentIds.lists);
+  await cleanup("cached_tasks", currentIds.tasks);
+}
+
+// ---------------------------------------------------------------------------
 // Batch upsert helpers
 // ---------------------------------------------------------------------------
 
@@ -604,30 +642,13 @@ export async function performInitialSync(
     });
 
     // Step 8: Clean up stale cached entries that no longer exist in ClickUp
-    // This handles items deleted in ClickUp since the last sync
     try {
-      const supabaseCleanup = getSupabaseAdmin();
-      const spaceIds = spaces.map(s => s.id);
-      const folderIds = allFolders.map(f => f.id);
-      const listIds = allLists.map(l => l.id);
-      const taskIds = allTasks.map(t => t.id);
-
-      if (spaceIds.length > 0) {
-        await supabaseCleanup.from("cached_spaces").delete()
-          .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${spaceIds.join(",")})`);
-      }
-      if (folderIds.length > 0) {
-        await supabaseCleanup.from("cached_folders").delete()
-          .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${folderIds.join(",")})`);
-      }
-      if (listIds.length > 0) {
-        await supabaseCleanup.from("cached_lists").delete()
-          .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${listIds.join(",")})`);
-      }
-      if (taskIds.length > 0) {
-        await supabaseCleanup.from("cached_tasks").delete()
-          .eq("workspace_id", workspaceId).not("clickup_id", "in", `(${taskIds.join(",")})`);
-      }
+      await cleanupStaleCachedData(workspaceId, {
+        spaces: spaces.map(s => s.id),
+        folders: allFolders.map(f => f.id),
+        lists: allLists.map(l => l.id),
+        tasks: allTasks.map(t => t.id),
+      });
     } catch (cleanupErr) {
       console.error("[ClickUp Sync] Stale data cleanup error (non-fatal):", cleanupErr);
     }
@@ -940,6 +961,17 @@ export async function syncWorkspaceStructure(workspaceId: string): Promise<{
 
   await upsertCachedFolders(workspaceId, allFolders);
   await upsertCachedLists(workspaceId, allLists);
+
+  // Clean up stale entries that no longer exist in ClickUp
+  try {
+    await cleanupStaleCachedData(workspaceId, {
+      spaces: spaces.map(s => s.id),
+      folders: allFolders.map(f => f.id),
+      lists: allLists.map(l => l.id),
+    });
+  } catch (cleanupErr) {
+    console.error("[ClickUp Sync] Structure cleanup error (non-fatal):", cleanupErr);
+  }
 
   return {
     spaces: spaces.length,

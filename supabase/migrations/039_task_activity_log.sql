@@ -30,27 +30,15 @@ CREATE INDEX IF NOT EXISTS idx_tal_workspace_changed_by ON task_activity_log(wor
 CREATE INDEX IF NOT EXISTS idx_tal_changed_at ON task_activity_log(changed_at);
 CREATE INDEX IF NOT EXISTS idx_tal_workspace_event ON task_activity_log(workspace_id, event_type);
 
--- RLS: workspace members can read, system (service role) can write
+-- RLS: workspace members can read only.
+-- Writes are done via service role key (bypasses RLS), so no write policy needed.
+-- This keeps the activity log tamper-proof from the client side.
 ALTER TABLE task_activity_log ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "workspace_members_read_activity_log"
   ON task_activity_log
   FOR SELECT
   USING (
-    workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "system_manage_activity_log"
-  ON task_activity_log
-  FOR ALL
-  USING (
-    workspace_id IN (
-      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
-    )
-  )
-  WITH CHECK (
     workspace_id IN (
       SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
     )
