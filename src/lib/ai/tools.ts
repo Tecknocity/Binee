@@ -851,7 +851,7 @@ export const SUB_AGENT_TOOLS: Anthropic.Tool[] = [
 - Set custom field values on tasks
 - Add or remove task dependencies and links
 
-DO NOT use this for: workspace structure changes (use setupper), workspace analysis (use workspace_analyst), or doc/goal operations (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
+DO NOT use this for: workspace analysis (use workspace_analyst), or doc/goal operations (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -877,7 +877,7 @@ DO NOT use this for: workspace structure changes (use setupper), workspace analy
 - Search, read, create, or update ClickUp Docs
 - Review available tags across the workspace
 
-DO NOT use this for: creating or modifying workspace structure (use setupper) or managing individual tasks (use task_manager).`,
+DO NOT use this for: managing individual tasks (use task_manager).`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -889,33 +889,6 @@ DO NOT use this for: creating or modifying workspace structure (use setupper) or
           type: 'string',
           enum: ['audit', 'snapshot'],
           description: 'audit = human-readable analysis for chat. snapshot = structured data for the Setup flow.',
-        },
-      },
-      required: ['request'],
-    },
-  },
-  {
-    name: 'setupper',
-    description: `Delegate to the Setupper sub-agent for creating or improving ClickUp workspace structure. Use this when the user wants to:
-- Set up their ClickUp workspace for the first time
-- Create new Spaces, Folders, or Lists
-- Add or modify status configurations
-- Create custom fields
-- Restructure or reorganize their workspace
-- Apply industry-specific workspace templates
-- Improve their current workspace structure based on analysis
-
-DO NOT use this for: analyzing workspace health (use workspace_analyst first, then setupper to act on findings) or managing individual tasks (use task_manager). The Setupper NEVER deletes existing structures — it only creates new ones alongside existing ones.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        request: {
-          type: 'string',
-          description: 'Natural language description of what workspace structure the user wants to create or change.',
-        },
-        analyst_snapshot: {
-          type: 'string',
-          description: 'Optional: JSON snapshot from the Workspace Analyst if a scan was run first.',
         },
       },
       required: ['request'],
