@@ -3,6 +3,9 @@ import type {
   BusinessProfile,
   SetupPlan,
   SetupPlanValidationResult,
+  RecommendedTag,
+  RecommendedDoc,
+  RecommendedGoal,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -160,6 +163,15 @@ Return a single JSON object with this exact structure:
     }
   ],
   "recommended_clickapps": ["Time Tracking", "Custom Fields", ...],
+  "recommended_tags": [
+    { "name": "tag-name", "tag_bg": "#hex", "tag_fg": "#FFFFFF" }
+  ],
+  "recommended_docs": [
+    { "name": "Doc Title", "description": "What this doc is for", "content": "Optional markdown content" }
+  ],
+  "recommended_goals": [
+    { "name": "Goal Name", "due_date": "2026-06-30", "description": "What this goal tracks", "color": "#hex" }
+  ],
   "reasoning": "1-3 sentences explaining why this structure fits the business"
 }
 
@@ -171,7 +183,10 @@ Return a single JSON object with this exact structure:
 - Keep structure reasonable: 2-5 spaces for small businesses, up to 7 for larger ones
 - Use ClickUp naming conventions from the templates database
 - Tailor the structure to the specific business, don't just copy a generic template
-- Include statuses that reflect real workflow stages for each list type`);
+- Include statuses that reflect real workflow stages for each list type
+- Include 5-10 recommended_tags that match the business type (use lowercase kebab-case names)
+- Include 2-5 recommended_docs with starter templates relevant to their workflows
+- Only include recommended_goals if the business context suggests them (e.g. user mentioned targets, deadlines, quarterly plans). Omit the field entirely if goals are not relevant.`);
 
   return parts.join('\n\n---\n\n');
 }
@@ -238,7 +253,7 @@ function parseSetupPlanResponse(responseText: string): SetupPlan {
 function normalizeSetupPlan(parsed: Record<string, unknown>): SetupPlan {
   const spaces = Array.isArray(parsed.spaces) ? parsed.spaces : [];
 
-  return {
+  const plan: SetupPlan = {
     business_type: String(parsed.business_type ?? 'general'),
     matched_template: String(parsed.matched_template ?? 'custom'),
     spaces: spaces.map(normalizeSpace),
@@ -247,6 +262,20 @@ function normalizeSetupPlan(parsed: Record<string, unknown>): SetupPlan {
       : [],
     reasoning: String(parsed.reasoning ?? ''),
   };
+
+  if (Array.isArray(parsed.recommended_tags) && parsed.recommended_tags.length > 0) {
+    plan.recommended_tags = parsed.recommended_tags.map(normalizeTag);
+  }
+
+  if (Array.isArray(parsed.recommended_docs) && parsed.recommended_docs.length > 0) {
+    plan.recommended_docs = parsed.recommended_docs.map(normalizeDoc);
+  }
+
+  if (Array.isArray(parsed.recommended_goals) && parsed.recommended_goals.length > 0) {
+    plan.recommended_goals = parsed.recommended_goals.map(normalizeGoal);
+  }
+
+  return plan;
 }
 
 function normalizeSpace(space: Record<string, unknown>): {
@@ -327,6 +356,36 @@ function normalizeStatus(status: Record<string, unknown>): {
     name: String(status.name ?? 'Unknown'),
     color,
     type: validTypes.has(rawType) ? (rawType as 'open' | 'active' | 'done' | 'closed') : 'active',
+  };
+}
+
+function normalizeTag(tag: Record<string, unknown>): RecommendedTag {
+  let tagBg = String(tag.tag_bg ?? '#808080');
+  if (!/^#[0-9a-fA-F]{6}$/.test(tagBg)) {
+    const hex = tagBg.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+    tagBg = hex.length === 6 ? `#${hex}` : '#808080';
+  }
+  return {
+    name: String(tag.name ?? 'tag'),
+    tag_bg: tagBg,
+    tag_fg: String(tag.tag_fg ?? '#FFFFFF'),
+  };
+}
+
+function normalizeDoc(doc: Record<string, unknown>): RecommendedDoc {
+  return {
+    name: String(doc.name ?? 'Untitled Doc'),
+    description: String(doc.description ?? ''),
+    ...(doc.content ? { content: String(doc.content) } : {}),
+  };
+}
+
+function normalizeGoal(goal: Record<string, unknown>): RecommendedGoal {
+  return {
+    name: String(goal.name ?? 'Untitled Goal'),
+    due_date: String(goal.due_date ?? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
+    ...(goal.description ? { description: String(goal.description) } : {}),
+    ...(goal.color ? { color: String(goal.color) } : {}),
   };
 }
 

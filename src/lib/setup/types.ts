@@ -28,8 +28,43 @@ export interface SetupPlan {
   spaces: SpacePlan[];
   /** ClickApps recommended for this workspace */
   recommended_clickapps: string[];
+  /** Tags recommended for the workspace (created in the first space) */
+  recommended_tags?: RecommendedTag[];
+  /** Starter docs recommended for the workspace */
+  recommended_docs?: RecommendedDoc[];
+  /** Goals recommended for the workspace */
+  recommended_goals?: RecommendedGoal[];
   /** AI reasoning for why this structure was chosen */
   reasoning: string;
+}
+
+export interface RecommendedTag {
+  /** Tag name */
+  name: string;
+  /** Background color hex (e.g. "#854DF9") */
+  tag_bg: string;
+  /** Foreground color hex (e.g. "#FFFFFF") */
+  tag_fg: string;
+}
+
+export interface RecommendedDoc {
+  /** Document title */
+  name: string;
+  /** Brief description of the doc's purpose */
+  description: string;
+  /** Optional initial content (markdown) */
+  content?: string;
+}
+
+export interface RecommendedGoal {
+  /** Goal name */
+  name: string;
+  /** Due date as ISO date string */
+  due_date: string;
+  /** Brief description */
+  description?: string;
+  /** Goal color hex */
+  color?: string;
 }
 
 export interface SpacePlan {

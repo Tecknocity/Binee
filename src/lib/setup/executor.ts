@@ -221,6 +221,60 @@ export async function executeSetupPlan(
   }
 
   // -------------------------------------------------------------------------
+  // Phase 4: Create Tags (in the first space that has an ID)
+  // -------------------------------------------------------------------------
+  if (plan.recommended_tags && plan.recommended_tags.length > 0) {
+    const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
+    if (firstSpaceId) {
+      for (const tag of plan.recommended_tags) {
+        try {
+          await withRetry(() =>
+            client.post(`/space/${firstSpaceId}/tag`, {
+              tag: { name: tag.name, tag_bg: tag.tag_bg, tag_fg: tag.tag_fg },
+            })
+          );
+        } catch {
+          // Tags are best-effort; don't fail the whole setup
+        }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Phase 5: Create Docs
+  // -------------------------------------------------------------------------
+  if (plan.recommended_docs && plan.recommended_docs.length > 0) {
+    for (const doc of plan.recommended_docs) {
+      try {
+        const body: Record<string, unknown> = { name: doc.name };
+        if (doc.content) body.content = doc.content;
+        await withRetry(() => client.post(`/team/${teamId}/doc`, body));
+      } catch {
+        // Docs are best-effort
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Phase 6: Create Goals
+  // -------------------------------------------------------------------------
+  if (plan.recommended_goals && plan.recommended_goals.length > 0) {
+    for (const goal of plan.recommended_goals) {
+      try {
+        const body: Record<string, unknown> = {
+          name: goal.name,
+          due_date: new Date(goal.due_date).getTime(),
+        };
+        if (goal.description) body.description = goal.description;
+        if (goal.color) body.color = goal.color;
+        await withRetry(() => client.post(`/team/${teamId}/goal`, body));
+      } catch {
+        // Goals are best-effort
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Build final result
   // -------------------------------------------------------------------------
   const successCount = items.filter((i) => i.status === "success").length;

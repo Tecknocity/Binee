@@ -79,6 +79,13 @@ export async function executeTool(
         return await handleGetTimeTrackingSummary(toolInput, workspaceId);
       case 'get_workspace_health':
         return await handleGetWorkspaceHealth(workspaceId);
+      // Time tracking actions
+      case 'start_time_tracking':
+        return await handleStartTimeTracking(toolInput, workspaceId);
+      case 'stop_time_tracking':
+        return await handleStopTimeTracking(workspaceId);
+      case 'add_manual_time_entry':
+        return await handleAddManualTimeEntry(toolInput, workspaceId);
       // Docs
       case 'search_docs':
         return await handleSearchDocs(workspaceId);
@@ -1262,6 +1269,104 @@ async function handleGetWorkspaceHealth(
     workload_distribution: workload,
     empty_lists: emptyLists.map((l) => l.name),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Time tracking action handlers
+// ---------------------------------------------------------------------------
+
+async function handleStartTimeTracking(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  if (!taskId) {
+    return { error: 'task_id is required', success: false };
+  }
+  const teamId = await resolveTeamId(workspaceId);
+  const client = new ClickUpClient(workspaceId);
+  const description = input.description as string | undefined;
+
+  try {
+    const entry = await client.startTimeEntry(teamId, taskId, description);
+    return {
+      success: true,
+      time_entry: { id: entry.id, task_id: taskId },
+      message: `Timer started on task ${taskId}.${description ? ` Description: "${description}"` : ''}`,
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err), success: false };
+  }
+}
+
+async function handleStopTimeTracking(
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const teamId = await resolveTeamId(workspaceId);
+  const client = new ClickUpClient(workspaceId);
+
+  try {
+    const entry = await client.stopTimeEntry(teamId);
+    const durationMs = typeof entry.duration === 'string' ? parseInt(entry.duration, 10) : 0;
+    const durationHours = Math.round((durationMs / 3_600_000) * 100) / 100;
+    return {
+      success: true,
+      time_entry: {
+        id: entry.id,
+        duration_ms: durationMs,
+        duration_hours: durationHours,
+        task: entry.task,
+      },
+      message: `Timer stopped. Logged ${durationHours} hours.`,
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err), success: false };
+  }
+}
+
+async function handleAddManualTimeEntry(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const durationHours = input.duration_hours as number;
+  if (!taskId) {
+    return { error: 'task_id is required', success: false };
+  }
+  if (!durationHours || durationHours <= 0) {
+    return { error: 'duration_hours must be a positive number', success: false };
+  }
+
+  const teamId = await resolveTeamId(workspaceId);
+  const client = new ClickUpClient(workspaceId);
+  const durationMs = Math.round(durationHours * 3_600_000);
+
+  // Default to start of today, or parse provided date
+  let startMs: number;
+  if (input.date && typeof input.date === 'string') {
+    startMs = new Date(input.date).getTime();
+  } else {
+    const today = new Date();
+    today.setHours(9, 0, 0, 0);
+    startMs = today.getTime();
+  }
+
+  const description = input.description as string | undefined;
+
+  try {
+    const entry = await client.addManualTimeEntry(teamId, taskId, startMs, durationMs, description);
+    return {
+      success: true,
+      time_entry: {
+        id: entry.id,
+        task_id: taskId,
+        duration_hours: durationHours,
+      },
+      message: `Logged ${durationHours} hours on task ${taskId}.`,
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err), success: false };
+  }
 }
 
 // ---------------------------------------------------------------------------
