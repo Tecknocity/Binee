@@ -273,11 +273,25 @@ export async function executeSetupPlan(
   // -------------------------------------------------------------------------
   if (plan.recommended_tags && plan.recommended_tags.length > 0) {
     const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
+
+    // Fetch existing tags for duplicate detection (safe for retry)
+    let existingTagNames = new Set<string>();
+    if (firstSpaceId) {
+      try {
+        const existingTags = await client.getSpaceTags(firstSpaceId);
+        existingTagNames = new Set(existingTags.map(t => t.name.toLowerCase()));
+      } catch {
+        // If we can't fetch tags, proceed without duplicate check
+      }
+    }
+
     for (const tag of plan.recommended_tags) {
       const item = findItem(items, "tag", tag.name);
 
       if (!firstSpaceId) {
         markError(item, new Error("No space available to create tags in"));
+      } else if (existingTagNames.has(tag.name.toLowerCase())) {
+        markSkipped(item, firstSpaceId);
       } else {
         try {
           await withRetry(() =>
@@ -301,14 +315,24 @@ export async function executeSetupPlan(
   // Phase 5: Create Docs (uses ClickUp API v3)
   // -------------------------------------------------------------------------
   if (plan.recommended_docs && plan.recommended_docs.length > 0) {
-    // Create docs in the first space for organization
     const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
+
+    // Fetch existing docs for duplicate detection (safe for retry)
+    let existingDocNames = new Set<string>();
+    try {
+      const existingDocs = await client.searchDocs(teamId);
+      existingDocNames = new Set(existingDocs.map(d => d.name.toLowerCase()));
+    } catch {
+      // If we can't fetch docs, proceed without duplicate check
+    }
 
     for (const doc of plan.recommended_docs) {
       const item = findItem(items, "doc", doc.name);
 
       if (!firstSpaceId) {
         markError(item, new Error("No space available to create docs in"));
+      } else if (existingDocNames.has(doc.name.toLowerCase())) {
+        markSkipped(item);
       } else {
         try {
           // ClickUp Docs API requires v3 endpoint with parent container
@@ -337,23 +361,36 @@ export async function executeSetupPlan(
   // Phase 6: Create Goals
   // -------------------------------------------------------------------------
   if (plan.recommended_goals && plan.recommended_goals.length > 0) {
+    // Fetch existing goals for duplicate detection (safe for retry)
+    let existingGoalNames = new Set<string>();
+    try {
+      const existingGoals = await client.getGoals(teamId);
+      existingGoalNames = new Set(existingGoals.map(g => g.name.toLowerCase()));
+    } catch {
+      // If we can't fetch goals, proceed without duplicate check
+    }
+
     for (const goal of plan.recommended_goals) {
       const item = findItem(items, "goal", goal.name);
 
-      try {
-        const body: Record<string, unknown> = {
-          name: goal.name,
-          due_date: new Date(goal.due_date).getTime(),
-        };
-        if (goal.description) body.description = goal.description;
-        if (goal.color) body.color = goal.color;
-        const result = await withRetry(() =>
-          client.post<{ goal?: { id?: string } }>(`/team/${teamId}/goal`, body)
-        );
-        markSuccess(item, result?.goal?.id || teamId);
-      } catch (err) {
-        markError(item, err);
-        console.error(`[setup/executor] Failed to create goal "${goal.name}":`, err);
+      if (existingGoalNames.has(goal.name.toLowerCase())) {
+        markSkipped(item);
+      } else {
+        try {
+          const body: Record<string, unknown> = {
+            name: goal.name,
+            due_date: new Date(goal.due_date).getTime(),
+          };
+          if (goal.description) body.description = goal.description;
+          if (goal.color) body.color = goal.color;
+          const result = await withRetry(() =>
+            client.post<{ goal?: { id?: string } }>(`/team/${teamId}/goal`, body)
+          );
+          markSuccess(item, result?.goal?.id || teamId);
+        } catch (err) {
+          markError(item, err);
+          console.error(`[setup/executor] Failed to create goal "${goal.name}":`, err);
+        }
       }
 
       completed++;

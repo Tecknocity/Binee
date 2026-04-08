@@ -762,9 +762,13 @@ export function useSetup(): UseSetupReturn {
         store?.getState().setManualSteps(steps);
       }
 
-      // Only auto-advance if no errors
-      const hasErrors = resultItems.some(i => i.status === 'error');
-      if (!hasErrors) {
+      // Auto-advance if no structural errors (spaces/folders/lists).
+      // Tags/docs/goals failures are shown but should not block progression.
+      const structuralTypes = new Set(['space', 'folder', 'list']);
+      const hasStructuralErrors = resultItems.some(
+        i => i.status === 'error' && structuralTypes.has(i.type)
+      );
+      if (!hasStructuralErrors) {
         setTimeout(() => setCurrentStep(5), 1500);
       }
     } catch (err) {
