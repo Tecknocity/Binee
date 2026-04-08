@@ -14,6 +14,7 @@ import {
   Rocket,
   Lightbulb,
   Puzzle,
+  ArrowLeft,
 } from 'lucide-react';
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
@@ -26,7 +27,6 @@ interface StructurePreviewProps {
   plan: SetupPlan;
   onApprove: () => void;
   onEdit: () => void;
-  onReject: () => void;
   /** Called when the plan is modified in-place (editable mode) */
   onPlanChange?: (plan: SetupPlan) => void;
   /** Current workspace structure from ClickUp (for showing existing vs new) */
@@ -37,7 +37,7 @@ interface StructurePreviewProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChange, existingStructure }: StructurePreviewProps) {
+export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure }: StructurePreviewProps) {
   // Count totals for summary
   let totalFolders = 0;
   let totalLists = 0;
@@ -335,33 +335,23 @@ export function StructurePreview({ plan, onApprove, onEdit, onReject, onPlanChan
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center justify-between pt-3 border-t border-border shrink-0">
+      <div className="flex items-center justify-end gap-2 pt-3 border-t border-border shrink-0">
         <button
-          onClick={onReject}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-error/70 hover:text-error hover:bg-error/10 rounded-lg transition-colors"
+          onClick={onEdit}
+          className="flex items-center gap-1.5 px-4 py-2 text-sm text-text-secondary border border-border rounded-lg
+            hover:border-accent/40 hover:text-text-primary transition-colors"
         >
-          <X className="w-3.5 h-3.5" />
-          Start Over
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Revise with AI
         </button>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onEdit}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm text-text-secondary border border-border rounded-lg
-              hover:border-accent/40 hover:text-text-primary transition-colors"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Revise with AI
-          </button>
-          <button
-            onClick={onApprove}
-            className="flex items-center gap-1.5 px-5 py-2 bg-accent text-white text-sm font-medium rounded-lg
-              hover:bg-accent/90 transition-colors shadow-lg shadow-accent/20"
-          >
-            <Rocket className="w-4 h-4" />
-            Approve &amp; Build
-          </button>
-        </div>
+        <button
+          onClick={onApprove}
+          className="flex items-center gap-1.5 px-5 py-2 bg-accent text-white text-sm font-medium rounded-lg
+            hover:bg-accent/90 transition-colors shadow-lg shadow-accent/20"
+        >
+          <Rocket className="w-4 h-4" />
+          Approve &amp; Build
+        </button>
       </div>
     </div>
   );

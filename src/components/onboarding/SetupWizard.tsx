@@ -66,8 +66,13 @@ export default function SetupWizard() {
     setup.navigateToStep(step as SetupStep);
   };
 
-  // Handle redo button click - this requires confirmation
+  // Handle redo button click - this requires confirmation (except step 3 which just navigates back)
   const handleRedoClick = (step: number) => {
+    if (step === 3) {
+      // Regenerate Structure: just go back to Describe without resetting data or sending messages
+      setup.navigateToStep(2 as SetupStep);
+      return;
+    }
     setConfirmDialog({ targetStep: step, type: 'redo' });
   };
 
@@ -216,8 +221,7 @@ export default function SetupWizard() {
           <StructurePreview
             plan={setup.proposedPlan}
             onApprove={setup.approvePlan}
-            onEdit={() => setup.requestChanges('I want to make changes to the proposed structure.')}
-            onReject={setup.restartSetup}
+            onEdit={() => setup.navigateToStep(2 as SetupStep)}
             onPlanChange={setup.updatePlan}
             existingStructure={setup.existingStructure}
           />
