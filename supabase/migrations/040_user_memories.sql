@@ -24,17 +24,21 @@ CREATE INDEX IF NOT EXISTS idx_user_memories_lookup
 ALTER TABLE user_memories ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own memories
+DROP POLICY IF EXISTS user_memories_select ON user_memories;
 CREATE POLICY user_memories_select ON user_memories
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Users can manage their own memories (edit, deactivate)
+DROP POLICY IF EXISTS user_memories_update ON user_memories;
 CREATE POLICY user_memories_update ON user_memories
   FOR UPDATE USING (auth.uid() = user_id);
 
 -- Service role can insert (used by summarization engine)
+DROP POLICY IF EXISTS user_memories_insert ON user_memories;
 CREATE POLICY user_memories_insert ON user_memories
   FOR INSERT WITH CHECK (true);
 
 -- Users can delete their own memories
+DROP POLICY IF EXISTS user_memories_delete ON user_memories;
 CREATE POLICY user_memories_delete ON user_memories
   FOR DELETE USING (auth.uid() = user_id);
