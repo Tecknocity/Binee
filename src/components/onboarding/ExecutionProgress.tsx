@@ -15,6 +15,9 @@ import {
   RefreshCw,
   ArrowRight,
   Info,
+  Tag,
+  FileText,
+  Target,
 } from 'lucide-react';
 import type { ExecutionProgress as ExecutionProgressType, ExecutionResult, SetupPlan } from '@/lib/setup/types';
 import type { ExecutionItem } from '@/lib/setup/executor';
@@ -55,7 +58,7 @@ const PHASE_ORDER = [
   'creating_spaces',
   'creating_folders',
   'creating_lists',
-  'creating_tasks',
+  'creating_tags',
   'creating_docs',
 ] as const;
 
@@ -63,7 +66,7 @@ const PHASE_LABELS: Record<string, string> = {
   creating_spaces: 'Spaces',
   creating_folders: 'Folders',
   creating_lists: 'Lists',
-  creating_tasks: 'Tasks',
+  creating_tags: 'Tags',
   creating_docs: 'Docs',
 };
 
@@ -71,6 +74,9 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   space: <FolderOpen className="w-3.5 h-3.5" />,
   folder: <Folder className="w-3.5 h-3.5" />,
   list: <List className="w-3.5 h-3.5" />,
+  tag: <Tag className="w-3.5 h-3.5" />,
+  doc: <FileText className="w-3.5 h-3.5" />,
+  goal: <Target className="w-3.5 h-3.5" />,
 };
 
 /** Detect cascade errors (child failed because parent failed, not a real error) */

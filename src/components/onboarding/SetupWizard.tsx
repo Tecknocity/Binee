@@ -1,8 +1,9 @@
 'use client';
 
-import { Check, PartyPopper } from 'lucide-react';
+import { Check, PartyPopper, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import type { SetupStep } from '@/hooks/useSetup';
 import { ClickUpConnectStep } from './ClickUpConnectStep';
 import { WorkspaceAnalysis } from './WorkspaceAnalysis';
@@ -24,6 +25,12 @@ const STEPS = [
 export default function SetupWizard() {
   const setup = useSetup();
   const router = useRouter();
+  const { workspace } = useWorkspace();
+
+  // Build ClickUp workspace URL from team ID
+  const clickUpUrl = workspace?.clickup_team_id
+    ? `https://app.clickup.com/${workspace.clickup_team_id}`
+    : null;
 
   // Determine if a step has been completed (has data)
   const isStepCompleted = (step: number): boolean => {
@@ -42,8 +49,8 @@ export default function SetupWizard() {
   const canNavigateToStep = (step: number): boolean => {
     if (step === setup.currentStep) return false; // Already here
     if (step > setup.furthestStep) return false; // Can't go beyond furthest reached
-    // Can navigate to any completed step within range
-    return isStepCompleted(step);
+    // Can navigate to any previously visited step
+    return true;
   };
 
   // Handle step circle click
@@ -200,6 +207,7 @@ export default function SetupWizard() {
             steps={setup.manualSteps}
             onMarkComplete={setup.markStepComplete}
             onFinish={() => router.push('/chat')}
+            clickUpUrl={clickUpUrl}
           />
         )}
 
@@ -216,12 +224,26 @@ export default function SetupWizard() {
               Your ClickUp workspace has been set up. You can now start chatting
               with Binee to manage your tasks and projects.
             </p>
-            <button
-              onClick={() => router.push('/chat')}
-              className="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl font-medium transition-colors"
-            >
-              Start Chatting
-            </button>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => router.push('/chat')}
+                className="px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl font-medium transition-colors"
+              >
+                Start Chatting
+              </button>
+              {clickUpUrl && (
+                <a
+                  href={clickUpUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-5 py-3 border border-border text-text-secondary rounded-xl font-medium
+                    hover:bg-surface-hover transition-colors"
+                >
+                  Open ClickUp
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              )}
+            </div>
           </div>
         )}
       </div>

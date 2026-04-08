@@ -16,7 +16,7 @@ import type { ExistingWorkspaceStructure } from "@/stores/setupStore";
 
 export type ExecutionItemStatus = "pending" | "success" | "error" | "skipped";
 
-export type ExecutionItemType = "space" | "folder" | "list";
+export type ExecutionItemType = "space" | "folder" | "list" | "tag" | "doc" | "goal";
 
 export interface ExecutionItem {
   type: ExecutionItemType;
@@ -273,33 +273,87 @@ export async function executeSetupPlan(
   // -------------------------------------------------------------------------
   if (plan.recommended_tags && plan.recommended_tags.length > 0) {
     const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
+
+    // Fetch existing tags for duplicate detection (safe for retry)
+    let existingTagNames = new Set<string>();
     if (firstSpaceId) {
-      for (const tag of plan.recommended_tags) {
+      try {
+        const existingTags = await client.getSpaceTags(firstSpaceId);
+        existingTagNames = new Set(existingTags.map(t => t.name.toLowerCase()));
+      } catch {
+        // If we can't fetch tags, proceed without duplicate check
+      }
+    }
+
+    for (const tag of plan.recommended_tags) {
+      const item = findItem(items, "tag", tag.name);
+
+      if (!firstSpaceId) {
+        markError(item, new Error("No space available to create tags in"));
+      } else if (existingTagNames.has(tag.name.toLowerCase())) {
+        markSkipped(item, firstSpaceId);
+      } else {
         try {
           await withRetry(() =>
             client.post(`/space/${firstSpaceId}/tag`, {
               tag: { name: tag.name, tag_bg: tag.tag_bg, tag_fg: tag.tag_fg },
             })
           );
-        } catch {
-          // Tags are best-effort; don't fail the whole setup
+          markSuccess(item, firstSpaceId);
+        } catch (err) {
+          markError(item, err);
+          console.error(`[setup/executor] Failed to create tag "${tag.name}":`, err);
         }
       }
+
+      completed++;
+      onProgress?.(item, { completed, total: totalItems });
     }
   }
 
   // -------------------------------------------------------------------------
-  // Phase 5: Create Docs
+  // Phase 5: Create Docs (uses ClickUp API v3)
   // -------------------------------------------------------------------------
   if (plan.recommended_docs && plan.recommended_docs.length > 0) {
+    const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
+
+    // Fetch existing docs for duplicate detection (safe for retry)
+    let existingDocNames = new Set<string>();
+    try {
+      const existingDocs = await client.searchDocs(teamId);
+      existingDocNames = new Set(existingDocs.map(d => d.name.toLowerCase()));
+    } catch {
+      // If we can't fetch docs, proceed without duplicate check
+    }
+
     for (const doc of plan.recommended_docs) {
-      try {
-        const body: Record<string, unknown> = { name: doc.name };
-        if (doc.content) body.content = doc.content;
-        await withRetry(() => client.post(`/team/${teamId}/doc`, body));
-      } catch {
-        // Docs are best-effort
+      const item = findItem(items, "doc", doc.name);
+
+      if (!firstSpaceId) {
+        markError(item, new Error("No space available to create docs in"));
+      } else if (existingDocNames.has(doc.name.toLowerCase())) {
+        markSkipped(item);
+      } else {
+        try {
+          // ClickUp Docs API requires v3 endpoint with parent container
+          const body: Record<string, unknown> = {
+            name: doc.name,
+            parent: { id: firstSpaceId, type: 4 }, // 4 = space
+            visibility: "PUBLIC",
+            create_page: true,
+          };
+          const result = await withRetry(() =>
+            client.postV3<{ id?: string }>(`/workspaces/${teamId}/docs`, body)
+          );
+          markSuccess(item, result?.id || firstSpaceId);
+        } catch (err) {
+          markError(item, err);
+          console.error(`[setup/executor] Failed to create doc "${doc.name}":`, err);
+        }
       }
+
+      completed++;
+      onProgress?.(item, { completed, total: totalItems });
     }
   }
 
@@ -307,18 +361,40 @@ export async function executeSetupPlan(
   // Phase 6: Create Goals
   // -------------------------------------------------------------------------
   if (plan.recommended_goals && plan.recommended_goals.length > 0) {
+    // Fetch existing goals for duplicate detection (safe for retry)
+    let existingGoalNames = new Set<string>();
+    try {
+      const existingGoals = await client.getGoals(teamId);
+      existingGoalNames = new Set(existingGoals.map(g => g.name.toLowerCase()));
+    } catch {
+      // If we can't fetch goals, proceed without duplicate check
+    }
+
     for (const goal of plan.recommended_goals) {
-      try {
-        const body: Record<string, unknown> = {
-          name: goal.name,
-          due_date: new Date(goal.due_date).getTime(),
-        };
-        if (goal.description) body.description = goal.description;
-        if (goal.color) body.color = goal.color;
-        await withRetry(() => client.post(`/team/${teamId}/goal`, body));
-      } catch {
-        // Goals are best-effort
+      const item = findItem(items, "goal", goal.name);
+
+      if (existingGoalNames.has(goal.name.toLowerCase())) {
+        markSkipped(item);
+      } else {
+        try {
+          const body: Record<string, unknown> = {
+            name: goal.name,
+            due_date: new Date(goal.due_date).getTime(),
+          };
+          if (goal.description) body.description = goal.description;
+          if (goal.color) body.color = goal.color;
+          const result = await withRetry(() =>
+            client.post<{ goal?: { id?: string } }>(`/team/${teamId}/goal`, body)
+          );
+          markSuccess(item, result?.goal?.id || teamId);
+        } catch (err) {
+          markError(item, err);
+          console.error(`[setup/executor] Failed to create goal "${goal.name}":`, err);
+        }
       }
+
+      completed++;
+      onProgress?.(item, { completed, total: totalItems });
     }
   }
 
@@ -385,6 +461,27 @@ function buildExecutionItems(plan: SetupPlan): ExecutionItem[] {
     }
   }
 
+  // Tags
+  if (plan.recommended_tags) {
+    for (const tag of plan.recommended_tags) {
+      items.push({ type: "tag", name: tag.name, status: "pending" });
+    }
+  }
+
+  // Docs
+  if (plan.recommended_docs) {
+    for (const doc of plan.recommended_docs) {
+      items.push({ type: "doc", name: doc.name, status: "pending" });
+    }
+  }
+
+  // Goals
+  if (plan.recommended_goals) {
+    for (const goal of plan.recommended_goals) {
+      items.push({ type: "goal", name: goal.name, status: "pending" });
+    }
+  }
+
   return items;
 }
 
@@ -418,7 +515,7 @@ function markSuccess(item: ExecutionItem, clickupId: string): void {
 function markError(item: ExecutionItem, err: unknown): void {
   item.status = "error";
   if (err instanceof ClickUpApiError && err.statusCode === 403) {
-    item.error = `Not allowed by ClickUp. Your plan may limit the number of ${item.type === 'space' ? 'spaces' : item.type === 'folder' ? 'folders' : 'lists'} you can create.`;
+    item.error = `Not allowed by ClickUp. Your plan may limit ${item.type} creation.`;
   } else {
     item.error = err instanceof Error ? err.message : String(err);
   }
@@ -479,7 +576,8 @@ function buildListBody(listPlan: ListPlan): Record<string, unknown> {
     body.statuses = listPlan.statuses.map((s, index) => ({
       status: s.name,
       color: s.color,
-      type: s.type,
+      // ClickUp API expects 'custom' for active/in-progress statuses, not 'active'
+      type: s.type === 'active' ? 'custom' : s.type,
       orderindex: index,
     }));
   }
