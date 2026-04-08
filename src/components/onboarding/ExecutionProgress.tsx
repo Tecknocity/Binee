@@ -132,6 +132,18 @@ export function ExecutionProgress({
     const derived: DerivedItem[] = [];
     for (const space of plan.spaces) {
       derived.push({ name: space.name, type: 'space', state: 'pending' });
+      // Folderless lists
+      if (space.lists) {
+        for (const list of space.lists) {
+          derived.push({
+            name: `${space.name} / ${list.name}`,
+            type: 'list',
+            parentName: space.name,
+            state: 'pending',
+          });
+        }
+      }
+      // Folders and their lists
       for (const folder of space.folders) {
         derived.push({
           name: `${space.name} / ${folder.name}`,

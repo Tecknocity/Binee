@@ -679,7 +679,15 @@ export function useSetup(): UseSetupReturn {
       const { plan } = await res.json();
       store?.getState().setPlan(plan);
       const version = (history.length || 0) + (currentPlan ? 2 : 1);
-      addMessage('assistant', `I've designed your workspace structure (v${version}) with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`);
+      const totalLists = plan.spaces.reduce((acc: number, s: { folders: Array<{ lists: unknown[] }>; lists?: unknown[] }) => {
+        const folderLists = s.folders.reduce((a: number, f: { lists: unknown[] }) => a + f.lists.length, 0);
+        return acc + folderLists + (s.lists?.length ?? 0);
+      }, 0);
+      const totalFolders = plan.spaces.reduce((acc: number, s: { folders: unknown[] }) => acc + s.folders.length, 0);
+      const structureDesc = totalFolders > 0
+        ? `**${plan.spaces.length} spaces**, **${totalLists} lists**, and ${totalFolders} folders`
+        : `**${plan.spaces.length} spaces** and **${totalLists} lists**`;
+      addMessage('assistant', `I've designed your workspace structure (v${version}) with ${structureDesc}.\n\nTake a look and let me know if you'd like any changes.`);
       setCurrentStep(3);
     } catch {
       addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');

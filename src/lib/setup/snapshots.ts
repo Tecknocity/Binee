@@ -59,13 +59,24 @@ export async function takeWorkspaceSnapshot(
     const lists = listsRes.data || [];
 
     // Build hierarchical structure
+    const folderIds = new Set(folders.map((f) => f.clickup_id));
+
     const structure: SnapshotStructure = {
-      spaces: spaces.map((space) => ({
-        clickup_id: space.clickup_id,
-        name: space.name,
-        folders: folders
-          .filter((f) => f.space_id === space.clickup_id)
-          .map((folder) => ({
+      spaces: spaces.map((space) => {
+        const spaceFolders = folders.filter((f) => f.space_id === space.clickup_id);
+        const folderlessLists = lists
+          .filter((l) => l.space_id === space.clickup_id && (!l.folder_id || !folderIds.has(l.folder_id)))
+          .map((list) => ({
+            clickup_id: list.clickup_id,
+            name: list.name,
+            task_count: list.task_count || 0,
+            statuses: list.status,
+          }));
+
+        return {
+          clickup_id: space.clickup_id,
+          name: space.name,
+          folders: spaceFolders.map((folder) => ({
             clickup_id: folder.clickup_id,
             name: folder.name,
             lists: lists
@@ -77,7 +88,9 @@ export async function takeWorkspaceSnapshot(
                 statuses: list.status,
               })),
           })),
-      })),
+          ...(folderlessLists.length > 0 ? { lists: folderlessLists } : {}),
+        };
+      }),
       captured_at: new Date().toISOString(),
     };
 

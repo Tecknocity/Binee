@@ -112,10 +112,13 @@ ${planContext.conversationContext}`);
     const spaces = Array.isArray(prev.spaces) ? prev.spaces : [];
     const summary = spaces.map((s: Record<string, unknown>) => {
       const folders = Array.isArray(s.folders) ? s.folders : [];
-      return `Space: ${s.name}\n${folders.map((f: Record<string, unknown>) => {
+      const directLists = Array.isArray(s.lists) ? s.lists : [];
+      const directListsStr = directLists.map((l: Record<string, unknown>) => `  List: ${l.name}`).join('\n');
+      const foldersStr = folders.map((f: Record<string, unknown>) => {
         const lists = Array.isArray(f.lists) ? f.lists : [];
         return `  Folder: ${f.name}\n${lists.map((l: Record<string, unknown>) => `    List: ${l.name}`).join('\n')}`;
-      }).join('\n')}`;
+      }).join('\n');
+      return `Space: ${s.name}\n${directListsStr}${directListsStr && foldersStr ? '\n' : ''}${foldersStr}`;
     }).join('\n');
 
     parts.push(`## PREVIOUS PLAN (most recent)

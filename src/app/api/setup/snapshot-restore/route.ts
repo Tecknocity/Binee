@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
           name: string;
           lists: Array<{ clickup_id: string; name: string }>;
         }>;
+        lists?: Array<{ clickup_id: string; name: string }>;
       }>;
     };
 
@@ -66,9 +67,10 @@ export async function POST(request: NextRequest) {
       snapshotStructure.spaces.flatMap((s) => s.folders.map((f) => f.clickup_id))
     );
     const snapshotListIds = new Set(
-      snapshotStructure.spaces.flatMap((s) =>
-        s.folders.flatMap((f) => f.lists.map((l) => l.clickup_id))
-      )
+      snapshotStructure.spaces.flatMap((s) => [
+        ...s.folders.flatMap((f) => f.lists.map((l) => l.clickup_id)),
+        ...(s.lists ?? []).map((l) => l.clickup_id),
+      ])
     );
 
     // 4. Find items to delete (exist now but NOT in snapshot)
@@ -105,6 +107,18 @@ export async function POST(request: NextRequest) {
             deleted.folders.push(folder.name);
           } catch (err) {
             errors.push(`Failed to delete folder "${folder.name}": ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
+
+      // Delete folderless lists that are new (not in snapshot)
+      for (const list of space.lists ?? []) {
+        if (!snapshotListIds.has(list.clickup_id) && snapshotSpaceIds.has(space.clickup_id)) {
+          try {
+            await client.deleteList(list.clickup_id);
+            deleted.lists.push(list.name);
+          } catch (err) {
+            errors.push(`Failed to delete list "${list.name}": ${err instanceof Error ? err.message : String(err)}`);
           }
         }
       }
@@ -173,13 +187,16 @@ export async function GET(request: NextRequest) {
             name: string;
             lists?: Array<{ name: string }>;
           }>;
+          lists?: Array<{ name: string }>;
         }>;
       };
       const spaceCount = structure.spaces?.length || 0;
       const folderCount = structure.spaces?.reduce((acc, sp) => acc + (sp.folders?.length || 0), 0) || 0;
-      const listCount = structure.spaces?.reduce(
-        (acc, sp) => acc + (sp.folders?.reduce((a, f) => a + (f.lists?.length || 0), 0) || 0), 0
-      ) || 0;
+      const listCount = structure.spaces?.reduce((acc, sp) => {
+        const folderLists = sp.folders?.reduce((a, f) => a + (f.lists?.length || 0), 0) || 0;
+        const folderlessLists = sp.lists?.length || 0;
+        return acc + folderLists + folderlessLists;
+      }, 0) || 0;
 
       return {
         id: s.id,

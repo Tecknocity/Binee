@@ -47,8 +47,13 @@ export function generateManualSteps(plan: SetupPlan): ManualStep[] {
       });
     }
 
-    for (const folder of space.folders) {
-      for (const list of folder.lists) {
+    // Process all lists (both folderless and folder-based)
+    const allLists = [
+      ...(space.lists ?? []),
+      ...space.folders.flatMap((f) => f.lists),
+    ];
+
+    for (const list of allLists) {
         // Board view for pipeline/kanban-style lists
         if (hasNamePattern(list.name, ['pipeline', 'kanban', 'board', 'sales', 'deals', 'leads'])) {
           steps.push({
@@ -136,7 +141,6 @@ export function generateManualSteps(plan: SetupPlan): ManualStep[] {
           });
         }
       }
-    }
   }
 
   // Mention tags if they were created
