@@ -132,6 +132,12 @@ export async function executeTool(
         return await handleAddTaskLink(toolInput, workspaceId);
       case 'remove_task_link':
         return await handleRemoveTaskLink(toolInput, workspaceId);
+      // Batch operations
+      case 'batch_create_tasks':
+        return await handleBatchCreateTasks(toolInput, workspaceId);
+      // File content attachment
+      case 'attach_file_content_to_task':
+        return await handleAttachFileContentToTask(toolInput, workspaceId);
       default:
         return { error: `Unknown tool: ${toolName}`, success: false };
     }
@@ -2031,4 +2037,143 @@ function getDateRange(period: string): { startDate: Date; endDate: Date } {
   }
 
   return { startDate, endDate };
+}
+
+// ---------------------------------------------------------------------------
+// Batch create tasks (CSV import)
+// ---------------------------------------------------------------------------
+
+async function handleBatchCreateTasks(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const tasks = input.tasks as Array<{
+    name: string;
+    list_name: string;
+    description?: string;
+    status?: string;
+    assignee_name?: string;
+    priority?: number;
+    due_date?: string;
+  }>;
+
+  if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
+    return { error: 'tasks array is required and must not be empty', success: false };
+  }
+
+  if (tasks.length > 50) {
+    return { error: 'Maximum 50 tasks per batch. Please split into smaller batches.', success: false };
+  }
+
+  const results: Array<{ name: string; success: boolean; task_id?: string; error?: string }> = [];
+  let created = 0;
+  let failed = 0;
+
+  for (const task of tasks) {
+    if (!task.name || !task.list_name) {
+      results.push({ name: task.name || '(unnamed)', success: false, error: 'Missing name or list_name' });
+      failed++;
+      continue;
+    }
+
+    try {
+      // Resolve list name to ClickUp list ID
+      const supabase = getSupabaseAdmin();
+      const { data: list } = await supabase
+        .from('cached_lists')
+        .select('clickup_id, name')
+        .eq('workspace_id', workspaceId)
+        .ilike('name', `%${task.list_name}%`)
+        .limit(1)
+        .single();
+
+      if (!list) {
+        results.push({ name: task.name, success: false, error: `List "${task.list_name}" not found` });
+        failed++;
+        continue;
+      }
+
+      const createParams: CreateTaskParams = {
+        name: task.name,
+        ...(task.description ? { description: task.description } : {}),
+        ...(task.status ? { status: task.status } : {}),
+        ...(task.priority ? { priority: task.priority } : {}),
+        ...(task.due_date ? { due_date: new Date(task.due_date).getTime() } : {}),
+      };
+
+      // Resolve assignee if provided
+      if (task.assignee_name) {
+        const { data: member } = await supabase
+          .from('cached_team_members')
+          .select('clickup_id')
+          .eq('workspace_id', workspaceId)
+          .ilike('username', `%${task.assignee_name}%`)
+          .limit(1)
+          .single();
+
+        if (member) {
+          createParams.assignees = [parseInt(member.clickup_id)];
+        }
+      }
+
+      const result = await clickupCreateTask(workspaceId, list.clickup_id, createParams);
+
+      if (result.success && result.data) {
+        results.push({ name: task.name, success: true, task_id: result.data.id });
+        created++;
+      } else {
+        results.push({ name: task.name, success: false, error: result.error || 'Creation failed' });
+        failed++;
+      }
+    } catch (err) {
+      results.push({ name: task.name, success: false, error: err instanceof Error ? err.message : String(err) });
+      failed++;
+    }
+  }
+
+  return {
+    success: failed === 0,
+    created,
+    failed,
+    total: tasks.length,
+    results,
+    summary: `Created ${created}/${tasks.length} tasks${failed > 0 ? ` (${failed} failed)` : ''}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Attach file content to task (as comment)
+// ---------------------------------------------------------------------------
+
+async function handleAttachFileContentToTask(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const fileName = input.file_name as string;
+  const fileContent = input.file_content as string;
+
+  if (!taskId || !fileName || !fileContent) {
+    return { error: 'task_id, file_name, and file_content are required', success: false };
+  }
+
+  // Truncate content if too long for a comment (ClickUp comment limit)
+  const maxCommentLen = 25_000;
+  const truncated = fileContent.length > maxCommentLen;
+  const content = truncated
+    ? fileContent.slice(0, maxCommentLen) + '\n\n... (content truncated)'
+    : fileContent;
+
+  const commentText = `**Attached file: ${fileName}**\n\n\`\`\`\n${content}\n\`\`\``;
+
+  const result = await clickupCreateTaskComment(workspaceId, taskId, commentText);
+
+  if (result.success) {
+    return {
+      success: true,
+      message: `File "${fileName}" content attached to task ${taskId} as a comment${truncated ? ' (truncated)' : ''}`,
+    };
+  }
+
+  return { success: false, error: result.error || 'Failed to attach file content' };
 }

@@ -6,8 +6,8 @@
 
 import { ClickUpClient, ClickUpApiError } from "@/lib/clickup/client";
 import { upsertCachedSpaces, upsertCachedFolders, upsertCachedLists } from "@/lib/clickup/sync";
-import type { ClickUpSpace, ClickUpFolder, ClickUpList } from "@/types/clickup";
-import type { SetupPlan, SpacePlan, FolderPlan, ListPlan } from "@/lib/setup/types";
+import type { ClickUpList } from "@/types/clickup";
+import type { SetupPlan, ListPlan } from "@/lib/setup/types";
 import type { ExistingWorkspaceStructure } from "@/stores/setupStore";
 
 // ---------------------------------------------------------------------------
@@ -279,7 +279,6 @@ export async function executeSetupPlan(
   // -------------------------------------------------------------------------
   const successCount = items.filter((i) => i.status === "success").length;
   const errorCount = items.filter((i) => i.status === "error").length;
-  const skippedCount = items.filter((i) => i.status === "skipped").length;
 
   return {
     success: errorCount === 0,

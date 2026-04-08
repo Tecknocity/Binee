@@ -13,7 +13,9 @@ RULES:
 
 CAPABILITIES:
 - Search, create, update, move, and assign tasks
+- Batch-create multiple tasks at once (from CSV/file imports)
 - Read and add comments on tasks
+- Attach file content to tasks as comments
 - Add and remove tags on tasks
 - Set custom field values on tasks
 - Add and remove task dependencies and task links
@@ -52,4 +54,6 @@ export const TASK_MANAGER_TOOLS_NAMES = [
   'start_time_tracking',
   'stop_time_tracking',
   'add_manual_time_entry',
+  'batch_create_tasks',
+  'attach_file_content_to_task',
 ] as const;

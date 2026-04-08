@@ -22,7 +22,7 @@ import {
   FileText,
 } from 'lucide-react';
 import type { SetupChatMessage, ProfileFormData } from '@/hooks/useSetup';
-import { parseFile, getFileError, isFileSupported } from '@/lib/file-parser';
+import { parseFile, getFileError, isFileSupported, formatAttachmentsForAI } from '@/lib/file-parser';
 import type { FileAttachment } from '@/lib/file-parser';
 
 // ---------------------------------------------------------------------------
@@ -202,17 +202,7 @@ export function BusinessChatStep({
   const handleSend = () => {
     if ((!input.trim() && attachments.length === 0) || isSending) return;
 
-    let fileContext: string | undefined;
-    if (attachments.length > 0) {
-      const parts = attachments.map((att, i) => {
-        const header = attachments.length > 1 ? `[Attachment ${i + 1}: ${att.name}]` : `[Attached file: ${att.name}]`;
-        const meta = att.rowCount
-          ? ` (${att.rowCount} rows, columns: ${att.columns?.join(', ') ?? 'unknown'})`
-          : '';
-        return `${header}${meta}\n${att.content}`;
-      });
-      fileContext = parts.join('\n\n---\n\n');
-    }
+    const fileContext = attachments.length > 0 ? formatAttachmentsForAI(attachments) : undefined;
 
     onSendMessage(input.trim() || 'Please analyze the attached file(s) for my workspace setup.', fileContext);
     setInput('');

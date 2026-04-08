@@ -776,6 +776,57 @@ export const CLICKUP_TOOL_REGISTRY: Anthropic.Tool[] = [
       required: ['task_id', 'links_to_task_id'],
     },
   },
+  {
+    name: 'batch_create_tasks',
+    description:
+      'Create multiple tasks at once from structured data (e.g. imported from a CSV file). Each task needs a name and list_name, with optional fields like description, status, assignee, priority, and due_date.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        tasks: {
+          type: 'array',
+          description: 'Array of task objects to create',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Task name (required)' },
+              list_name: { type: 'string', description: 'List name to create the task in (required)' },
+              description: { type: 'string', description: 'Task description' },
+              status: { type: 'string', description: 'Task status' },
+              assignee_name: { type: 'string', description: 'Assignee name' },
+              priority: { type: 'number', description: 'Priority: 1=Urgent, 2=High, 3=Normal, 4=Low' },
+              due_date: { type: 'string', description: 'Due date (YYYY-MM-DD)' },
+            },
+            required: ['name', 'list_name'],
+          },
+        },
+      },
+      required: ['tasks'],
+    },
+  },
+  {
+    name: 'attach_file_content_to_task',
+    description:
+      'Attach file content (from an uploaded CSV, XLSX, TXT, or JSON file) to a ClickUp task as a comment. Use this when a user wants to attach or save file data to a specific task.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The task ID to attach file content to',
+        },
+        file_name: {
+          type: 'string',
+          description: 'Original file name (e.g. "report.csv")',
+        },
+        file_content: {
+          type: 'string',
+          description: 'The parsed file content to attach',
+        },
+      },
+      required: ['task_id', 'file_name', 'file_content'],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -800,7 +851,7 @@ export const SUB_AGENT_TOOLS: Anthropic.Tool[] = [
 - Set custom field values on tasks
 - Add or remove task dependencies and links
 
-DO NOT use this for: workspace structure changes (use setupper), workspace analysis (use workspace_analyst), or doc/goal operations (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
+DO NOT use this for: workspace analysis (use workspace_analyst), or doc/goal operations (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -826,7 +877,7 @@ DO NOT use this for: workspace structure changes (use setupper), workspace analy
 - Search, read, create, or update ClickUp Docs
 - Review available tags across the workspace
 
-DO NOT use this for: creating or modifying workspace structure (use setupper) or managing individual tasks (use task_manager).`,
+DO NOT use this for: managing individual tasks (use task_manager).`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -838,33 +889,6 @@ DO NOT use this for: creating or modifying workspace structure (use setupper) or
           type: 'string',
           enum: ['audit', 'snapshot'],
           description: 'audit = human-readable analysis for chat. snapshot = structured data for the Setup flow.',
-        },
-      },
-      required: ['request'],
-    },
-  },
-  {
-    name: 'setupper',
-    description: `Delegate to the Setupper sub-agent for creating or improving ClickUp workspace structure. Use this when the user wants to:
-- Set up their ClickUp workspace for the first time
-- Create new Spaces, Folders, or Lists
-- Add or modify status configurations
-- Create custom fields
-- Restructure or reorganize their workspace
-- Apply industry-specific workspace templates
-- Improve their current workspace structure based on analysis
-
-DO NOT use this for: analyzing workspace health (use workspace_analyst first, then setupper to act on findings) or managing individual tasks (use task_manager). The Setupper NEVER deletes existing structures — it only creates new ones alongside existing ones.`,
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        request: {
-          type: 'string',
-          description: 'Natural language description of what workspace structure the user wants to create or change.',
-        },
-        analyst_snapshot: {
-          type: 'string',
-          description: 'Optional: JSON snapshot from the Workspace Analyst if a scan was run first.',
         },
       },
       required: ['request'],
