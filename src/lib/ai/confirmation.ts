@@ -23,6 +23,13 @@ export type TrustTier = 'low' | 'medium' | 'high';
 /** Low risk — safe, additive operations. Eligible for "Always Allow". */
 const LOW_RISK_OPERATIONS = new Set([
   'create_task',
+  'create_doc',
+  'create_doc_page',
+  'create_goal',
+  'create_key_result',
+  'add_task_comment',
+  'add_tag_to_task',
+  'add_task_link',
 ]);
 
 /** Medium risk — modify existing data. Eligible for "Always Allow". */
@@ -30,6 +37,13 @@ const MEDIUM_RISK_OPERATIONS = new Set([
   'update_task',
   'assign_task',
   'move_task',
+  'update_doc_page',
+  'update_goal',
+  'set_custom_field',
+  'remove_tag_from_task',
+  'add_dependency',
+  'remove_dependency',
+  'remove_task_link',
 ]);
 
 /** High risk — destructive operations. Always require confirmation, never auto-approve. */
@@ -152,6 +166,139 @@ export function describeAction(
         details: formatDetails({
           'Task ID': toolInput.task_id,
           'Target list': toolInput.target_list_name,
+        }),
+      };
+
+    case 'create_doc':
+      return {
+        description: `Create new document "${toolInput.name}"`,
+        details: formatDetails({
+          'Document name': toolInput.name,
+          ...(toolInput.content ? { Content: truncate(toolInput.content as string, 100) } : {}),
+        }),
+      };
+
+    case 'create_doc_page':
+      return {
+        description: `Create page "${toolInput.name}" in document`,
+        details: formatDetails({
+          'Doc ID': toolInput.doc_id,
+          'Page name': toolInput.name,
+        }),
+      };
+
+    case 'update_doc_page':
+      return {
+        description: `Update document page`,
+        details: formatDetails({
+          'Doc ID': toolInput.doc_id,
+          'Page ID': toolInput.page_id,
+          ...(toolInput.name ? { 'New name': toolInput.name } : {}),
+        }),
+      };
+
+    case 'create_goal':
+      return {
+        description: `Create goal "${toolInput.name}"`,
+        details: formatDetails({
+          'Goal name': toolInput.name,
+          'Due date': toolInput.due_date,
+          ...(toolInput.description ? { Description: truncate(toolInput.description as string, 100) } : {}),
+          ...(toolInput.owner_name ? { Owner: toolInput.owner_name } : {}),
+        }),
+      };
+
+    case 'update_goal':
+      return {
+        description: `Update goal ${toolInput.goal_id}`,
+        details: formatDetails({
+          'Goal ID': toolInput.goal_id,
+          ...(toolInput.name ? { 'New name': toolInput.name } : {}),
+          ...(toolInput.due_date ? { 'Due date': `${toolInput.due_date}` } : {}),
+        }),
+      };
+
+    case 'create_key_result':
+      return {
+        description: `Create key result "${toolInput.name}"`,
+        details: formatDetails({
+          'Goal ID': toolInput.goal_id,
+          'Key result name': toolInput.name,
+          Target: `${toolInput.steps_start} - ${toolInput.steps_end}`,
+        }),
+      };
+
+    case 'add_task_comment':
+      return {
+        description: `Add comment to task ${toolInput.task_id}`,
+        details: formatDetails({
+          'Task ID': toolInput.task_id,
+          Comment: truncate(toolInput.comment_text as string, 100),
+          ...(toolInput.assignee_name ? { Assignee: toolInput.assignee_name } : {}),
+        }),
+      };
+
+    case 'add_tag_to_task':
+      return {
+        description: `Add tag "${toolInput.tag_name}" to task`,
+        details: formatDetails({
+          'Task ID': toolInput.task_id,
+          Tag: toolInput.tag_name,
+        }),
+      };
+
+    case 'remove_tag_from_task':
+      return {
+        description: `Remove tag "${toolInput.tag_name}" from task`,
+        details: formatDetails({
+          'Task ID': toolInput.task_id,
+          Tag: toolInput.tag_name,
+        }),
+      };
+
+    case 'set_custom_field':
+      return {
+        description: `Set custom field on task ${toolInput.task_id}`,
+        details: formatDetails({
+          'Task ID': toolInput.task_id,
+          ...(toolInput.field_name ? { Field: toolInput.field_name } : { 'Field ID': toolInput.field_id }),
+          Value: toolInput.value,
+        }),
+      };
+
+    case 'add_dependency':
+      return {
+        description: `Add dependency: task ${toolInput.task_id} depends on ${toolInput.depends_on_task_id}`,
+        details: formatDetails({
+          'Task': toolInput.task_id,
+          'Depends on': toolInput.depends_on_task_id,
+        }),
+      };
+
+    case 'remove_dependency':
+      return {
+        description: `Remove dependency between tasks`,
+        details: formatDetails({
+          'Task': toolInput.task_id,
+          'Depends on': toolInput.depends_on_task_id,
+        }),
+      };
+
+    case 'add_task_link':
+      return {
+        description: `Link task ${toolInput.task_id} to ${toolInput.links_to_task_id}`,
+        details: formatDetails({
+          'Task': toolInput.task_id,
+          'Links to': toolInput.links_to_task_id,
+        }),
+      };
+
+    case 'remove_task_link':
+      return {
+        description: `Unlink tasks ${toolInput.task_id} and ${toolInput.links_to_task_id}`,
+        details: formatDetails({
+          'Task': toolInput.task_id,
+          'Linked to': toolInput.links_to_task_id,
         }),
       };
 

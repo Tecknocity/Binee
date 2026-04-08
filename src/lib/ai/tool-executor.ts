@@ -5,7 +5,27 @@ import {
   assignTask as clickupAssignTask,
   unassignTask as clickupUnassignTask,
   moveTask as clickupMoveTask,
+  searchDocs as clickupSearchDocs,
+  createDoc as clickupCreateDoc,
+  getDocPages as clickupGetDocPages,
+  createDocPage as clickupCreateDocPage,
+  updateDocPage as clickupUpdateDocPage,
+  getGoals as clickupGetGoals,
+  createGoal as clickupCreateGoal,
+  updateGoal as clickupUpdateGoal,
+  getKeyResults as clickupGetKeyResults,
+  createKeyResult as clickupCreateKeyResult,
+  getTaskComments as clickupGetTaskComments,
+  createTaskComment as clickupCreateTaskComment,
+  addTagToTask as clickupAddTagToTask,
+  removeTagFromTask as clickupRemoveTagFromTask,
+  setCustomFieldValue as clickupSetCustomFieldValue,
+  addDependency as clickupAddDependency,
+  removeDependency as clickupRemoveDependency,
+  addTaskLink as clickupAddTaskLink,
+  removeTaskLink as clickupRemoveTaskLink,
 } from '@/lib/clickup/operations';
+import { ClickUpClient } from '@/lib/clickup/client';
 import type { CreateTaskParams, UpdateTaskParams } from '@/types/clickup';
 
 
@@ -57,6 +77,54 @@ export async function executeTool(
         return await handleGetTeamActivity(toolInput, workspaceId);
       case 'get_time_tracking_summary':
         return await handleGetTimeTrackingSummary(toolInput, workspaceId);
+      case 'get_workspace_health':
+        return await handleGetWorkspaceHealth(workspaceId);
+      // Docs
+      case 'search_docs':
+        return await handleSearchDocs(workspaceId);
+      case 'get_doc_pages':
+        return await handleGetDocPages(toolInput, workspaceId);
+      case 'create_doc':
+        return await handleCreateDoc(toolInput, workspaceId);
+      case 'create_doc_page':
+        return await handleCreateDocPage(toolInput, workspaceId);
+      case 'update_doc_page':
+        return await handleUpdateDocPage(toolInput, workspaceId);
+      // Goals & Key Results
+      case 'get_goals':
+        return await handleGetGoals(workspaceId);
+      case 'create_goal':
+        return await handleCreateGoal(toolInput, workspaceId);
+      case 'update_goal':
+        return await handleUpdateGoal(toolInput, workspaceId);
+      case 'get_key_results':
+        return await handleGetKeyResults(toolInput, workspaceId);
+      case 'create_key_result':
+        return await handleCreateKeyResult(toolInput, workspaceId);
+      // Comments
+      case 'get_task_comments':
+        return await handleGetTaskComments(toolInput, workspaceId);
+      case 'add_task_comment':
+        return await handleAddTaskComment(toolInput, workspaceId);
+      // Tags
+      case 'get_tags':
+        return await handleGetTags(workspaceId);
+      case 'add_tag_to_task':
+        return await handleAddTagToTask(toolInput, workspaceId);
+      case 'remove_tag_from_task':
+        return await handleRemoveTagFromTask(toolInput, workspaceId);
+      // Custom Fields
+      case 'set_custom_field':
+        return await handleSetCustomField(toolInput, workspaceId);
+      // Dependencies & Links
+      case 'add_dependency':
+        return await handleAddDependency(toolInput, workspaceId);
+      case 'remove_dependency':
+        return await handleRemoveDependency(toolInput, workspaceId);
+      case 'add_task_link':
+        return await handleAddTaskLink(toolInput, workspaceId);
+      case 'remove_task_link':
+        return await handleRemoveTaskLink(toolInput, workspaceId);
       default:
         return { error: `Unknown tool: ${toolName}`, success: false };
     }
@@ -1061,6 +1129,753 @@ async function handleGetTimeTrackingSummary(
     totalHours: Math.round((totalMs / 3_600_000) * 100) / 100,
     groupBy,
     breakdown,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// get_workspace_health — workspace health check
+// ---------------------------------------------------------------------------
+
+async function handleGetWorkspaceHealth(
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  const [
+    { data: tasks },
+    { data: lists },
+    { data: members },
+  ] = await Promise.all([
+    supabase
+      .from('cached_tasks')
+      .select('clickup_id, name, status, assignees, due_date, priority, list_id, date_updated')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('cached_lists')
+      .select('clickup_id, name, task_count')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('cached_team_members')
+      .select('clickup_id, username')
+      .eq('workspace_id', workspaceId),
+  ]);
+
+  const allTasks = tasks ?? [];
+  const allLists = lists ?? [];
+  const allMembers = members ?? [];
+  const now = new Date();
+
+  // Overdue tasks
+  const overdueTasks = allTasks.filter((t) => {
+    if (!t.due_date) return false;
+    const status = (t.status as string)?.toLowerCase() ?? '';
+    if (status.includes('closed') || status.includes('complete')) return false;
+    return new Date(t.due_date) < now;
+  });
+
+  // Unassigned tasks (open only)
+  const unassignedTasks = allTasks.filter((t) => {
+    const status = (t.status as string)?.toLowerCase() ?? '';
+    if (status.includes('closed') || status.includes('complete')) return false;
+    return !Array.isArray(t.assignees) || t.assignees.length === 0;
+  });
+
+  // Stale tasks (not updated in 14+ days, still open)
+  const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const staleTasks = allTasks.filter((t) => {
+    const status = (t.status as string)?.toLowerCase() ?? '';
+    if (status.includes('closed') || status.includes('complete')) return false;
+    const updated = t.date_updated ? new Date(t.date_updated) : null;
+    return updated && updated < twoWeeksAgo;
+  });
+
+  // Missing due dates (open tasks)
+  const missingDueDates = allTasks.filter((t) => {
+    const status = (t.status as string)?.toLowerCase() ?? '';
+    if (status.includes('closed') || status.includes('complete')) return false;
+    return !t.due_date;
+  });
+
+  // Missing priority (open tasks)
+  const missingPriority = allTasks.filter((t) => {
+    const status = (t.status as string)?.toLowerCase() ?? '';
+    if (status.includes('closed') || status.includes('complete')) return false;
+    return !t.priority;
+  });
+
+  // Workload distribution
+  const workload: Record<string, number> = {};
+  for (const t of allTasks) {
+    const status = (t.status as string)?.toLowerCase() ?? '';
+    if (status.includes('closed') || status.includes('complete')) continue;
+    const assignees = Array.isArray(t.assignees) ? t.assignees : [];
+    for (const a of assignees) {
+      const name = (a as { username?: string }).username ?? 'Unknown';
+      workload[name] = (workload[name] || 0) + 1;
+    }
+  }
+
+  // Empty lists
+  const emptyLists = allLists.filter((l) => (l.task_count ?? 0) === 0);
+
+  // Health score (0-100)
+  const openTasks = allTasks.filter((t) => {
+    const status = (t.status as string)?.toLowerCase() ?? '';
+    return !status.includes('closed') && !status.includes('complete');
+  });
+  const openCount = openTasks.length || 1;
+  const overdueRatio = overdueTasks.length / openCount;
+  const unassignedRatio = unassignedTasks.length / openCount;
+  const staleRatio = staleTasks.length / openCount;
+  const healthScore = Math.max(0, Math.round(100 - (overdueRatio * 40 + unassignedRatio * 30 + staleRatio * 30) * 100));
+
+  return {
+    success: true,
+    health_score: healthScore,
+    summary: {
+      total_open_tasks: openCount,
+      overdue_count: overdueTasks.length,
+      unassigned_count: unassignedTasks.length,
+      stale_count: staleTasks.length,
+      missing_due_date_count: missingDueDates.length,
+      missing_priority_count: missingPriority.length,
+      empty_lists_count: emptyLists.length,
+      total_members: allMembers.length,
+    },
+    overdue_tasks: overdueTasks.slice(0, 10).map((t) => ({
+      id: t.clickup_id,
+      name: t.name,
+      due_date: t.due_date,
+      status: t.status,
+    })),
+    unassigned_tasks: unassignedTasks.slice(0, 10).map((t) => ({
+      id: t.clickup_id,
+      name: t.name,
+      status: t.status,
+    })),
+    stale_tasks: staleTasks.slice(0, 10).map((t) => ({
+      id: t.clickup_id,
+      name: t.name,
+      status: t.status,
+      last_updated: t.date_updated,
+    })),
+    workload_distribution: workload,
+    empty_lists: emptyLists.map((l) => l.name),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helper: resolve workspace team ID from cached data
+// ---------------------------------------------------------------------------
+
+async function resolveTeamId(workspaceId: string): Promise<string> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from('workspaces')
+    .select('clickup_team_id')
+    .eq('id', workspaceId)
+    .single();
+
+  if (!data?.clickup_team_id) {
+    throw new Error('Could not resolve ClickUp team ID for this workspace');
+  }
+  return data.clickup_team_id;
+}
+
+// ---------------------------------------------------------------------------
+// Docs handlers
+// ---------------------------------------------------------------------------
+
+async function handleSearchDocs(
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const result = await clickupSearchDocs(workspaceId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to search docs', success: false };
+  }
+  const docs = result.data ?? [];
+  return {
+    success: true,
+    docs: docs.map((d) => ({
+      id: d.id,
+      name: d.name,
+      date_created: d.date_created,
+    })),
+    count: docs.length,
+  };
+}
+
+async function handleGetDocPages(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const docId = input.doc_id as string;
+  if (!docId) {
+    return { error: 'doc_id is required', success: false };
+  }
+  const result = await clickupGetDocPages(workspaceId, docId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to get doc pages', success: false };
+  }
+  const pages = result.data ?? [];
+  return {
+    success: true,
+    pages: pages.map((p) => ({
+      id: p.id,
+      name: p.name,
+      content: p.content,
+      date_created: p.date_created,
+    })),
+    count: pages.length,
+  };
+}
+
+async function handleCreateDoc(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const name = input.name as string;
+  if (!name) {
+    return { error: 'name is required', success: false };
+  }
+  const content = input.content as string | undefined;
+  const result = await clickupCreateDoc(workspaceId, name, content);
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to create doc', success: false };
+  }
+  return {
+    success: true,
+    doc: { id: result.data.id, name: result.data.name },
+    message: `Document "${result.data.name}" created successfully.`,
+  };
+}
+
+async function handleCreateDocPage(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const docId = input.doc_id as string;
+  const name = input.name as string;
+  if (!docId || !name) {
+    return { error: 'doc_id and name are required', success: false };
+  }
+  const content = input.content as string | undefined;
+  const result = await clickupCreateDocPage(workspaceId, docId, name, content);
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to create doc page', success: false };
+  }
+  return {
+    success: true,
+    page: { id: result.data.id, name: result.data.name },
+    message: `Page "${result.data.name}" created successfully.`,
+  };
+}
+
+async function handleUpdateDocPage(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const docId = input.doc_id as string;
+  const pageId = input.page_id as string;
+  if (!docId || !pageId) {
+    return { error: 'doc_id and page_id are required', success: false };
+  }
+  const params: { name?: string; content?: string } = {};
+  if (input.name && typeof input.name === 'string') params.name = input.name;
+  if (input.content && typeof input.content === 'string') params.content = input.content;
+
+  if (Object.keys(params).length === 0) {
+    return { error: 'At least name or content must be provided', success: false };
+  }
+
+  const result = await clickupUpdateDocPage(workspaceId, docId, pageId, params);
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to update doc page', success: false };
+  }
+  return {
+    success: true,
+    page: { id: result.data.id, name: result.data.name },
+    message: `Page "${result.data.name}" updated successfully.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Goals & Key Results handlers
+// ---------------------------------------------------------------------------
+
+async function handleGetGoals(
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const teamId = await resolveTeamId(workspaceId);
+  const result = await clickupGetGoals(workspaceId, teamId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to get goals', success: false };
+  }
+  const goals = result.data ?? [];
+  return {
+    success: true,
+    goals: goals.map((g) => ({
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      percent_completed: g.percent_completed,
+      due_date: g.due_date,
+      color: g.color,
+      archived: g.archived,
+    })),
+    count: goals.length,
+  };
+}
+
+async function handleCreateGoal(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const name = input.name as string;
+  const dueDate = input.due_date as string;
+  if (!name || !dueDate) {
+    return { error: 'name and due_date are required', success: false };
+  }
+
+  const teamId = await resolveTeamId(workspaceId);
+  const supabase = getSupabaseAdmin();
+
+  const params: {
+    name: string;
+    due_date: string;
+    description?: string;
+    multiple_owners?: boolean;
+    owners?: number[];
+    color?: string;
+  } = { name, due_date: dueDate };
+
+  if (input.description && typeof input.description === 'string') {
+    params.description = input.description;
+  }
+  if (input.color && typeof input.color === 'string') {
+    params.color = input.color;
+  }
+  if (input.owner_name && typeof input.owner_name === 'string') {
+    const { data: member } = await supabase
+      .from('cached_team_members')
+      .select('clickup_id')
+      .eq('workspace_id', workspaceId)
+      .ilike('username', `%${input.owner_name}%`)
+      .limit(1)
+      .single();
+    if (member) {
+      params.owners = [parseInt(member.clickup_id)];
+      params.multiple_owners = false;
+    }
+  }
+
+  const result = await clickupCreateGoal(workspaceId, teamId, params);
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to create goal', success: false };
+  }
+  return {
+    success: true,
+    goal: { id: result.data.id, name: result.data.name },
+    message: `Goal "${result.data.name}" created successfully.`,
+  };
+}
+
+async function handleUpdateGoal(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const goalId = input.goal_id as string;
+  if (!goalId) {
+    return { error: 'goal_id is required', success: false };
+  }
+
+  const params: { name?: string; due_date?: string; description?: string; color?: string } = {};
+  if (input.name && typeof input.name === 'string') params.name = input.name;
+  if (input.due_date && typeof input.due_date === 'string') params.due_date = input.due_date;
+  if (input.description && typeof input.description === 'string') params.description = input.description;
+  if (input.color && typeof input.color === 'string') params.color = input.color;
+
+  if (Object.keys(params).length === 0) {
+    return { error: 'At least one field must be provided to update', success: false };
+  }
+
+  const result = await clickupUpdateGoal(workspaceId, goalId, params);
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to update goal', success: false };
+  }
+  return {
+    success: true,
+    goal: { id: result.data.id, name: result.data.name },
+    message: `Goal "${result.data.name}" updated successfully.`,
+  };
+}
+
+async function handleGetKeyResults(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const goalId = input.goal_id as string;
+  if (!goalId) {
+    return { error: 'goal_id is required', success: false };
+  }
+  const result = await clickupGetKeyResults(workspaceId, goalId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to get key results', success: false };
+  }
+  const keyResults = result.data ?? [];
+  return {
+    success: true,
+    key_results: keyResults.map((kr) => ({
+      id: kr.id,
+      name: kr.name,
+      type: kr.type,
+      steps_current: kr.steps_current,
+      steps_start: kr.steps_start,
+      steps_end: kr.steps_end,
+      percent_completed: kr.percent_completed,
+      completed: kr.completed,
+      unit: kr.unit,
+    })),
+    count: keyResults.length,
+  };
+}
+
+async function handleCreateKeyResult(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const goalId = input.goal_id as string;
+  const name = input.name as string;
+  if (!goalId || !name) {
+    return { error: 'goal_id and name are required', success: false };
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  const params: {
+    name: string;
+    type: string;
+    steps_start: number;
+    steps_end: number;
+    unit?: string;
+    owners?: number[];
+  } = {
+    name,
+    type: (input.type as string) ?? 'number',
+    steps_start: typeof input.steps_start === 'number' ? input.steps_start : 0,
+    steps_end: typeof input.steps_end === 'number' ? input.steps_end : 100,
+  };
+
+  if (input.unit && typeof input.unit === 'string') {
+    params.unit = input.unit;
+  }
+  if (input.owner_name && typeof input.owner_name === 'string') {
+    const { data: member } = await supabase
+      .from('cached_team_members')
+      .select('clickup_id')
+      .eq('workspace_id', workspaceId)
+      .ilike('username', `%${input.owner_name}%`)
+      .limit(1)
+      .single();
+    if (member) {
+      params.owners = [parseInt(member.clickup_id)];
+    }
+  }
+
+  const result = await clickupCreateKeyResult(workspaceId, goalId, params);
+  if (!result.success || !result.data) {
+    return { error: result.error ?? 'Failed to create key result', success: false };
+  }
+  return {
+    success: true,
+    key_result: { id: result.data.id, name: result.data.name, percent_completed: result.data.percent_completed },
+    message: `Key result "${result.data.name}" created successfully.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Comments handlers
+// ---------------------------------------------------------------------------
+
+async function handleGetTaskComments(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  if (!taskId) {
+    return { error: 'task_id is required', success: false };
+  }
+  const result = await clickupGetTaskComments(workspaceId, taskId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to get comments', success: false };
+  }
+  const comments = result.data ?? [];
+  return {
+    success: true,
+    comments: comments.map((c) => ({
+      id: c.id,
+      text: c.comment_text,
+      author: c.user?.username ?? 'Unknown',
+      date: c.date,
+      resolved: c.resolved,
+    })),
+    count: comments.length,
+  };
+}
+
+async function handleAddTaskComment(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const commentText = input.comment_text as string;
+  if (!taskId || !commentText) {
+    return { error: 'task_id and comment_text are required', success: false };
+  }
+
+  let assigneeId: number | undefined;
+  if (input.assignee_name && typeof input.assignee_name === 'string') {
+    const supabase = getSupabaseAdmin();
+    const { data: member } = await supabase
+      .from('cached_team_members')
+      .select('clickup_id')
+      .eq('workspace_id', workspaceId)
+      .ilike('username', `%${input.assignee_name}%`)
+      .limit(1)
+      .single();
+    if (member) {
+      assigneeId = parseInt(member.clickup_id);
+    }
+  }
+
+  const result = await clickupCreateTaskComment(workspaceId, taskId, commentText, assigneeId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to add comment', success: false };
+  }
+  return {
+    success: true,
+    message: `Comment added to task ${taskId} successfully.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tags handlers
+// ---------------------------------------------------------------------------
+
+async function handleGetTags(
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  // Get all spaces for this workspace
+  const { data: spaces } = await supabase
+    .from('cached_spaces')
+    .select('clickup_id, name')
+    .eq('workspace_id', workspaceId);
+
+  if (!spaces || spaces.length === 0) {
+    return { success: true, tags: [], count: 0, message: 'No spaces found in workspace.' };
+  }
+
+  const client = new ClickUpClient(workspaceId);
+  const allTags: Array<{ space: string; name: string; tag_bg: string; tag_fg: string }> = [];
+
+  for (const space of spaces) {
+    try {
+      const tags = await client.getSpaceTags(space.clickup_id);
+      for (const tag of tags) {
+        allTags.push({
+          space: space.name,
+          name: tag.name,
+          tag_bg: tag.tag_bg,
+          tag_fg: tag.tag_fg,
+        });
+      }
+    } catch {
+      // Some spaces may not support tags
+    }
+  }
+
+  return {
+    success: true,
+    tags: allTags,
+    count: allTags.length,
+  };
+}
+
+async function handleAddTagToTask(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const tagName = input.tag_name as string;
+  if (!taskId || !tagName) {
+    return { error: 'task_id and tag_name are required', success: false };
+  }
+  const result = await clickupAddTagToTask(workspaceId, taskId, tagName);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to add tag', success: false };
+  }
+  return {
+    success: true,
+    message: `Tag "${tagName}" added to task ${taskId}.`,
+  };
+}
+
+async function handleRemoveTagFromTask(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const tagName = input.tag_name as string;
+  if (!taskId || !tagName) {
+    return { error: 'task_id and tag_name are required', success: false };
+  }
+  const result = await clickupRemoveTagFromTask(workspaceId, taskId, tagName);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to remove tag', success: false };
+  }
+  return {
+    success: true,
+    message: `Tag "${tagName}" removed from task ${taskId}.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Custom Fields handler
+// ---------------------------------------------------------------------------
+
+async function handleSetCustomField(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  if (!taskId) {
+    return { error: 'task_id is required', success: false };
+  }
+
+  let fieldId = input.field_id as string | undefined;
+  const fieldName = input.field_name as string | undefined;
+  const value = input.value;
+
+  // If field_name provided but no field_id, try to resolve it from the task's list
+  if (!fieldId && fieldName) {
+    const supabase = getSupabaseAdmin();
+    const { data: task } = await supabase
+      .from('cached_tasks')
+      .select('list_id')
+      .eq('workspace_id', workspaceId)
+      .eq('clickup_id', taskId)
+      .single();
+
+    if (task?.list_id) {
+      const client = new ClickUpClient(workspaceId);
+      const fields = await client.getListCustomFields(task.list_id);
+      const matchedField = fields.find(
+        (f) => f.name.toLowerCase() === fieldName.toLowerCase()
+      );
+      if (matchedField) {
+        fieldId = matchedField.id;
+      } else {
+        return {
+          error: `Could not find custom field "${fieldName}" in this task's list`,
+          success: false,
+        };
+      }
+    }
+  }
+
+  if (!fieldId) {
+    return { error: 'field_id or field_name is required', success: false };
+  }
+
+  const result = await clickupSetCustomFieldValue(workspaceId, taskId, fieldId, value);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to set custom field', success: false };
+  }
+  return {
+    success: true,
+    message: `Custom field set on task ${taskId} successfully.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Dependencies & Links handlers
+// ---------------------------------------------------------------------------
+
+async function handleAddDependency(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const dependsOnTaskId = input.depends_on_task_id as string;
+  if (!taskId || !dependsOnTaskId) {
+    return { error: 'task_id and depends_on_task_id are required', success: false };
+  }
+  const result = await clickupAddDependency(workspaceId, taskId, dependsOnTaskId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to add dependency', success: false };
+  }
+  return {
+    success: true,
+    message: `Task ${taskId} now depends on task ${dependsOnTaskId}.`,
+  };
+}
+
+async function handleRemoveDependency(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const dependsOnTaskId = input.depends_on_task_id as string;
+  if (!taskId || !dependsOnTaskId) {
+    return { error: 'task_id and depends_on_task_id are required', success: false };
+  }
+  const result = await clickupRemoveDependency(workspaceId, taskId, dependsOnTaskId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to remove dependency', success: false };
+  }
+  return {
+    success: true,
+    message: `Dependency between task ${taskId} and ${dependsOnTaskId} removed.`,
+  };
+}
+
+async function handleAddTaskLink(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const linksToTaskId = input.links_to_task_id as string;
+  if (!taskId || !linksToTaskId) {
+    return { error: 'task_id and links_to_task_id are required', success: false };
+  }
+  const result = await clickupAddTaskLink(workspaceId, taskId, linksToTaskId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to add task link', success: false };
+  }
+  return {
+    success: true,
+    message: `Task ${taskId} linked to task ${linksToTaskId}.`,
+  };
+}
+
+async function handleRemoveTaskLink(
+  input: Record<string, unknown>,
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const taskId = input.task_id as string;
+  const linksToTaskId = input.links_to_task_id as string;
+  if (!taskId || !linksToTaskId) {
+    return { error: 'task_id and links_to_task_id are required', success: false };
+  }
+  const result = await clickupRemoveTaskLink(workspaceId, taskId, linksToTaskId);
+  if (!result.success) {
+    return { error: result.error ?? 'Failed to remove task link', success: false };
+  }
+  return {
+    success: true,
+    message: `Link between task ${taskId} and ${linksToTaskId} removed.`,
   };
 }
 
