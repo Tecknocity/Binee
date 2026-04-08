@@ -3,6 +3,7 @@ import { handleSetupMessage } from '@/lib/setup/setupper-brain';
 import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
+import { maybeSummarizeConversation } from '@/lib/ai/conversation-summary';
 
 export const maxDuration = 60;
 
@@ -100,6 +101,20 @@ export async function POST(request: NextRequest) {
       console.error('[setup/chat] credit_usage insert failed:', usageErr.message);
     }
 
+    // Ensure conversation record exists (needed for summarization)
+    await adminClient
+      .from('conversations')
+      .upsert(
+        {
+          id: conversation_id,
+          workspace_id,
+          user_id: authUser.id,
+          context_type: 'setup',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' },
+      );
+
     // Save messages
     await adminClient.from('messages').insert([
       {
@@ -122,6 +137,11 @@ export async function POST(request: NextRequest) {
         },
       },
     ]);
+
+    // Fire-and-forget: summarize conversation every 4 messages (async, non-blocking)
+    maybeSummarizeConversation(conversation_id, workspace_id).catch(err =>
+      console.error('[setup/chat] Background summarization failed:', err),
+    );
 
     // Update setup session credits_used
     await adminClient

@@ -4,7 +4,7 @@
  * It receives the user's message + sub-agent summaries and produces the final answer.
  */
 
-export function buildBrainPrompt(userContext: string, conversationSummary: string): string {
+export function buildBrainPrompt(userContext: string, conversationSummary: string, userMemories?: string, crossChatContext?: string): string {
   return `You are Binee, an expert business operations consultant specializing in ClickUp and project management.
 
 IDENTITY:
@@ -15,7 +15,7 @@ IDENTITY:
 USER CONTEXT:
 ${userContext}
 
-CONVERSATION SUMMARY:
+${userMemories ? `${userMemories}\n\n` : ''}${crossChatContext ? `CONTEXT FROM OTHER CONVERSATIONS:\nThe user has had other recent conversations in this workspace. Use this for continuity, but do not reference these unless relevant:\n${crossChatContext}\n\n` : ''}CONVERSATION SUMMARY:
 ${conversationSummary || 'This is the start of the conversation.'}
 
 DATA FROM ANALYSIS:

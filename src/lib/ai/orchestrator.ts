@@ -4,6 +4,7 @@ import { executeSubAgents, type SubAgentResult } from '@/lib/ai/sub-agents/execu
 import { generateBrainResponse } from '@/lib/ai/brain';
 import { classifyMessageCost, type MessageClassification } from '@/billing/engine/flat-credit-classifier';
 import { calculateAnthropicCost, type TokenCostResult } from '@/billing/engine/token-converter';
+import { loadUserMemories } from '@/lib/ai/user-memory';
 
 export interface OrchestrationInput {
   userMessage: string;
@@ -16,6 +17,7 @@ export interface OrchestrationInput {
   conversationSummary: string;  // Rolling summary
   conversationHistory: string;  // Last 2 messages formatted
   recentMessages: string;       // Last 2 messages for router context
+  crossChatContext: string;     // Summaries from other conversations in workspace
 }
 
 export interface OrchestrationResult {
@@ -74,15 +76,20 @@ export async function orchestrate(input: OrchestrationInput): Promise<Orchestrat
   }
 
   // ---- Step 3: Brain generates final response ----
+  // Load user memories in parallel with sub-agents (or here if no sub-agents)
+  const userMemories = await loadUserMemories(input.userId, input.workspaceId);
+
   const brainResult = await generateBrainResponse(client, {
     userMessage: input.userMessage,
     userContext: input.userContext,
     conversationSummary: input.conversationSummary,
     conversationHistory: input.conversationHistory,
+    crossChatContext: input.crossChatContext || '',
     subAgentSummaries: subAgentResults.map(r => ({
       agent: r.agent,
       summary: r.summary,
     })),
+    userMemories: userMemories || undefined,
   });
 
   // ---- Step 4: Classify credit tier ----

@@ -136,13 +136,15 @@ export default function SetupWizard() {
         })}
       </div>
 
-      {/* Viewing past step banner + redo button */}
-      {isViewingPastStep && setup.currentStep <= 4 && (
+      {/* Viewing past step banner + redo button (also shows redo on current completed step) */}
+      {(isViewingPastStep || (isStepCompleted(setup.currentStep) && !!REDO_LABELS[setup.currentStep])) && setup.currentStep <= 4 && (
         <div className="flex items-center justify-between px-4 pb-3 max-w-3xl mx-auto w-full shrink-0">
-          <div className="flex items-center gap-2 text-sm text-text-secondary">
-            <Eye className="w-4 h-4 text-text-muted" />
-            <span>Viewing completed step. You can continue from where you left off.</span>
-          </div>
+          {isViewingPastStep ? (
+            <div className="flex items-center gap-2 text-sm text-text-secondary">
+              <Eye className="w-4 h-4 text-text-muted" />
+              <span>Viewing completed step. You can continue from where you left off.</span>
+            </div>
+          ) : <div />}
           {REDO_LABELS[setup.currentStep] && (
             <button
               onClick={() => handleRedoClick(setup.currentStep)}

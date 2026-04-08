@@ -25,16 +25,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Too many requests.' }, { status: 429 });
     }
 
-    const { businessProfile, workspaceAnalysis } = await request.json() as {
+    const { businessProfile, workspaceAnalysis, conversationContext, previousPlan, planHistorySummary } = await request.json() as {
       businessProfile: BusinessProfile;
       workspaceAnalysis?: string;
+      conversationContext?: string;
+      previousPlan?: Record<string, unknown>;
+      planHistorySummary?: string;
     };
 
     if (!businessProfile?.businessDescription) {
       return NextResponse.json({ error: 'Missing business description' }, { status: 400 });
     }
 
-    const plan = await generateSetupPlan(businessProfile, workspaceAnalysis);
+    const plan = await generateSetupPlan(businessProfile, workspaceAnalysis, {
+      conversationContext,
+      previousPlan,
+      planHistorySummary,
+    });
 
     return NextResponse.json({ plan });
   } catch (error) {
