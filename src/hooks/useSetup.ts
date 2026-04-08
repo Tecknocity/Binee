@@ -549,6 +549,10 @@ export function useSetup(): UseSetupReturn {
       const idx = messageCount;
       store?.getState().incrementMessageCount();
 
+      // Include proposed plan and profile data so the AI retains full context
+      const currentPlan = store?.getState().proposedPlan;
+      const currentProfile = store?.getState().profileFormData;
+
       try {
         const response = await fetchWithTimeout('/api/setup/chat', {
           method: 'POST',
@@ -558,6 +562,8 @@ export function useSetup(): UseSetupReturn {
             conversation_id: conversationId,
             message: msg,
             workspace_analysis: fullAnalysisContext,
+            proposed_plan: currentPlan ?? undefined,
+            profile_data: currentProfile ?? undefined,
           }),
         });
 

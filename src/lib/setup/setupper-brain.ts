@@ -19,6 +19,28 @@ interface SetupperInput {
   templates: string;
   /** Pre-computed analysis from the analyzer step — avoids redundant sub-agent call */
   precomputedAnalysis?: string;
+  /** The currently proposed workspace plan (if one has been generated) */
+  proposedPlan?: {
+    spaces: Array<{
+      name: string;
+      folders: Array<{
+        name: string;
+        lists: Array<{
+          name: string;
+          statuses: Array<{ name: string }>;
+        }>;
+      }>;
+    }>;
+    reasoning?: string;
+    clickApps?: string[];
+  };
+  /** User's profile form data (if already collected) */
+  profileData?: {
+    industry?: string;
+    workStyle?: string;
+    services?: string;
+    teamSize?: string;
+  };
 }
 
 interface SetupperResult {
@@ -100,6 +122,32 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   if (userMemories) systemPrompt += `\n\n${userMemories}`;
   if (crossChatLines.length > 0) {
     systemPrompt += `\n\nCONTEXT FROM OTHER CONVERSATIONS:\nThe user has had other recent interactions. Use for continuity, but do not reference unless relevant:\n${crossChatLines.join('\n')}`;
+  }
+
+  // Include the proposed plan so the AI knows exactly what structure was generated
+  if (input.proposedPlan?.spaces?.length) {
+    const planSummary = input.proposedPlan.spaces.map(s =>
+      `Space: ${s.name}\n${s.folders.map(f =>
+        `  Folder: ${f.name}\n${f.lists.map(l =>
+          `    List: ${l.name} (statuses: ${l.statuses.map(st => st.name).join(', ')})`
+        ).join('\n')}`
+      ).join('\n')}`
+    ).join('\n');
+    systemPrompt += `\n\nPREVIOUSLY GENERATED WORKSPACE PLAN (the user has already seen this structure):\n${planSummary}${input.proposedPlan.reasoning ? `\nReasoning: ${input.proposedPlan.reasoning}` : ''}${input.proposedPlan.clickApps?.length ? `\nRecommended ClickApps: ${input.proposedPlan.clickApps.join(', ')}` : ''}\n\nIMPORTANT: The user is coming back from reviewing this plan. Reference THIS specific structure when they ask about changes. Do NOT generate a new structure from scratch or claim you don't know what was proposed.`;
+  }
+
+  // Include profile data so the AI doesn't re-ask for already collected info
+  if (input.profileData) {
+    const { industry, workStyle, services, teamSize } = input.profileData;
+    const parts = [
+      industry && `Industry: ${industry}`,
+      workStyle && `Work style: ${workStyle}`,
+      services && `Services/Products: ${services}`,
+      teamSize && `Team size: ${teamSize}`,
+    ].filter(Boolean);
+    if (parts.length > 0) {
+      systemPrompt += `\n\nUSER PROFILE (already collected, do NOT re-ask for this information):\n${parts.join('\n')}`;
+    }
   }
 
   // Step 3: Get read-only tools for the Setupper to gather workspace context.

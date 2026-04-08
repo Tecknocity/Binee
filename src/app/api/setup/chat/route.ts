@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspace_id, conversation_id, message, workspace_analysis } = body;
+    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data } = body;
 
     if (!workspace_id || !conversation_id || !message?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -62,6 +62,8 @@ export async function POST(request: NextRequest) {
       conversationHistory,
       templates,
       precomputedAnalysis: workspace_analysis || undefined,
+      proposedPlan: proposed_plan || undefined,
+      profileData: profile_data || undefined,
     });
 
     // Deduct credits
