@@ -20,6 +20,13 @@ interface SnapshotStructure {
         statuses: unknown;
       }>;
     }>;
+    /** Folderless lists that live directly in the space */
+    lists?: Array<{
+      clickup_id: string;
+      name: string;
+      task_count: number;
+      statuses: unknown;
+    }>;
   }>;
   captured_at: string;
 }
@@ -118,25 +125,41 @@ export async function getExistingStructure(workspaceId: string): Promise<Snapsho
 
     if (spaces.length === 0) return null;
 
+    // Collect all folder IDs so we can identify folderless lists
+    const folderIds = new Set(folders.map((f) => f.clickup_id));
+
     return {
-      spaces: spaces.map((space) => ({
-        clickup_id: space.clickup_id,
-        name: space.name,
-        folders: folders
-          .filter((f) => f.space_id === space.clickup_id)
-          .map((folder) => ({
-            clickup_id: folder.clickup_id,
-            name: folder.name,
-            lists: lists
-              .filter((l) => l.folder_id === folder.clickup_id)
-              .map((list) => ({
-                clickup_id: list.clickup_id,
-                name: list.name,
-                task_count: list.task_count || 0,
-                statuses: list.status,
-              })),
-          })),
-      })),
+      spaces: spaces.map((space) => {
+        // Folderless lists: belong to this space but have no folder_id or a folder_id not in any folder
+        const folderlessLists = lists
+          .filter((l) => l.space_id === space.clickup_id && (!l.folder_id || !folderIds.has(l.folder_id)))
+          .map((list) => ({
+            clickup_id: list.clickup_id,
+            name: list.name,
+            task_count: list.task_count || 0,
+            statuses: list.status,
+          }));
+
+        return {
+          clickup_id: space.clickup_id,
+          name: space.name,
+          folders: folders
+            .filter((f) => f.space_id === space.clickup_id)
+            .map((folder) => ({
+              clickup_id: folder.clickup_id,
+              name: folder.name,
+              lists: lists
+                .filter((l) => l.folder_id === folder.clickup_id)
+                .map((list) => ({
+                  clickup_id: list.clickup_id,
+                  name: list.name,
+                  task_count: list.task_count || 0,
+                  statuses: list.status,
+                })),
+            })),
+          ...(folderlessLists.length > 0 ? { lists: folderlessLists } : {}),
+        };
+      }),
       captured_at: new Date().toISOString(),
     };
   } catch (err) {

@@ -46,6 +46,14 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
   let totalLists = 0;
   let totalStatuses = 0;
   for (const space of plan.spaces) {
+    // Count folderless lists
+    if (space.lists) {
+      for (const list of space.lists) {
+        totalLists++;
+        totalStatuses += list.statuses.length;
+      }
+    }
+    // Count folders and their lists
     for (const folder of space.folders) {
       totalFolders++;
       for (const list of folder.lists) {
@@ -57,7 +65,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
 
   // Build lookup for existing items (case-insensitive matching)
   const existingLookup = useMemo(() => {
-    const spaces = new Map<string, { folders: Map<string, Set<string>> }>();
+    const spaces = new Map<string, { folders: Map<string, Set<string>>; lists: Set<string> }>();
     if (!existingStructure?.spaces) return spaces;
     for (const space of existingStructure.spaces) {
       const folders = new Map<string, Set<string>>();
@@ -65,7 +73,10 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
         const lists = new Set(folder.lists.map((l) => l.name.toLowerCase()));
         folders.set(folder.name.toLowerCase(), lists);
       }
-      spaces.set(space.name.toLowerCase(), { folders });
+      const folderlessLists = new Set(
+        (space.lists ?? []).map((l) => l.name.toLowerCase())
+      );
+      spaces.set(space.name.toLowerCase(), { folders, lists: folderlessLists });
     }
     return spaces;
   }, [existingStructure]);
@@ -73,18 +84,25 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
   const spaceExists = (name: string) => existingLookup.has(name.toLowerCase());
   const folderExists = (spaceName: string, folderName: string) =>
     existingLookup.get(spaceName.toLowerCase())?.folders.has(folderName.toLowerCase()) ?? false;
-  const listExists = (spaceName: string, folderName: string, listName: string) =>
+  const listInFolderExists = (spaceName: string, folderName: string, listName: string) =>
     existingLookup.get(spaceName.toLowerCase())?.folders.get(folderName.toLowerCase())?.has(listName.toLowerCase()) ?? false;
+  const folderlessListExists = (spaceName: string, listName: string) =>
+    existingLookup.get(spaceName.toLowerCase())?.lists.has(listName.toLowerCase()) ?? false;
 
   // Count new vs existing
   let newItems = 0;
   let existingItems = 0;
   for (const space of plan.spaces) {
     if (spaceExists(space.name)) existingItems++; else newItems++;
+    if (space.lists) {
+      for (const list of space.lists) {
+        if (folderlessListExists(space.name, list.name)) existingItems++; else newItems++;
+      }
+    }
     for (const folder of space.folders) {
       if (folderExists(space.name, folder.name)) existingItems++; else newItems++;
       for (const list of folder.lists) {
-        if (listExists(space.name, folder.name, list.name)) existingItems++; else newItems++;
+        if (listInFolderExists(space.name, folder.name, list.name)) existingItems++; else newItems++;
       }
     }
   }
@@ -108,8 +126,45 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
     updatePlan((d) => {
       d.spaces.push({
         name: `New Space ${d.spaces.length + 1}`,
-        folders: [{ name: 'General', lists: [{ name: 'Tasks', statuses: defaultStatuses() }] }],
+        folders: [],
+        lists: [{ name: 'Tasks', statuses: defaultStatuses() }],
       });
+    });
+  };
+
+  // --- Folderless list operations (lists directly in a space) ---
+  const renameFolderlessList = (si: number, li: number, name: string) => {
+    updatePlan((d) => { if (d.spaces[si].lists?.[li]) d.spaces[si].lists![li].name = name; });
+  };
+  const deleteFolderlessList = (si: number, li: number) => {
+    updatePlan((d) => { d.spaces[si].lists?.splice(li, 1); });
+  };
+  const addFolderlessList = (si: number) => {
+    updatePlan((d) => {
+      if (!d.spaces[si].lists) d.spaces[si].lists = [];
+      d.spaces[si].lists!.push({ name: 'New List', statuses: defaultStatuses() });
+    });
+  };
+
+  // --- Folderless list status operations ---
+  const renameFolderlessStatus = (si: number, li: number, sti: number, name: string) => {
+    updatePlan((d) => { if (d.spaces[si].lists?.[li]) d.spaces[si].lists![li].statuses[sti].name = name; });
+  };
+  const deleteFolderlessStatus = (si: number, li: number, sti: number) => {
+    updatePlan((d) => { d.spaces[si].lists?.[li]?.statuses.splice(sti, 1); });
+  };
+  const addFolderlessStatus = (si: number, li: number) => {
+    updatePlan((d) => {
+      d.spaces[si].lists?.[li]?.statuses.push({ name: 'New Status', color: '#a0a0b5', type: 'active' });
+    });
+  };
+  const changeFolderlessStatusType = (si: number, li: number, sti: number, type: StatusPlan['type']) => {
+    updatePlan((d) => {
+      if (d.spaces[si].lists?.[li]) {
+        d.spaces[si].lists![li].statuses[sti].type = type;
+        const typeColors: Record<string, string> = { open: '#d3d3d3', active: '#4194f6', done: '#6bc950', closed: '#6b6b80' };
+        d.spaces[si].lists![li].statuses[sti].color = typeColors[type] || '#a0a0b5';
+      }
     });
   };
 
@@ -129,7 +184,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
     });
   };
 
-  // --- List operations ---
+  // --- List operations (inside folders) ---
   const renameList = (si: number, fi: number, li: number, name: string) => {
     updatePlan((d) => { d.spaces[si].folders[fi].lists[li].name = name; });
   };
@@ -223,9 +278,11 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
         </h2>
         <p className="text-sm text-text-secondary mt-1">
           {plan.spaces.length} {plan.spaces.length === 1 ? 'space' : 'spaces'} &middot;{' '}
-          {totalFolders} {totalFolders === 1 ? 'folder' : 'folders'} &middot;{' '}
-          {totalLists} {totalLists === 1 ? 'list' : 'lists'} &middot;{' '}
-          {totalStatuses} statuses
+          {totalLists} {totalLists === 1 ? 'list' : 'lists'}
+          {totalFolders > 0 && (
+            <> &middot; {totalFolders} {totalFolders === 1 ? 'folder' : 'folders'}</>
+          )}
+          {' '}&middot; {totalStatuses} statuses
           {hasExisting && (
             <span className="text-text-muted ml-2">
               ({newItems} new, {existingItems} already exist)
@@ -254,6 +311,56 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             onDelete={plan.spaces.length > 1 ? () => deleteSpace(si) : undefined}
             existsInWorkspace={hasExisting ? sExists : undefined}
           >
+            {/* Folderless lists (directly in space) */}
+            {space.lists?.map((list, li) => {
+              const flExists = folderlessListExists(space.name, list.name);
+              return (
+              <TreeNode
+                key={`flist-${si}-${li}`}
+                icon={<List className="w-4 h-4 text-info" />}
+                label={list.name}
+                badge={`${list.statuses.length} statuses`}
+                badgeColor="bg-info/15 text-info"
+                editable={editable}
+                onRename={(name) => renameFolderlessList(si, li, name)}
+                onDelete={(space.lists?.length ?? 0) > 1 || space.folders.length > 0 ? () => deleteFolderlessList(si, li) : undefined}
+                existsInWorkspace={hasExisting ? flExists : undefined}
+              >
+                {list.statuses.map((status, sti) => (
+                  <StatusRow
+                    key={sti}
+                    status={status}
+                    editable={editable}
+                    canDelete={list.statuses.length > 2}
+                    onRename={(name) => renameFolderlessStatus(si, li, sti, name)}
+                    onDelete={() => deleteFolderlessStatus(si, li, sti)}
+                    onChangeType={(type) => changeFolderlessStatusType(si, li, sti, type)}
+                  />
+                ))}
+                {editable && (
+                  <button
+                    onClick={() => addFolderlessStatus(si, li)}
+                    className="flex items-center gap-1.5 py-1 pl-2 text-xs text-text-muted hover:text-accent transition-colors"
+                  >
+                    <Plus className="w-3 h-3" /> Add Status
+                  </button>
+                )}
+                {list.description && (
+                  <p className="text-xs text-text-muted pl-2 pb-1 italic">{list.description}</p>
+                )}
+              </TreeNode>
+              );
+            })}
+            {/* Add list directly to space */}
+            {editable && (
+              <button
+                onClick={() => addFolderlessList(si)}
+                className="flex items-center gap-1.5 py-1 pl-2 text-xs text-text-muted hover:text-accent transition-colors"
+              >
+                <Plus className="w-3 h-3" /> Add List
+              </button>
+            )}
+            {/* Folders and their lists */}
             {space.folders.map((folder, fi) => {
               const fExists = folderExists(space.name, folder.name);
               return (
@@ -265,11 +372,11 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                 badgeColor="bg-warning/15 text-warning"
                 editable={editable}
                 onRename={(name) => renameFolder(si, fi, name)}
-                onDelete={space.folders.length > 1 ? () => deleteFolder(si, fi) : undefined}
+                onDelete={() => deleteFolder(si, fi)}
                 existsInWorkspace={hasExisting ? fExists : undefined}
               >
                 {folder.lists.map((list, li) => {
-                  const lExists = listExists(space.name, folder.name, list.name);
+                  const lExists = listInFolderExists(space.name, folder.name, list.name);
                   return (
                   <TreeNode
                     key={`list-${si}-${fi}-${li}`}
@@ -307,7 +414,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                   </TreeNode>
                   );
                 })}
-                {/* Add list button */}
+                {/* Add list inside folder */}
                 {editable && (
                   <button
                     onClick={() => addList(si, fi)}
