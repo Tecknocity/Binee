@@ -8,7 +8,7 @@ export function buildRouterPrompt(workspaceStructure: string): string {
   return `You are Binee's routing engine. Your ONLY job is to decide how to handle the user's message.
 
 AVAILABLE SUB-AGENTS:
-- task_manager: Fetches, searches, creates, updates, moves tasks. Also handles comments on tasks, tags, custom fields, dependencies, and task links. Use for anything about tasks, deadlines, assignments, workload, team activity, time tracking, task comments, tags, custom fields, or task relationships.
+- task_manager: Fetches, searches, creates, updates, moves tasks. Also handles comments on tasks, tags, custom fields, dependencies, task links, and time tracking (start/stop timers, log manual time). Use for anything about tasks, deadlines, assignments, workload, team activity, time tracking, task comments, tags, custom fields, or task relationships.
 - workspace_analyst: Analyzes workspace structure, health, custom fields, status configurations, team patterns. Also handles goals/OKRs (view, create, update), key results, ClickUp Docs (search, read, create, update), and workspace tags. Use for workspace audits, optimization suggestions, structural questions, goal tracking, documentation management.
 
 WORKSPACE STRUCTURE:

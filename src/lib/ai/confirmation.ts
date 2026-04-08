@@ -30,6 +30,8 @@ const LOW_RISK_OPERATIONS = new Set([
   'add_task_comment',
   'add_tag_to_task',
   'add_task_link',
+  'start_time_tracking',
+  'add_manual_time_entry',
 ]);
 
 /** Medium risk — modify existing data. Eligible for "Always Allow". */
@@ -44,6 +46,7 @@ const MEDIUM_RISK_OPERATIONS = new Set([
   'add_dependency',
   'remove_dependency',
   'remove_task_link',
+  'stop_time_tracking',
 ]);
 
 /** High risk — destructive operations. Always require confirmation, never auto-approve. */
@@ -299,6 +302,32 @@ export function describeAction(
         details: formatDetails({
           'Task': toolInput.task_id,
           'Linked to': toolInput.links_to_task_id,
+        }),
+      };
+
+    case 'start_time_tracking':
+      return {
+        description: `Start timer on task ${toolInput.task_id}`,
+        details: formatDetails({
+          'Task ID': toolInput.task_id,
+          ...(toolInput.description ? { Description: toolInput.description } : {}),
+        }),
+      };
+
+    case 'stop_time_tracking':
+      return {
+        description: 'Stop the currently running timer',
+        details: 'Stops the active timer and logs the time entry.',
+      };
+
+    case 'add_manual_time_entry':
+      return {
+        description: `Log ${toolInput.duration_hours}h on task ${toolInput.task_id}`,
+        details: formatDetails({
+          'Task ID': toolInput.task_id,
+          'Duration': `${toolInput.duration_hours} hours`,
+          ...(toolInput.date ? { Date: toolInput.date } : { Date: 'Today' }),
+          ...(toolInput.description ? { Description: toolInput.description } : {}),
         }),
       };
 

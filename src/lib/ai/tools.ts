@@ -290,6 +290,65 @@ export const CLICKUP_TOOL_REGISTRY: Anthropic.Tool[] = [
     },
   },
   // ---------------------------------------------------------------------------
+  // Time tracking action tools
+  // ---------------------------------------------------------------------------
+  {
+    name: 'start_time_tracking',
+    description:
+      'Start a timer on a task. The timer will run until stopped. Only one timer can be active at a time.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID to start tracking time on',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description of what work is being done',
+        },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'stop_time_tracking',
+    description:
+      'Stop the currently running timer. Returns the time entry that was recorded.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'add_manual_time_entry',
+    description:
+      'Add a manual time entry to a task. Use when the user wants to log time they already spent (e.g. "I worked 3 hours on this yesterday").',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID to log time on',
+        },
+        duration_hours: {
+          type: 'number',
+          description: 'Duration in hours (e.g. 2.5 for 2 hours 30 minutes)',
+        },
+        date: {
+          type: 'string',
+          description: 'The date the work was done as ISO date string (defaults to today)',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description of what work was done',
+        },
+      },
+      required: ['task_id', 'duration_hours'],
+    },
+  },
+  // ---------------------------------------------------------------------------
   // Docs tools
   // ---------------------------------------------------------------------------
   {

@@ -18,6 +18,8 @@ CAPABILITIES:
 - Set custom field values on tasks
 - Add and remove task dependencies and task links
 - View team activity and time tracking data
+- Start and stop timers on tasks
+- Add manual time entries for past work
 
 SUMMARY FORMAT:
 - Start with a one-line overview (e.g., "23 tasks open, 5 overdue")
@@ -47,4 +49,7 @@ export const TASK_MANAGER_TOOLS_NAMES = [
   'remove_dependency',
   'add_task_link',
   'remove_task_link',
+  'start_time_tracking',
+  'stop_time_tracking',
+  'add_manual_time_entry',
 ] as const;

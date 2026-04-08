@@ -139,6 +139,58 @@ export function generateManualSteps(plan: SetupPlan): ManualStep[] {
     }
   }
 
+  // Mention tags if they were created
+  if (plan.recommended_tags && plan.recommended_tags.length > 0) {
+    const tagNames = plan.recommended_tags.map((t) => t.name).join(', ');
+    steps.push({
+      title: 'Start using your workspace tags',
+      description: `We created ${plan.recommended_tags.length} tags for you: ${tagNames}. Apply them to tasks for cross-cutting categorization.`,
+      instructions: [
+        'Open any task in ClickUp',
+        'Click the "Tags" field (or use the tag icon)',
+        'Select from your pre-configured tags',
+        'Use tags consistently across spaces for better filtering',
+        'Tip: You can filter any view by tag to see tasks across all lists',
+      ],
+      category: 'setting',
+      completed: false,
+    });
+  }
+
+  // Mention docs if they were created
+  if (plan.recommended_docs && plan.recommended_docs.length > 0) {
+    const docNames = plan.recommended_docs.map((d) => d.name).join(', ');
+    steps.push({
+      title: 'Customize your starter docs',
+      description: `We created ${plan.recommended_docs.length} starter docs: ${docNames}. Customize them with your team's specific processes.`,
+      instructions: [
+        'Go to the Docs section in your ClickUp sidebar',
+        'Open each starter doc and update it with your team\'s specifics',
+        'Share docs with your team by adjusting permissions',
+        'Tip: You can embed docs inside tasks for easy reference',
+      ],
+      category: 'setting',
+      completed: false,
+    });
+  }
+
+  // Mention goals if they were created
+  if (plan.recommended_goals && plan.recommended_goals.length > 0) {
+    steps.push({
+      title: 'Review and customize your goals',
+      description: `We created ${plan.recommended_goals.length} goal(s) to track your objectives. Add key results and link tasks to them.`,
+      instructions: [
+        'Go to the Goals section in your ClickUp sidebar',
+        'Review each goal and adjust due dates if needed',
+        'Add Key Results to define measurable targets',
+        'Link tasks to goals to automatically track progress',
+        'Tip: Use Binee\'s chat to check goal progress anytime',
+      ],
+      category: 'setting',
+      completed: false,
+    });
+  }
+
   // If no specific patterns matched, add general best-practice steps
   if (steps.length === 0 && plan.spaces.length > 0) {
     steps.push({
