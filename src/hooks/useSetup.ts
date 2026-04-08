@@ -76,7 +76,7 @@ export interface UseSetupReturn {
   refreshClickUpStatus: () => Promise<void>;
   isRefreshingClickUp: boolean;
   continueFromConnect: () => void;
-  sendMessage: (msg: string) => void;
+  sendMessage: (msg: string, fileContext?: string) => void;
   selectTemplate: (template: string) => void;
   submitProfileForm: (data: ProfileFormData) => void;
   updatePlan: (plan: SetupPlan) => void;
@@ -539,7 +539,7 @@ export function useSetup(): UseSetupReturn {
   }, [currentStep, proposedPlan, isSending, addMessage, setCurrentStep]);
 
   const sendMessage = useCallback(
-    async (msg: string) => {
+    async (msg: string, fileContext?: string) => {
       if (!msg.trim() || isSending) return;
 
       addMessage('user', msg);
@@ -564,6 +564,7 @@ export function useSetup(): UseSetupReturn {
             workspace_analysis: fullAnalysisContext,
             proposed_plan: currentPlan ?? undefined,
             profile_data: currentProfile ?? undefined,
+            ...(fileContext ? { file_context: fileContext } : {}),
           }),
         });
 
@@ -687,9 +688,9 @@ export function useSetup(): UseSetupReturn {
   }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep]);
 
   const enhancedSendMessage = useCallback(
-    (msg: string) => {
+    (msg: string, fileContext?: string) => {
       if (msg === '__generate_structure__') { generateStructure(); return; }
-      sendMessage(msg);
+      sendMessage(msg, fileContext);
     },
     [sendMessage, generateStructure]
   );

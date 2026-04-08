@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data } = body;
+    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data, file_context } = body;
 
     if (!workspace_id || !conversation_id || !message?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -53,9 +53,14 @@ export async function POST(request: NextRequest) {
       content: m.content,
     }));
 
+    // Enrich message with file context if the user attached files
+    const enrichedMessage = file_context
+      ? `${message.trim()}\n\n--- ATTACHED FILE CONTENT ---\n${file_context}\n--- END ATTACHED FILE CONTENT ---`
+      : message.trim();
+
     // Run setupper brain — pass pre-computed analysis if available
     const result = await handleSetupMessage({
-      userMessage: message.trim(),
+      userMessage: enrichedMessage,
       workspaceId: workspace_id,
       userId: authUser.id,
       conversationId: conversation_id,

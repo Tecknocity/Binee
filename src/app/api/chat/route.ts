@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     parsedBody = body as Partial<ChatRequest>;
 
     // Validate required fields
-    const { workspace_id, user_id, conversation_id, message } = parsedBody;
+    const { workspace_id, user_id, conversation_id, message, file_context } = parsedBody;
 
     if (!workspace_id || typeof workspace_id !== 'string') {
       return NextResponse.json(
@@ -78,11 +78,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate file_context if provided (max 50KB for parsed file content)
+    if (file_context && (typeof file_context !== 'string' || file_context.length > 50_000)) {
+      return NextResponse.json(
+        { error: 'file_context must be a string of 50,000 characters or fewer' },
+        { status: 400 },
+      );
+    }
+
     const chatRequest: ChatRequest = {
       workspace_id,
       user_id,
       conversation_id,
       message: message.trim(),
+      ...(file_context ? { file_context } : {}),
     };
 
     const response = await handleChat(chatRequest);
