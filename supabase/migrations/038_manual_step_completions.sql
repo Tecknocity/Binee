@@ -23,6 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_msc_workspace_id ON manual_step_completions(works
 -- RLS: workspace members can read and write
 ALTER TABLE manual_step_completions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "workspace_members_manage_manual_steps" ON manual_step_completions;
 CREATE POLICY "workspace_members_manage_manual_steps"
   ON manual_step_completions
   FOR ALL

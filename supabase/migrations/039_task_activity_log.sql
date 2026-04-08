@@ -35,6 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_tal_workspace_event ON task_activity_log(workspac
 -- This keeps the activity log tamper-proof from the client side.
 ALTER TABLE task_activity_log ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "workspace_members_read_activity_log" ON task_activity_log;
 CREATE POLICY "workspace_members_read_activity_log"
   ON task_activity_log
   FOR SELECT

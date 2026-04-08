@@ -29,6 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_wss_workspace_type ON workspace_structure_snapsho
 -- RLS: workspace members can read their own snapshots
 ALTER TABLE workspace_structure_snapshots ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "workspace_members_read_snapshots" ON workspace_structure_snapshots;
 CREATE POLICY "workspace_members_read_snapshots"
   ON workspace_structure_snapshots
   FOR SELECT
@@ -38,6 +39,7 @@ CREATE POLICY "workspace_members_read_snapshots"
     )
   );
 
+DROP POLICY IF EXISTS "workspace_members_insert_snapshots" ON workspace_structure_snapshots;
 CREATE POLICY "workspace_members_insert_snapshots"
   ON workspace_structure_snapshots
   FOR INSERT
