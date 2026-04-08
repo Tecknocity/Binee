@@ -8,6 +8,7 @@ interface BrainInput {
   userContext: string;       // Tier 0 context: user name, workspace status, compact metrics
   conversationSummary: string; // Rolling summary from conversation-summary.ts
   conversationHistory: string; // Last 2 messages formatted
+  crossChatContext: string;   // Summaries from other conversations in workspace
   subAgentSummaries: Array<{ agent: string; summary: string }>;
   userMemories?: string;     // Persistent facts from user_memories table
 }
@@ -28,7 +29,7 @@ export async function generateBrainResponse(
   client: Anthropic,
   input: BrainInput,
 ): Promise<BrainResult> {
-  const systemPrompt = buildBrainPrompt(input.userContext, input.conversationSummary, input.userMemories);
+  const systemPrompt = buildBrainPrompt(input.userContext, input.conversationSummary, input.userMemories, input.crossChatContext);
 
   // Build the user message with sub-agent data
   let userContent = '';

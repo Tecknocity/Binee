@@ -116,6 +116,7 @@ export async function handleChat(
     conversationSummary: context.conversationSummary,
     conversationHistory: context.conversationHistory,
     recentMessages: context.recentMessages,
+    crossChatContext: context.crossChatContext,
   });
 
   // 5. Flat credit billing — charge based on what happened, not tokens

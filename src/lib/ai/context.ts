@@ -639,6 +639,7 @@ export interface SlimContext {
   conversationSummary: string;  // From conversations.summary column
   conversationHistory: string;  // Last 2 messages formatted
   recentMessages: string;       // Last 2 messages as brief context for router
+  crossChatContext: string;     // Summaries from other recent conversations in the workspace
 }
 
 export async function buildSlimContext(
@@ -655,6 +656,7 @@ export async function buildSlimContext(
     compactState,
     convResult,
     messagesResult,
+    crossChatResult,
   ] = await Promise.all([
     supabase
       .from('workspaces')
@@ -688,6 +690,15 @@ export async function buildSlimContext(
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(2),
+    // Cross-chat: summaries from other recent conversations in this workspace
+    supabase
+      .from('conversations')
+      .select('summary, context_type, updated_at')
+      .eq('workspace_id', workspaceId)
+      .neq('id', conversationId)
+      .not('summary', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(5),
   ]);
 
   const workspace = workspaceResult.data;
@@ -728,11 +739,24 @@ export async function buildSlimContext(
     .map(m => `${(m.role as string)}: ${(m.content as string).slice(0, 100)}`)
     .join('\n');
 
+  // Cross-chat context: summaries from other recent conversations
+  const otherConvos = crossChatResult.data ?? [];
+  const crossChatContext = otherConvos.length > 0
+    ? otherConvos
+        .filter(c => c.summary && (c.summary as string).trim().length > 0)
+        .map(c => {
+          const label = c.context_type === 'setup' ? 'Setup session' : 'Previous chat';
+          return `[${label}]: ${(c.summary as string).slice(0, 200)}`;
+        })
+        .join('\n')
+    : '';
+
   return {
     workspaceStructure,
     userContext,
     conversationSummary,
     conversationHistory,
     recentMessages,
+    crossChatContext,
   };
 }

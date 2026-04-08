@@ -71,10 +71,36 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     }
   }
 
-  // Step 2: Build system prompt with analysis + templates + user memories
+  // Step 2: Build system prompt with analysis + templates + user memories + cross-chat context
   const userMemories = await loadUserMemories(input.userId, input.workspaceId);
-  const basePrompt = buildSetupperPrompt(workspaceAnalysis, input.templates);
-  const systemPrompt = userMemories ? `${basePrompt}\n\n${userMemories}` : basePrompt;
+
+  // Load summaries from other conversations for cross-chat awareness
+  const { createClient } = await import('@supabase/supabase-js');
+  const adminClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+  const { data: otherConvos } = await adminClient
+    .from('conversations')
+    .select('summary, context_type')
+    .eq('workspace_id', input.workspaceId)
+    .neq('id', input.conversationId)
+    .not('summary', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(5);
+
+  const crossChatLines = (otherConvos ?? [])
+    .filter(c => c.summary && (c.summary as string).trim().length > 0)
+    .map(c => {
+      const label = c.context_type === 'setup' ? 'Setup session' : 'Previous chat';
+      return `[${label}]: ${(c.summary as string).slice(0, 200)}`;
+    });
+
+  let systemPrompt = buildSetupperPrompt(workspaceAnalysis, input.templates);
+  if (userMemories) systemPrompt += `\n\n${userMemories}`;
+  if (crossChatLines.length > 0) {
+    systemPrompt += `\n\nCONTEXT FROM OTHER CONVERSATIONS:\nThe user has had other recent interactions. Use for continuity, but do not reference unless relevant:\n${crossChatLines.join('\n')}`;
+  }
 
   // Step 3: Get read-only tools for the Setupper to gather workspace context.
   // Write operations (create spaces/folders/lists) are handled by the separate

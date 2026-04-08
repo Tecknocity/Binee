@@ -17,6 +17,7 @@ export interface OrchestrationInput {
   conversationSummary: string;  // Rolling summary
   conversationHistory: string;  // Last 2 messages formatted
   recentMessages: string;       // Last 2 messages for router context
+  crossChatContext: string;     // Summaries from other conversations in workspace
 }
 
 export interface OrchestrationResult {
@@ -83,6 +84,7 @@ export async function orchestrate(input: OrchestrationInput): Promise<Orchestrat
     userContext: input.userContext,
     conversationSummary: input.conversationSummary,
     conversationHistory: input.conversationHistory,
+    crossChatContext: input.crossChatContext || '',
     subAgentSummaries: subAgentResults.map(r => ({
       agent: r.agent,
       summary: r.summary,
