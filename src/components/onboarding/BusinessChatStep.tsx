@@ -16,8 +16,14 @@ import {
   Wrench,
   GitBranch,
   Pencil,
+  Paperclip,
+  X,
+  FileSpreadsheet,
+  FileText,
 } from 'lucide-react';
 import type { SetupChatMessage, ProfileFormData } from '@/hooks/useSetup';
+import { parseFile, getFileError, isFileSupported } from '@/lib/file-parser';
+import type { FileAttachment } from '@/lib/file-parser';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -28,7 +34,7 @@ interface BusinessChatStepProps {
   isSending: boolean;
   messageCount: number;
   profileFormData: ProfileFormData | null;
-  onSendMessage: (msg: string) => void;
+  onSendMessage: (msg: string, fileContext?: string) => void;
   onSelectTemplate: (template: string) => void;
   onEditProfile: () => void;
 }
@@ -102,8 +108,13 @@ export function BusinessChatStep({
   onEditProfile,
 }: BusinessChatStepProps) {
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const canGenerate = messageCount >= 1;
   const completeness = profileFormData
@@ -138,10 +149,74 @@ export function BusinessChatStep({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
 
+  // Clear file error after 5 seconds
+  useEffect(() => {
+    if (!fileError) return;
+    const t = setTimeout(() => setFileError(null), 5000);
+    return () => clearTimeout(t);
+  }, [fileError]);
+
+  const handleFiles = async (files: FileList | File[]) => {
+    setFileError(null);
+    const fileArray = Array.from(files);
+
+    if (attachments.length + fileArray.length > 3) {
+      setFileError('Maximum 3 files per message');
+      return;
+    }
+
+    for (const file of fileArray) {
+      const error = getFileError(file);
+      if (error) {
+        setFileError(error);
+        return;
+      }
+    }
+
+    setIsParsing(true);
+    try {
+      const parsed = await Promise.all(
+        fileArray.map(async (file) => {
+          const result = await parseFile(file);
+          return {
+            name: result.name,
+            type: result.type,
+            content: result.content,
+            rowCount: result.rowCount,
+            columns: result.columns,
+          } as FileAttachment;
+        }),
+      );
+      setAttachments((prev) => [...prev, ...parsed]);
+    } catch {
+      setFileError('Failed to parse file. Please try a different format.');
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSend = () => {
-    if (!input.trim() || isSending) return;
-    onSendMessage(input.trim());
+    if ((!input.trim() && attachments.length === 0) || isSending) return;
+
+    let fileContext: string | undefined;
+    if (attachments.length > 0) {
+      const parts = attachments.map((att, i) => {
+        const header = attachments.length > 1 ? `[Attachment ${i + 1}: ${att.name}]` : `[Attached file: ${att.name}]`;
+        const meta = att.rowCount
+          ? ` (${att.rowCount} rows, columns: ${att.columns?.join(', ') ?? 'unknown'})`
+          : '';
+        return `${header}${meta}\n${att.content}`;
+      });
+      fileContext = parts.join('\n\n---\n\n');
+    }
+
+    onSendMessage(input.trim() || 'Please analyze the attached file(s) for my workspace setup.', fileContext);
     setInput('');
+    setAttachments([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -152,6 +227,45 @@ export function BusinessChatStep({
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isSending) return;
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    if (isSending) return;
+
+    const files = Array.from(e.dataTransfer.files).filter(isFileSupported);
+    if (files.length > 0) {
+      handleFiles(files);
+    } else if (e.dataTransfer.files.length > 0) {
+      setFileError('Unsupported file type. Use CSV, XLSX, TXT, MD, or JSON.');
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(e.target.files);
+    }
+    e.target.value = '';
+  };
+
+  const getFileIcon = (type: FileAttachment['type']) => {
+    if (type === 'csv' || type === 'xlsx') return FileSpreadsheet;
+    return FileText;
   };
 
   const isFormFieldCollected = (key: keyof ProfileFormData): boolean => {
@@ -169,7 +283,12 @@ export function BusinessChatStep({
   };
 
   return (
-    <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden">
+    <div
+      className={`flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Chat messages */}
         <div className="flex-1 overflow-y-auto py-4 min-h-0 flex flex-col">
@@ -310,6 +429,53 @@ export function BusinessChatStep({
             </div>
           </div>
 
+          {/* File error */}
+          {fileError && (
+            <div className="px-4 py-1.5 border-t border-border bg-red-500/5">
+              <span className="text-xs text-red-400">{fileError}</span>
+            </div>
+          )}
+
+          {/* Drag overlay */}
+          {isDragOver && (
+            <div className="px-4 py-2 border-t border-accent/30 bg-accent/5">
+              <div className="flex items-center gap-2 justify-center">
+                <Paperclip className="w-3.5 h-3.5 text-accent" />
+                <span className="text-xs text-accent font-medium">
+                  Drop files here (CSV, XLSX, TXT, MD, JSON)
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Attachment chips */}
+          {attachments.length > 0 && (
+            <div className="px-4 py-2 border-t border-border flex flex-wrap gap-2">
+              {attachments.map((att, i) => {
+                const Icon = getFileIcon(att.type);
+                return (
+                  <div
+                    key={`${att.name}-${i}`}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-navy-dark border border-border text-xs text-text-secondary"
+                  >
+                    <Icon className="w-3.5 h-3.5 text-accent shrink-0" />
+                    <span className="truncate max-w-[120px]">{att.name}</span>
+                    {att.rowCount !== undefined && (
+                      <span className="text-text-muted">({att.rowCount} rows)</span>
+                    )}
+                    <button
+                      onClick={() => removeAttachment(i)}
+                      className="ml-0.5 p-0.5 rounded hover:bg-border transition-colors"
+                      title="Remove file"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Textarea area */}
           <div className="px-4 pt-3 pb-2 border-t border-border">
             <textarea
@@ -327,16 +493,34 @@ export function BusinessChatStep({
               className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
             />
             <div className="flex items-center justify-between mt-1">
-              <p className="text-[11px] text-text-muted">
-                <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
-                to send
-                <span className="mx-1.5 text-text-muted/50">|</span>
-                <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Shift + Enter</kbd>{' '}
-                for new line
-              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSending || isParsing}
+                  className="p-1.5 rounded-md text-text-muted hover:text-accent hover:bg-navy-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Attach file (CSV, XLSX, TXT, MD, JSON)"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv"
+                  multiple
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
+                <p className="text-[11px] text-text-muted">
+                  <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
+                  to send
+                  <span className="mx-1.5 text-text-muted/50">|</span>
+                  <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Shift + Enter</kbd>{' '}
+                  for new line
+                </p>
+              </div>
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isSending}
+                disabled={(!input.trim() && attachments.length === 0) || isSending}
                 className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
                   hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >

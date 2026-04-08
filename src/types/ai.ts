@@ -133,6 +133,8 @@ export interface ChatRequest {
   user_id: string;
   conversation_id: string;
   message: string;
+  /** Parsed file content attached by the user (CSV, XLSX, TXT, etc.) */
+  file_context?: string;
 }
 
 export interface ClassificationResult {

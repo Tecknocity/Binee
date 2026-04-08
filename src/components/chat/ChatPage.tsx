@@ -305,7 +305,7 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
   }, [setActiveConversation, router]);
 
   const handleSend = useCallback(
-    async (content: string) => {
+    async (content: string, fileContext?: string) => {
       if (isOutOfCredits) {
         setShowCreditsModal(true);
         return;
@@ -315,14 +315,14 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
         // New conversation: show user message immediately, create in DB, then send
         setPendingFirstMessage(content.trim());
         const newId = await createConversation();
-        sendMessage(content, newId);
+        sendMessage(content, newId, fileContext);
         queueMicrotask(() => setPendingFirstMessage(null));
         // Navigate to the new conversation URL so the ID is in the URL
         if (newId && !newId.startsWith('conv-')) {
           router.push(`/chat/${newId}`, { scroll: false });
         }
       } else {
-        sendMessage(content);
+        sendMessage(content, undefined, fileContext);
       }
     },
     [effectiveConversationId, createConversation, sendMessage, isOutOfCredits, router],

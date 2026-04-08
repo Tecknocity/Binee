@@ -43,7 +43,7 @@ const ORCHESTRATOR_MODEL = 'claude-sonnet-4-20250514';
 export async function handleChat(
   request: ChatRequest,
 ): Promise<ChatHandlerResponse> {
-  const { workspace_id, user_id, conversation_id, message } = request;
+  const { workspace_id, user_id, conversation_id, message, file_context } = request;
 
   let supabase: ReturnType<typeof getSupabaseAdmin>;
   try {
@@ -106,8 +106,13 @@ export async function handleChat(
   const context = await buildSlimContext(workspace_id, user_id, conversation_id);
 
   // 4. Orchestrate: Router → Sub-Agents → Brain
+  // If the user attached files, prepend the parsed content to the message
+  const enrichedMessage = file_context
+    ? `${message}\n\n--- ATTACHED FILE CONTENT ---\n${file_context}\n--- END ATTACHED FILE CONTENT ---`
+    : message;
+
   const result = await orchestrate({
-    userMessage: message,
+    userMessage: enrichedMessage,
     workspaceId: workspace_id,
     userId: user_id,
     conversationId: conversation_id,
