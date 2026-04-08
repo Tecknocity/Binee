@@ -289,6 +289,434 @@ export const CLICKUP_TOOL_REGISTRY: Anthropic.Tool[] = [
       required: [],
     },
   },
+  // ---------------------------------------------------------------------------
+  // Docs tools
+  // ---------------------------------------------------------------------------
+  {
+    name: 'search_docs',
+    description:
+      'Search and list all ClickUp Docs in the workspace. Returns doc names and IDs for further reading.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_doc_pages',
+    description:
+      'Get all pages of a ClickUp Doc. Returns page names, content, and structure.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        doc_id: {
+          type: 'string',
+          description: 'The ClickUp Doc ID to get pages from',
+        },
+      },
+      required: ['doc_id'],
+    },
+  },
+  {
+    name: 'create_doc',
+    description:
+      'Create a new ClickUp Doc in the workspace with optional initial content.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'The name/title of the new document',
+        },
+        content: {
+          type: 'string',
+          description: 'Optional initial content for the document (supports markdown)',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'create_doc_page',
+    description:
+      'Create a new page inside an existing ClickUp Doc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        doc_id: {
+          type: 'string',
+          description: 'The ClickUp Doc ID to add a page to',
+        },
+        name: {
+          type: 'string',
+          description: 'Name/title of the new page',
+        },
+        content: {
+          type: 'string',
+          description: 'Page content (supports markdown)',
+        },
+      },
+      required: ['doc_id', 'name'],
+    },
+  },
+  {
+    name: 'update_doc_page',
+    description:
+      'Update the content or title of an existing page in a ClickUp Doc.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        doc_id: {
+          type: 'string',
+          description: 'The ClickUp Doc ID',
+        },
+        page_id: {
+          type: 'string',
+          description: 'The page ID to update',
+        },
+        name: {
+          type: 'string',
+          description: 'New name/title for the page',
+        },
+        content: {
+          type: 'string',
+          description: 'New content for the page (supports markdown)',
+        },
+      },
+      required: ['doc_id', 'page_id'],
+    },
+  },
+  // ---------------------------------------------------------------------------
+  // Goals & Key Results tools
+  // ---------------------------------------------------------------------------
+  {
+    name: 'get_goals',
+    description:
+      'Get all goals in the workspace. Shows goal names, progress percentage, due dates, and status.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'create_goal',
+    description:
+      'Create a new goal in the workspace with a name, due date, and optional description.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'The name of the goal',
+        },
+        due_date: {
+          type: 'string',
+          description: 'Due date as ISO date string',
+        },
+        description: {
+          type: 'string',
+          description: 'Optional description of the goal',
+        },
+        owner_name: {
+          type: 'string',
+          description: 'Name of the goal owner. Will be resolved to their ClickUp user ID.',
+        },
+        color: {
+          type: 'string',
+          description: 'Goal color hex code (e.g. "#854DF9")',
+        },
+      },
+      required: ['name', 'due_date'],
+    },
+  },
+  {
+    name: 'update_goal',
+    description:
+      'Update an existing goal. Can change name, due date, description, or color.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_id: {
+          type: 'string',
+          description: 'The ClickUp Goal ID to update',
+        },
+        name: {
+          type: 'string',
+          description: 'New name for the goal',
+        },
+        due_date: {
+          type: 'string',
+          description: 'New due date as ISO date string',
+        },
+        description: {
+          type: 'string',
+          description: 'New description',
+        },
+        color: {
+          type: 'string',
+          description: 'New color hex code',
+        },
+      },
+      required: ['goal_id'],
+    },
+  },
+  {
+    name: 'get_key_results',
+    description:
+      'Get all key results for a specific goal. Shows progress, completion status, and targets.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_id: {
+          type: 'string',
+          description: 'The ClickUp Goal ID to get key results for',
+        },
+      },
+      required: ['goal_id'],
+    },
+  },
+  {
+    name: 'create_key_result',
+    description:
+      'Create a new key result under a goal. Defines a measurable target.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_id: {
+          type: 'string',
+          description: 'The Goal ID to add the key result to',
+        },
+        name: {
+          type: 'string',
+          description: 'Name of the key result',
+        },
+        type: {
+          type: 'string',
+          enum: ['number', 'currency', 'boolean', 'percentage', 'automatic'],
+          description: 'Type of key result metric (default: "number")',
+        },
+        steps_start: {
+          type: 'number',
+          description: 'Starting value (e.g. 0)',
+        },
+        steps_end: {
+          type: 'number',
+          description: 'Target value (e.g. 100)',
+        },
+        unit: {
+          type: 'string',
+          description: 'Unit of measurement (e.g. "tasks", "users", "%")',
+        },
+        owner_name: {
+          type: 'string',
+          description: 'Name of the key result owner. Will be resolved to their ClickUp user ID.',
+        },
+      },
+      required: ['goal_id', 'name', 'steps_start', 'steps_end'],
+    },
+  },
+  // ---------------------------------------------------------------------------
+  // Comments tools
+  // ---------------------------------------------------------------------------
+  {
+    name: 'get_task_comments',
+    description:
+      'Get all comments on a specific task. Returns comment text, author, and timestamp.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID to get comments from',
+        },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'add_task_comment',
+    description:
+      'Add a comment to a task. Can optionally assign the comment to a team member.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID to comment on',
+        },
+        comment_text: {
+          type: 'string',
+          description: 'The comment text to add',
+        },
+        assignee_name: {
+          type: 'string',
+          description: 'Optional: Name of team member to assign the comment to',
+        },
+      },
+      required: ['task_id', 'comment_text'],
+    },
+  },
+  // ---------------------------------------------------------------------------
+  // Tags tools
+  // ---------------------------------------------------------------------------
+  {
+    name: 'get_tags',
+    description:
+      'Get all available tags in the workspace across all spaces.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'add_tag_to_task',
+    description:
+      'Add a tag to a task. The tag must already exist in the space.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID',
+        },
+        tag_name: {
+          type: 'string',
+          description: 'The tag name to add',
+        },
+      },
+      required: ['task_id', 'tag_name'],
+    },
+  },
+  {
+    name: 'remove_tag_from_task',
+    description:
+      'Remove a tag from a task.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID',
+        },
+        tag_name: {
+          type: 'string',
+          description: 'The tag name to remove',
+        },
+      },
+      required: ['task_id', 'tag_name'],
+    },
+  },
+  // ---------------------------------------------------------------------------
+  // Custom Fields tools
+  // ---------------------------------------------------------------------------
+  {
+    name: 'set_custom_field',
+    description:
+      'Set a custom field value on a task. Requires the field ID and the value to set.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The ClickUp task ID',
+        },
+        field_id: {
+          type: 'string',
+          description: 'The custom field ID',
+        },
+        field_name: {
+          type: 'string',
+          description: 'The custom field name (used to look up the field ID if field_id is not provided)',
+        },
+        value: {
+          type: 'string',
+          description: 'The value to set (will be parsed based on field type)',
+        },
+      },
+      required: ['task_id', 'value'],
+    },
+  },
+  // ---------------------------------------------------------------------------
+  // Dependencies & Task Links tools
+  // ---------------------------------------------------------------------------
+  {
+    name: 'add_dependency',
+    description:
+      'Add a dependency between two tasks. Makes one task depend on (wait for) another.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The task that will depend on another (the waiting task)',
+        },
+        depends_on_task_id: {
+          type: 'string',
+          description: 'The task that must be completed first (the blocking task)',
+        },
+      },
+      required: ['task_id', 'depends_on_task_id'],
+    },
+  },
+  {
+    name: 'remove_dependency',
+    description:
+      'Remove a dependency between two tasks.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The task that depends on another',
+        },
+        depends_on_task_id: {
+          type: 'string',
+          description: 'The task that it depends on',
+        },
+      },
+      required: ['task_id', 'depends_on_task_id'],
+    },
+  },
+  {
+    name: 'add_task_link',
+    description:
+      'Link two tasks together (bidirectional relationship, not a dependency).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The first task ID',
+        },
+        links_to_task_id: {
+          type: 'string',
+          description: 'The second task ID to link to',
+        },
+      },
+      required: ['task_id', 'links_to_task_id'],
+    },
+  },
+  {
+    name: 'remove_task_link',
+    description:
+      'Remove a link between two tasks.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The first task ID',
+        },
+        links_to_task_id: {
+          type: 'string',
+          description: 'The linked task ID to unlink',
+        },
+      },
+      required: ['task_id', 'links_to_task_id'],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -308,8 +736,12 @@ export const SUB_AGENT_TOOLS: Anthropic.Tool[] = [
 - Move tasks between lists
 - Add time entries or manage time tracking
 - Perform bulk operations on multiple tasks
+- Add, read, or manage comments on tasks
+- Add or remove tags on tasks
+- Set custom field values on tasks
+- Add or remove task dependencies and links
 
-DO NOT use this for: workspace structure changes (use setupper) or workspace analysis (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
+DO NOT use this for: workspace structure changes (use setupper), workspace analysis (use workspace_analyst), or doc/goal operations (use workspace_analyst). For simple one-off task lookups where you just need a quick count or list, you can use the direct lookup_tasks or get_overdue_tasks tools instead of spinning up the full task manager.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -323,7 +755,7 @@ DO NOT use this for: workspace structure changes (use setupper) or workspace ana
   },
   {
     name: 'workspace_analyst',
-    description: `Delegate to the Workspace Analyst sub-agent for analyzing workspace health, structure, and usage patterns. Use this when the user wants to:
+    description: `Delegate to the Workspace Analyst sub-agent for analyzing workspace health, structure, usage patterns, goals, and docs. Use this when the user wants to:
 - Get an overview or health check of their workspace
 - Understand what's working and what's not in their ClickUp setup
 - See workspace metrics, trends, or comparisons over time
@@ -331,8 +763,11 @@ DO NOT use this for: workspace structure changes (use setupper) or workspace ana
 - Identify bottlenecks, unused areas, or problematic patterns
 - Get recommendations for workspace improvements
 - Run a full workspace scan (for the Setup flow)
+- View, create, or manage goals and key results (OKRs)
+- Search, read, create, or update ClickUp Docs
+- Review available tags across the workspace
 
-DO NOT use this for: creating or modifying workspace structure (use setupper) or managing tasks (use task_manager).`,
+DO NOT use this for: creating or modifying workspace structure (use setupper) or managing individual tasks (use task_manager).`,
     input_schema: {
       type: 'object' as const,
       properties: {

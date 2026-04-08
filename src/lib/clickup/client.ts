@@ -7,6 +7,13 @@ import type {
   ClickUpMember,
   ClickUpTimeEntry,
   ClickUpDoc,
+  ClickUpDocPage,
+  ClickUpComment,
+  ClickUpGoal,
+  ClickUpKeyResult,
+  ClickUpTag,
+  ClickUpCustomField,
+  ClickUpView,
   CreateTaskParams,
   UpdateTaskParams,
   RateLimitStatus,
@@ -443,14 +450,325 @@ export class ClickUpClient {
     await this.request<void>(`/list/${listId}`, { method: "DELETE" });
   }
 
+  // ---------------------------------------------------------------------------
+  // Docs
+  // ---------------------------------------------------------------------------
+
   async createDoc(
     workspaceId: string,
-    name: string
+    name: string,
+    content?: string
   ): Promise<ClickUpDoc> {
+    const body: Record<string, unknown> = { name };
+    if (content) {
+      body.content = content;
+    }
     return this.request<ClickUpDoc>(`/team/${workspaceId}/doc`, {
       method: "POST",
-      body: { name },
+      body,
     });
+  }
+
+  async searchDocs(
+    workspaceId: string
+  ): Promise<ClickUpDoc[]> {
+    const res = await this.request<{ docs: ClickUpDoc[] }>(
+      `/workspace/${workspaceId}/doc`
+    );
+    return res.docs ?? [];
+  }
+
+  async getDocPages(docId: string): Promise<ClickUpDocPage[]> {
+    const res = await this.request<{ pages: ClickUpDocPage[] }>(
+      `/doc/${docId}/page`
+    );
+    return res.pages ?? [];
+  }
+
+  async createDocPage(
+    docId: string,
+    name: string,
+    content?: string
+  ): Promise<ClickUpDocPage> {
+    const body: Record<string, unknown> = { name };
+    if (content) {
+      body.content = content;
+    }
+    return this.request<ClickUpDocPage>(`/doc/${docId}/page`, {
+      method: "POST",
+      body,
+    });
+  }
+
+  async updateDocPage(
+    docId: string,
+    pageId: string,
+    params: { name?: string; content?: string }
+  ): Promise<ClickUpDocPage> {
+    return this.request<ClickUpDocPage>(`/doc/${docId}/page/${pageId}`, {
+      method: "PUT",
+      body: params as Record<string, unknown>,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Goals & Key Results
+  // ---------------------------------------------------------------------------
+
+  async getGoals(teamId: string): Promise<ClickUpGoal[]> {
+    const res = await this.request<{ goals: ClickUpGoal[] }>(
+      `/team/${teamId}/goal`
+    );
+    return res.goals ?? [];
+  }
+
+  async createGoal(
+    teamId: string,
+    params: {
+      name: string;
+      due_date: string;
+      description?: string;
+      multiple_owners?: boolean;
+      owners?: number[];
+      color?: string;
+    }
+  ): Promise<ClickUpGoal> {
+    const res = await this.request<{ goal: ClickUpGoal }>(
+      `/team/${teamId}/goal`,
+      {
+        method: "POST",
+        body: params as unknown as Record<string, unknown>,
+      }
+    );
+    return res.goal;
+  }
+
+  async updateGoal(
+    goalId: string,
+    params: {
+      name?: string;
+      due_date?: string;
+      description?: string;
+      color?: string;
+    }
+  ): Promise<ClickUpGoal> {
+    const res = await this.request<{ goal: ClickUpGoal }>(
+      `/goal/${goalId}`,
+      {
+        method: "PUT",
+        body: params as unknown as Record<string, unknown>,
+      }
+    );
+    return res.goal;
+  }
+
+  async getKeyResults(goalId: string): Promise<ClickUpKeyResult[]> {
+    const res = await this.request<{ key_results: ClickUpKeyResult[] }>(
+      `/goal/${goalId}/key_result`
+    );
+    return res.key_results ?? [];
+  }
+
+  async createKeyResult(
+    goalId: string,
+    params: {
+      name: string;
+      type: string;
+      steps_start: number;
+      steps_end: number;
+      unit?: string;
+      owners?: number[];
+    }
+  ): Promise<ClickUpKeyResult> {
+    const res = await this.request<{ key_result: ClickUpKeyResult }>(
+      `/goal/${goalId}/key_result`,
+      {
+        method: "POST",
+        body: params as unknown as Record<string, unknown>,
+      }
+    );
+    return res.key_result;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Comments
+  // ---------------------------------------------------------------------------
+
+  async getTaskComments(taskId: string): Promise<ClickUpComment[]> {
+    const res = await this.request<{ comments: ClickUpComment[] }>(
+      `/task/${taskId}/comment`
+    );
+    return res.comments ?? [];
+  }
+
+  async createTaskComment(
+    taskId: string,
+    commentText: string,
+    assigneeId?: number
+  ): Promise<ClickUpComment> {
+    const body: Record<string, unknown> = { comment_text: commentText };
+    if (assigneeId !== undefined) {
+      body.assignee = assigneeId;
+    }
+    return this.request<ClickUpComment>(`/task/${taskId}/comment`, {
+      method: "POST",
+      body,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Custom Fields
+  // ---------------------------------------------------------------------------
+
+  async getListCustomFields(listId: string): Promise<ClickUpCustomField[]> {
+    const res = await this.request<{ fields: ClickUpCustomField[] }>(
+      `/list/${listId}/field`
+    );
+    return res.fields ?? [];
+  }
+
+  async setCustomFieldValue(
+    taskId: string,
+    fieldId: string,
+    value: unknown
+  ): Promise<void> {
+    await this.request(`/task/${taskId}/field/${fieldId}`, {
+      method: "POST",
+      body: { value } as Record<string, unknown>,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tags
+  // ---------------------------------------------------------------------------
+
+  async getSpaceTags(spaceId: string): Promise<ClickUpTag[]> {
+    const res = await this.request<{ tags: ClickUpTag[] }>(
+      `/space/${spaceId}/tag`
+    );
+    return res.tags ?? [];
+  }
+
+  async addTagToTask(taskId: string, tagName: string): Promise<void> {
+    await this.request(`/task/${taskId}/tag/${tagName}`, {
+      method: "POST",
+    });
+  }
+
+  async removeTagFromTask(taskId: string, tagName: string): Promise<void> {
+    await this.request(`/task/${taskId}/tag/${tagName}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dependencies & Task Links
+  // ---------------------------------------------------------------------------
+
+  async addDependency(
+    taskId: string,
+    dependsOnTaskId: string
+  ): Promise<void> {
+    await this.request(`/task/${taskId}/dependency`, {
+      method: "POST",
+      body: { depends_on: dependsOnTaskId },
+    });
+  }
+
+  async removeDependency(
+    taskId: string,
+    dependsOnTaskId: string
+  ): Promise<void> {
+    await this.request(`/task/${taskId}/dependency`, {
+      method: "DELETE",
+      body: { depends_on: dependsOnTaskId },
+    });
+  }
+
+  async addTaskLink(
+    taskId: string,
+    linksToTaskId: string
+  ): Promise<void> {
+    await this.request(`/task/${taskId}/link/${linksToTaskId}`, {
+      method: "POST",
+    });
+  }
+
+  async removeTaskLink(
+    taskId: string,
+    linksToTaskId: string
+  ): Promise<void> {
+    await this.request(`/task/${taskId}/link/${linksToTaskId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Time Tracking (start/stop/manual)
+  // ---------------------------------------------------------------------------
+
+  async startTimeEntry(
+    teamId: string,
+    taskId: string,
+    description?: string
+  ): Promise<ClickUpTimeEntry> {
+    const body: Record<string, unknown> = { tid: taskId };
+    if (description) {
+      body.description = description;
+    }
+    const res = await this.request<{ data: ClickUpTimeEntry }>(
+      `/team/${teamId}/time_entries/start`,
+      { method: "POST", body }
+    );
+    return res.data;
+  }
+
+  async stopTimeEntry(teamId: string): Promise<ClickUpTimeEntry> {
+    const res = await this.request<{ data: ClickUpTimeEntry }>(
+      `/team/${teamId}/time_entries/stop`,
+      { method: "POST" }
+    );
+    return res.data;
+  }
+
+  async addManualTimeEntry(
+    teamId: string,
+    taskId: string,
+    startMs: number,
+    durationMs: number,
+    description?: string
+  ): Promise<ClickUpTimeEntry> {
+    const body: Record<string, unknown> = {
+      tid: taskId,
+      start: startMs,
+      duration: durationMs,
+    };
+    if (description) {
+      body.description = description;
+    }
+    const res = await this.request<{ data: ClickUpTimeEntry }>(
+      `/team/${teamId}/time_entries`,
+      { method: "POST", body }
+    );
+    return res.data;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Views
+  // ---------------------------------------------------------------------------
+
+  async getTeamViews(teamId: string): Promise<ClickUpView[]> {
+    const res = await this.request<{ views: ClickUpView[] }>(
+      `/team/${teamId}/view`
+    );
+    return res.views ?? [];
+  }
+
+  async getSpaceViews(spaceId: string): Promise<ClickUpView[]> {
+    const res = await this.request<{ views: ClickUpView[] }>(
+      `/space/${spaceId}/view`
+    );
+    return res.views ?? [];
   }
 
   // ---------------------------------------------------------------------------

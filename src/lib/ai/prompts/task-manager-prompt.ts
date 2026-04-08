@@ -11,6 +11,14 @@ RULES:
 4. NEVER generate a user-facing response. Your output goes to another AI that creates the final response.
 5. Keep your summary under 500 tokens. Be concise.
 
+CAPABILITIES:
+- Search, create, update, move, and assign tasks
+- Read and add comments on tasks
+- Add and remove tags on tasks
+- Set custom field values on tasks
+- Add and remove task dependencies and task links
+- View team activity and time tracking data
+
 SUMMARY FORMAT:
 - Start with a one-line overview (e.g., "23 tasks open, 5 overdue")
 - List key items with brief details (name, assignee, status, due date)
@@ -29,4 +37,14 @@ export const TASK_MANAGER_TOOLS_NAMES = [
   'update_task',
   'assign_task',
   'move_task',
+  'get_task_comments',
+  'add_task_comment',
+  'get_tags',
+  'add_tag_to_task',
+  'remove_tag_from_task',
+  'set_custom_field',
+  'add_dependency',
+  'remove_dependency',
+  'add_task_link',
+  'remove_task_link',
 ] as const;

@@ -4,6 +4,11 @@ import type {
   ClickUpTask,
   ClickUpList,
   ClickUpFolder,
+  ClickUpDoc,
+  ClickUpDocPage,
+  ClickUpComment,
+  ClickUpGoal,
+  ClickUpKeyResult,
   CreateTaskParams,
   UpdateTaskParams,
 } from "@/types/clickup";
@@ -318,6 +323,420 @@ export async function createFolder(
     await upsertCachedFolders(workspaceId, [folder]);
 
     return { success: true, data: folder };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Docs
+// ---------------------------------------------------------------------------
+
+export async function searchDocs(
+  workspaceId: string
+): Promise<OperationResult<ClickUpDoc[]>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    const client = new ClickUpClient(workspaceId);
+    const docs = await client.searchDocs(workspaceId);
+    return { success: true, data: docs };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function createDoc(
+  workspaceId: string,
+  name: string,
+  content?: string
+): Promise<OperationResult<ClickUpDoc>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(name, "name");
+    const client = new ClickUpClient(workspaceId);
+    const doc = await client.createDoc(workspaceId, name, content);
+    return { success: true, data: doc };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function getDocPages(
+  workspaceId: string,
+  docId: string
+): Promise<OperationResult<ClickUpDocPage[]>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(docId, "docId");
+    const client = new ClickUpClient(workspaceId);
+    const pages = await client.getDocPages(docId);
+    return { success: true, data: pages };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function createDocPage(
+  workspaceId: string,
+  docId: string,
+  name: string,
+  content?: string
+): Promise<OperationResult<ClickUpDocPage>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(docId, "docId");
+    validateRequired(name, "name");
+    const client = new ClickUpClient(workspaceId);
+    const page = await client.createDocPage(docId, name, content);
+    return { success: true, data: page };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function updateDocPage(
+  workspaceId: string,
+  docId: string,
+  pageId: string,
+  params: { name?: string; content?: string }
+): Promise<OperationResult<ClickUpDocPage>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(docId, "docId");
+    validateRequired(pageId, "pageId");
+    const client = new ClickUpClient(workspaceId);
+    const page = await client.updateDocPage(docId, pageId, params);
+    return { success: true, data: page };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+
+export async function getTaskComments(
+  workspaceId: string,
+  taskId: string
+): Promise<OperationResult<ClickUpComment[]>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    const client = new ClickUpClient(workspaceId);
+    const comments = await client.getTaskComments(taskId);
+    return { success: true, data: comments };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function createTaskComment(
+  workspaceId: string,
+  taskId: string,
+  commentText: string,
+  assigneeId?: number
+): Promise<OperationResult<ClickUpComment>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    validateRequired(commentText, "commentText");
+    const client = new ClickUpClient(workspaceId);
+    const comment = await client.createTaskComment(taskId, commentText, assigneeId);
+    return { success: true, data: comment };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Goals & Key Results
+// ---------------------------------------------------------------------------
+
+export async function getGoals(
+  workspaceId: string,
+  teamId: string
+): Promise<OperationResult<ClickUpGoal[]>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(teamId, "teamId");
+    const client = new ClickUpClient(workspaceId);
+    const goals = await client.getGoals(teamId);
+    return { success: true, data: goals };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function createGoal(
+  workspaceId: string,
+  teamId: string,
+  params: {
+    name: string;
+    due_date: string;
+    description?: string;
+    multiple_owners?: boolean;
+    owners?: number[];
+    color?: string;
+  }
+): Promise<OperationResult<ClickUpGoal>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(teamId, "teamId");
+    validateRequired(params.name, "name");
+    validateRequired(params.due_date, "due_date");
+    const client = new ClickUpClient(workspaceId);
+    const goal = await client.createGoal(teamId, params);
+    return { success: true, data: goal };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function updateGoal(
+  workspaceId: string,
+  goalId: string,
+  params: {
+    name?: string;
+    due_date?: string;
+    description?: string;
+    color?: string;
+  }
+): Promise<OperationResult<ClickUpGoal>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(goalId, "goalId");
+    const client = new ClickUpClient(workspaceId);
+    const goal = await client.updateGoal(goalId, params);
+    return { success: true, data: goal };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function getKeyResults(
+  workspaceId: string,
+  goalId: string
+): Promise<OperationResult<ClickUpKeyResult[]>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(goalId, "goalId");
+    const client = new ClickUpClient(workspaceId);
+    const keyResults = await client.getKeyResults(goalId);
+    return { success: true, data: keyResults };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function createKeyResult(
+  workspaceId: string,
+  goalId: string,
+  params: {
+    name: string;
+    type: string;
+    steps_start: number;
+    steps_end: number;
+    unit?: string;
+    owners?: number[];
+  }
+): Promise<OperationResult<ClickUpKeyResult>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateRequired(goalId, "goalId");
+    validateRequired(params.name, "name");
+    const client = new ClickUpClient(workspaceId);
+    const keyResult = await client.createKeyResult(goalId, params);
+    return { success: true, data: keyResult };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+
+export async function addTagToTask(
+  workspaceId: string,
+  taskId: string,
+  tagName: string
+): Promise<OperationResult<void>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    validateRequired(tagName, "tagName");
+    const client = new ClickUpClient(workspaceId);
+    await client.addTagToTask(taskId, tagName);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function removeTagFromTask(
+  workspaceId: string,
+  taskId: string,
+  tagName: string
+): Promise<OperationResult<void>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    validateRequired(tagName, "tagName");
+    const client = new ClickUpClient(workspaceId);
+    await client.removeTagFromTask(taskId, tagName);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Custom Fields
+// ---------------------------------------------------------------------------
+
+export async function setCustomFieldValue(
+  workspaceId: string,
+  taskId: string,
+  fieldId: string,
+  value: unknown
+): Promise<OperationResult<void>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    validateRequired(fieldId, "fieldId");
+    const client = new ClickUpClient(workspaceId);
+    await client.setCustomFieldValue(taskId, fieldId, value);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dependencies & Task Links
+// ---------------------------------------------------------------------------
+
+export async function addDependency(
+  workspaceId: string,
+  taskId: string,
+  dependsOnTaskId: string
+): Promise<OperationResult<void>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    validateTaskId(dependsOnTaskId);
+    const client = new ClickUpClient(workspaceId);
+    await client.addDependency(taskId, dependsOnTaskId);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function removeDependency(
+  workspaceId: string,
+  taskId: string,
+  dependsOnTaskId: string
+): Promise<OperationResult<void>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    validateTaskId(dependsOnTaskId);
+    const client = new ClickUpClient(workspaceId);
+    await client.removeDependency(taskId, dependsOnTaskId);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function addTaskLink(
+  workspaceId: string,
+  taskId: string,
+  linksToTaskId: string
+): Promise<OperationResult<void>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    validateTaskId(linksToTaskId);
+    const client = new ClickUpClient(workspaceId);
+    await client.addTaskLink(taskId, linksToTaskId);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export async function removeTaskLink(
+  workspaceId: string,
+  taskId: string,
+  linksToTaskId: string
+): Promise<OperationResult<void>> {
+  try {
+    validateRequired(workspaceId, "workspaceId");
+    validateTaskId(taskId);
+    validateTaskId(linksToTaskId);
+    const client = new ClickUpClient(workspaceId);
+    await client.removeTaskLink(taskId, linksToTaskId);
+    return { success: true };
   } catch (err) {
     return {
       success: false,

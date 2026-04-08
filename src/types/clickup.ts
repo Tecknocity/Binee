@@ -137,6 +137,51 @@ export interface ClickUpDoc {
   id: string;
   name: string;
   workspace_id: string;
+  date_created?: string;
+  creator?: number;
+  deleted?: boolean;
+  pages?: ClickUpDocPage[];
+}
+
+export interface ClickUpDocPage {
+  id: string;
+  name: string;
+  content?: string;
+  orderindex?: number;
+  date_created?: string;
+  content_edit_status?: string;
+  pages?: ClickUpDocPage[];
+}
+
+export interface ClickUpKeyResult {
+  id: string;
+  goal_id: string;
+  name: string;
+  creator: number;
+  type: string;
+  unit: string;
+  steps_start: number;
+  steps_end: number;
+  steps_current: number;
+  date_created: string;
+  percent_completed: number;
+  completed: boolean;
+  last_action?: { date: string; userid: number };
+}
+
+export interface ClickUpDependency {
+  task_id: string;
+  depends_on: string;
+  type: number;
+  date_created: string;
+  userid: string;
+}
+
+export interface ClickUpTaskLink {
+  task_id: string;
+  link_id: string;
+  date_created: string;
+  userid: string;
 }
 
 export interface ClickUpComment {
@@ -400,4 +445,32 @@ export interface ClickUpCommentsResponse {
 
 export interface ClickUpWebhooksResponse {
   webhooks: ClickUpWebhookRegistration[];
+}
+
+export interface ClickUpGoalsResponse {
+  goals: ClickUpGoal[];
+}
+
+export interface ClickUpKeyResultsResponse {
+  key_results: ClickUpKeyResult[];
+}
+
+export interface ClickUpDocsResponse {
+  docs: ClickUpDoc[];
+}
+
+export interface ClickUpDocPagesResponse {
+  pages: ClickUpDocPage[];
+}
+
+export interface ClickUpTagsResponse {
+  tags: ClickUpTag[];
+}
+
+export interface ClickUpCustomFieldsResponse {
+  fields: ClickUpCustomField[];
+}
+
+export interface ClickUpViewsResponse {
+  views: ClickUpView[];
 }
