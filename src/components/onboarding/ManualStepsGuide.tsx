@@ -13,6 +13,7 @@ import {
   ArrowRight,
   MessageSquare,
   ListChecks,
+  ExternalLink,
 } from 'lucide-react';
 import type { ManualStep } from '@/lib/setup/types';
 
@@ -24,6 +25,7 @@ interface ManualStepsGuideProps {
   steps: ManualStep[];
   onMarkComplete: (index: number) => void;
   onFinish: () => void;
+  clickUpUrl?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +43,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 // Component
 // ---------------------------------------------------------------------------
 
-export function ManualStepsGuide({ steps, onMarkComplete, onFinish }: ManualStepsGuideProps) {
+export function ManualStepsGuide({ steps, onMarkComplete, onFinish, clickUpUrl }: ManualStepsGuideProps) {
   const completedCount = steps.filter((s) => s.completed).length;
   const totalCount = steps.length;
   const allDone = completedCount === totalCount;
@@ -94,20 +96,34 @@ export function ManualStepsGuide({ steps, onMarkComplete, onFinish }: ManualStep
       {/* Ready to Start CTA */}
       <div className="shrink-0 border-t border-border pt-5">
         <div className="text-center">
-          <h3 className="text-lg font-semibold text-text-primary mb-1">Ready to Start</h3>
+          <h3 className="text-lg font-semibold text-text-primary mb-1">Ready to Start?</h3>
           <p className="text-sm text-text-secondary leading-relaxed mb-4">
             Your AI workspace assistant is ready for everyday use! Ask questions,
             interact with tasks, manage your workspace, and get live business insights.
           </p>
-          <button
-            onClick={onFinish}
-            className="flex items-center justify-center gap-2 w-full px-6 py-3 bg-accent text-white rounded-xl font-medium text-sm
-              hover:bg-accent-hover transition-colors shadow-lg shadow-accent/20"
-          >
-            <MessageSquare className="w-4 h-4" />
-            Go to Chat
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onFinish}
+              className="flex items-center justify-center gap-2 flex-1 px-6 py-3 bg-accent text-white rounded-xl font-medium text-sm
+                hover:bg-accent-hover transition-colors shadow-lg shadow-accent/20"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Go to Chat
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            {clickUpUrl && (
+              <a
+                href={clickUpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 px-5 py-3 border border-border text-text-secondary rounded-xl font-medium text-sm
+                  hover:bg-surface-hover transition-colors"
+              >
+                Open ClickUp
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
+          </div>
           <p className="text-xs text-text-muted mt-2">
             You can complete remaining steps anytime from Settings
           </p>

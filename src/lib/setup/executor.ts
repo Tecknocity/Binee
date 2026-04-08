@@ -281,8 +281,9 @@ export async function executeSetupPlan(
               tag: { name: tag.name, tag_bg: tag.tag_bg, tag_fg: tag.tag_fg },
             })
           );
-        } catch {
+        } catch (err) {
           // Tags are best-effort; don't fail the whole setup
+          console.error(`[setup/executor] Failed to create tag "${tag.name}":`, err);
         }
       }
     }
@@ -297,8 +298,9 @@ export async function executeSetupPlan(
         const body: Record<string, unknown> = { name: doc.name };
         if (doc.content) body.content = doc.content;
         await withRetry(() => client.post(`/team/${teamId}/doc`, body));
-      } catch {
+      } catch (err) {
         // Docs are best-effort
+        console.error(`[setup/executor] Failed to create doc "${doc.name}":`, err);
       }
     }
   }
@@ -316,8 +318,9 @@ export async function executeSetupPlan(
         if (goal.description) body.description = goal.description;
         if (goal.color) body.color = goal.color;
         await withRetry(() => client.post(`/team/${teamId}/goal`, body));
-      } catch {
+      } catch (err) {
         // Goals are best-effort
+        console.error(`[setup/executor] Failed to create goal "${goal.name}":`, err);
       }
     }
   }
@@ -479,7 +482,8 @@ function buildListBody(listPlan: ListPlan): Record<string, unknown> {
     body.statuses = listPlan.statuses.map((s, index) => ({
       status: s.name,
       color: s.color,
-      type: s.type,
+      // ClickUp API expects 'custom' for active/in-progress statuses, not 'active'
+      type: s.type === 'active' ? 'custom' : s.type,
       orderindex: index,
     }));
   }
