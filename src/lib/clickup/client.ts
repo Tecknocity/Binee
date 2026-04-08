@@ -24,6 +24,7 @@ import { refreshTokenIfNeeded, forceRefreshToken } from "@/lib/clickup/token-ref
 import { getRateLimit, shouldThrottle } from "@/lib/clickup/rate-limits";
 
 const BASE_URL = "https://api.clickup.com/api/v2";
+const BASE_URL_V3 = "https://api.clickup.com/api/v3";
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -77,7 +78,8 @@ export class ClickUpClient {
 
   private async request<T>(
     path: string,
-    options: RequestOptions = {}
+    options: RequestOptions = {},
+    baseUrl: string = BASE_URL,
   ): Promise<T> {
     const { method = "GET", body, params } = options;
 
@@ -116,7 +118,7 @@ export class ClickUpClient {
 
     this.requestCount++;
 
-    const url = new URL(`${BASE_URL}${path}`);
+    const url = new URL(`${baseUrl}${path}`);
     if (params) {
       for (const [key, val] of Object.entries(params)) {
         url.searchParams.set(key, String(val));
@@ -842,6 +844,21 @@ export class ClickUpClient {
     params?: Record<string, string | number | boolean>
   ): Promise<T> {
     return this.request<T>(path, { method: "DELETE", params });
+  }
+
+  // ---------------------------------------------------------------------------
+  // V3 API methods
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Perform a POST request to the ClickUp API v3.
+   * Used for endpoints only available in v3 (e.g., Docs).
+   */
+  async postV3<T>(
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<T> {
+    return this.request<T>(path, { method: "POST", body }, BASE_URL_V3);
   }
 
   // ---------------------------------------------------------------------------
