@@ -208,13 +208,15 @@ function createSetupStore(workspaceId: string) {
               updates.workspaceRecommendations = [];
             }
             if (step <= 2) {
-              // Resetting from Describe: keep chat history for context continuity,
-              // clear plan + everything after. Messages are preserved so the AI
-              // and user can reference earlier discussion.
+              // Resetting from Describe: clear chat and start fresh so AI
+              // doesn't reference previous discussion. Keep form data so user
+              // doesn't have to re-fill the profile.
               updates.profileFormCompleted = s.profileFormCompleted; // Keep form data
               updates.profileFormData = s.profileFormData; // Keep form data
-              updates.businessDescription = s.businessDescription; // Keep description
-              // chatMessages and messageCount intentionally preserved
+              updates.businessDescription = ''; // Clear description for fresh start
+              updates.chatMessages = []; // Clear chat messages
+              updates.messageCount = 0; // Reset message count
+              updates.conversationId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; // New conversation
             }
             if (step <= 3) {
               // Resetting from Review: clear plan + existing structure + build + manual steps

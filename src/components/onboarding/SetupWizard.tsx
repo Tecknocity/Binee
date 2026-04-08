@@ -86,6 +86,9 @@ export default function SetupWizard() {
 
   // Get the warning message for the confirmation dialog
   const getWarningMessage = (step: number): string => {
+    if (step === 2) {
+      return 'This will delete your current chat and start a new discussion from scratch. Your profile information will be kept.';
+    }
     const stepsAfter = STEPS.filter((s) => s.number > step).map((s) => s.label);
     if (stepsAfter.length === 0) return 'This action cannot be undone.';
     return `This will reset your progress for ${stepsAfter.join(', ')}. You will need to redo ${stepsAfter.length === 1 ? 'this step' : 'these steps'}.`;
@@ -299,7 +302,7 @@ export default function SetupWizard() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-text-primary">
-                  Reset progress?
+                  {confirmDialog.targetStep === 2 ? 'Delete chat and start over?' : 'Reset progress?'}
                 </h3>
                 <p className="text-sm text-text-secondary mt-1">
                   {getWarningMessage(confirmDialog.targetStep)}
@@ -319,7 +322,7 @@ export default function SetupWizard() {
                 className="px-4 py-2 text-sm font-medium text-white bg-warning rounded-lg
                   hover:bg-warning/90 transition-colors"
               >
-                Yes, reset and redo
+                {confirmDialog.targetStep === 2 ? 'Yes, delete and start over' : 'Yes, reset and redo'}
               </button>
             </div>
           </div>
