@@ -500,13 +500,6 @@ export function BusinessChatStep({
                   onChange={handleFileInputChange}
                   className="hidden"
                 />
-                <p className="text-[11px] text-text-muted">
-                  <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
-                  to send
-                  <span className="mx-1.5 text-text-muted/50">|</span>
-                  <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Shift + Enter</kbd>{' '}
-                  for new line
-                </p>
               </div>
               <button
                 onClick={handleSend}

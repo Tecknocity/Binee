@@ -15,6 +15,9 @@ import {
   Lightbulb,
   Puzzle,
   ArrowLeft,
+  Tag,
+  FileText,
+  Target,
 } from 'lucide-react';
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
@@ -167,6 +170,48 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
     });
   };
 
+  // --- Tag operations ---
+  const renameTag = (i: number, name: string) => {
+    updatePlan((d) => { if (d.recommended_tags?.[i]) d.recommended_tags[i].name = name; });
+  };
+  const deleteTag = (i: number) => {
+    updatePlan((d) => { d.recommended_tags?.splice(i, 1); });
+  };
+  const addTag = () => {
+    updatePlan((d) => {
+      if (!d.recommended_tags) d.recommended_tags = [];
+      d.recommended_tags.push({ name: 'new-tag', tag_bg: '#854DF9', tag_fg: '#FFFFFF' });
+    });
+  };
+
+  // --- Doc operations ---
+  const renameDoc = (i: number, name: string) => {
+    updatePlan((d) => { if (d.recommended_docs?.[i]) d.recommended_docs[i].name = name; });
+  };
+  const deleteDoc = (i: number) => {
+    updatePlan((d) => { d.recommended_docs?.splice(i, 1); });
+  };
+  const addDoc = () => {
+    updatePlan((d) => {
+      if (!d.recommended_docs) d.recommended_docs = [];
+      d.recommended_docs.push({ name: 'New Document', description: '' });
+    });
+  };
+
+  // --- Goal operations ---
+  const renameGoal = (i: number, name: string) => {
+    updatePlan((d) => { if (d.recommended_goals?.[i]) d.recommended_goals[i].name = name; });
+  };
+  const deleteGoal = (i: number) => {
+    updatePlan((d) => { d.recommended_goals?.splice(i, 1); });
+  };
+  const addGoal = () => {
+    updatePlan((d) => {
+      if (!d.recommended_goals) d.recommended_goals = [];
+      d.recommended_goals.push({ name: 'New Goal', due_date: '', description: '' });
+    });
+  };
+
   const editable = !!onPlanChange;
 
   return (
@@ -316,6 +361,103 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                   {app}
                 </span>
               ))}
+            </div>
+          </TreeNode>
+        )}
+
+        {/* Recommended Tags */}
+        {(plan.recommended_tags?.length || editable) && (
+          <TreeNode
+            icon={<Tag className="w-4 h-4 text-warning" />}
+            label="Recommended Tags"
+            badge={`${plan.recommended_tags?.length || 0}`}
+            badgeColor="bg-warning/15 text-warning"
+            defaultOpen
+          >
+            <div className="flex flex-wrap gap-1.5 py-1 pl-2">
+              {plan.recommended_tags?.map((tag, i) => (
+                <EditableChip
+                  key={i}
+                  label={tag.name}
+                  bgColor={tag.tag_bg}
+
+                  editable={editable}
+                  onRename={(name) => renameTag(i, name)}
+                  onDelete={() => deleteTag(i)}
+                />
+              ))}
+              {editable && (
+                <button
+                  onClick={addTag}
+                  className="flex items-center gap-1 text-xs text-text-muted hover:text-accent transition-colors px-2 py-1 rounded-md border border-dashed border-border hover:border-accent/40"
+                >
+                  <Plus className="w-3 h-3" /> Add Tag
+                </button>
+              )}
+            </div>
+          </TreeNode>
+        )}
+
+        {/* Recommended Docs */}
+        {(plan.recommended_docs?.length || editable) && (
+          <TreeNode
+            icon={<FileText className="w-4 h-4 text-info" />}
+            label="Recommended Docs"
+            badge={`${plan.recommended_docs?.length || 0}`}
+            badgeColor="bg-info/15 text-info"
+            defaultOpen
+          >
+            <div className="space-y-1 py-1 pl-2">
+              {plan.recommended_docs?.map((doc, i) => (
+                <EditableListItem
+                  key={i}
+                  label={doc.name}
+                  description={doc.description}
+                  editable={editable}
+                  onRename={(name) => renameDoc(i, name)}
+                  onDelete={() => deleteDoc(i)}
+                />
+              ))}
+              {editable && (
+                <button
+                  onClick={addDoc}
+                  className="flex items-center gap-1.5 py-1 text-xs text-text-muted hover:text-accent transition-colors"
+                >
+                  <Plus className="w-3 h-3" /> Add Doc
+                </button>
+              )}
+            </div>
+          </TreeNode>
+        )}
+
+        {/* Recommended Goals */}
+        {(plan.recommended_goals?.length || editable) && (
+          <TreeNode
+            icon={<Target className="w-4 h-4 text-success" />}
+            label="Recommended Goals"
+            badge={`${plan.recommended_goals?.length || 0}`}
+            badgeColor="bg-success/15 text-success"
+            defaultOpen
+          >
+            <div className="space-y-1 py-1 pl-2">
+              {plan.recommended_goals?.map((goal, i) => (
+                <EditableListItem
+                  key={i}
+                  label={goal.name}
+                  description={goal.description}
+                  editable={editable}
+                  onRename={(name) => renameGoal(i, name)}
+                  onDelete={() => deleteGoal(i)}
+                />
+              ))}
+              {editable && (
+                <button
+                  onClick={addGoal}
+                  className="flex items-center gap-1.5 py-1 text-xs text-text-muted hover:text-accent transition-colors"
+                >
+                  <Plus className="w-3 h-3" /> Add Goal
+                </button>
+              )}
             </div>
           </TreeNode>
         )}
@@ -649,6 +791,175 @@ function StatusRow({
               <X className="w-2.5 h-2.5" />
             </button>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Editable Chip (for tags)
+// ---------------------------------------------------------------------------
+
+function EditableChip({
+  label,
+  bgColor,
+  editable,
+  onRename,
+  onDelete,
+}: {
+  label: string;
+  bgColor: string;
+  editable: boolean;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(label);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commitRename = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== label) {
+      onRename(trimmed);
+    } else {
+      setEditValue(label);
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={commitRename}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commitRename();
+          if (e.key === 'Escape') { setEditValue(label); setEditing(false); }
+        }}
+        className="text-xs font-medium px-2 py-1 rounded-md bg-surface border border-accent/40 outline-none focus:ring-1 focus:ring-accent text-text-primary w-24"
+      />
+    );
+  }
+
+  return (
+    <span
+      className="text-xs font-medium px-2 py-1 rounded-md border group/chip inline-flex items-center gap-1"
+      style={{ backgroundColor: `${bgColor}20`, color: bgColor, borderColor: `${bgColor}40` }}
+    >
+      <span
+        className={editable ? 'cursor-text' : ''}
+        onDoubleClick={() => {
+          if (editable) { setEditValue(label); setEditing(true); }
+        }}
+      >
+        {label}
+      </span>
+      {editable && (
+        <button
+          onClick={onDelete}
+          className="opacity-0 group-hover/chip:opacity-100 transition-opacity ml-0.5"
+          title="Remove tag"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Editable List Item (for docs and goals)
+// ---------------------------------------------------------------------------
+
+function EditableListItem({
+  label,
+  description,
+  editable,
+  onRename,
+  onDelete,
+}: {
+  label: string;
+  description?: string;
+  editable: boolean;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(label);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commitRename = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== label) {
+      onRename(trimmed);
+    } else {
+      setEditValue(label);
+    }
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex items-start gap-2 py-1 group/item">
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitRename();
+            if (e.key === 'Escape') { setEditValue(label); setEditing(false); }
+          }}
+          className="flex-1 min-w-0 text-sm text-text-primary bg-surface border border-accent/40 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-accent"
+        />
+      ) : (
+        <div className="flex-1 min-w-0">
+          <span
+            className={`text-sm font-medium text-text-primary ${editable ? 'cursor-text hover:text-accent' : ''}`}
+            onDoubleClick={() => {
+              if (editable) { setEditValue(label); setEditing(true); }
+            }}
+          >
+            {label}
+          </span>
+          {description && (
+            <p className="text-xs text-text-muted mt-0.5">{description}</p>
+          )}
+        </div>
+      )}
+      {editable && !editing && (
+        <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity flex-shrink-0">
+          <button
+            onClick={() => { setEditValue(label); setEditing(true); }}
+            className="p-0.5 text-text-muted hover:text-accent transition-colors"
+            title="Rename"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-0.5 text-text-muted hover:text-error transition-colors"
+            title="Remove"
+          >
+            <X className="w-3 h-3" />
+          </button>
         </div>
       )}
     </div>
