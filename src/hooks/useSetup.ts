@@ -905,6 +905,16 @@ export function useSetup(): UseSetupReturn {
       analysisStartedRef.current = false;
       setIsAnalyzing(false);
     }
+    if (step === 2) {
+      // Add a welcome-back message so the chat isn't empty
+      const welcomeMsg: SetupChatMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        role: 'assistant',
+        content: "Fresh start! Tell me about your business and how you work, and I'll design a workspace structure for you.",
+        timestamp: new Date(),
+      };
+      store?.getState().addMessage(toStoreMessage(welcomeMsg));
+    }
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);

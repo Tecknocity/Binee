@@ -135,7 +135,7 @@ export function BusinessChatStep({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
 
   const handleSend = () => {
@@ -170,53 +170,51 @@ export function BusinessChatStep({
 
   return (
     <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden">
-      {/* Main chat area — full width */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Chat messages — flex-grow with bottom-anchored messages */}
+        {/* Chat messages */}
         <div className="flex-1 overflow-y-auto py-4 min-h-0 flex flex-col">
-          {/* Spacer pushes messages to bottom when few, collapses when many */}
+          {/* Spacer pushes messages to bottom when few */}
           <div className="flex-1" />
-          <div className="space-y-4">
+          <div className="space-y-6">
           {messages.map((msg) => (
             <div
               key={msg.id}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div
-                className={`
-                  max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed
-                  ${
-                    msg.role === 'user'
-                      ? 'bg-accent text-white rounded-br-md'
-                      : 'bg-surface border border-border text-text-primary rounded-bl-md'
-                  }
-                `}
-              >
-                {msg.role === 'assistant' && (
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-accent" />
+              {msg.role === 'user' ? (
+                /* User message - bubble style */
+                <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent text-white px-4 py-3">
+                  <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
+                    {renderMarkdownLite(msg.content)}
+                  </div>
+                </div>
+              ) : (
+                /* Assistant message - flat on page, no bubble */
+                <div className="w-full">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Sparkles className="w-4 h-4 text-accent" />
                     <span className="text-xs font-semibold text-accent">Binee</span>
                   </div>
-                )}
-                <div className="whitespace-pre-wrap">
-                  {renderMarkdownLite(msg.content)}
+                  <div className="whitespace-pre-wrap text-[15px] leading-[1.7] text-text-primary">
+                    {renderMarkdownLite(msg.content)}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ))}
 
           {/* Typing indicator */}
           {isSending && (
             <div className="flex justify-start">
-              <div className="bg-surface border border-border rounded-2xl rounded-bl-md px-4 py-3">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-accent" />
+              <div className="w-full">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Sparkles className="w-4 h-4 text-accent" />
                   <span className="text-xs font-semibold text-accent">Binee</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce [animation-delay:300ms]" />
+                <div className="flex items-center gap-1.5 py-1">
+                  <span className="w-2 h-2 rounded-full bg-text-muted animate-bounce [animation-delay:0ms]" />
+                  <span className="w-2 h-2 rounded-full bg-text-muted animate-bounce [animation-delay:150ms]" />
+                  <span className="w-2 h-2 rounded-full bg-text-muted animate-bounce [animation-delay:300ms]" />
                 </div>
               </div>
             </div>
@@ -226,7 +224,7 @@ export function BusinessChatStep({
           </div>
         </div>
 
-        {/* Quick-start templates — shown only before first message */}
+        {/* Quick-start templates - shown only before first message */}
         {messageCount === 0 && (
           <div className="py-3 shrink-0">
             <p className="text-xs text-text-muted mb-2.5 text-center">
@@ -253,71 +251,8 @@ export function BusinessChatStep({
           </div>
         )}
 
-        {/* Discovery progress strip — three-column layout above input */}
-        <div className="shrink-0 bg-surface border border-border rounded-xl px-4 py-3 mb-2">
-          <div className="flex items-center gap-4">
-            {/* Column 1: Title, count, and checklist */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1.5">
-                <h3 className="text-[11px] font-semibold text-text-primary uppercase tracking-wide">
-                  Discovery Progress
-                </h3>
-                <span className="text-[11px] font-medium text-accent">
-                  {completeness}/{PROFILE_FORM_FIELDS.length}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                {PROFILE_FORM_FIELDS.map((field) => {
-                  const collected = isFormFieldCollected(field.key);
-                  const displayVal = getFormFieldValue(field.key);
-                  return (
-                    <div
-                      key={field.key}
-                      className="flex items-center gap-1.5 min-w-0"
-                      title={collected && displayVal ? `${field.label}: ${displayVal}` : field.hint}
-                    >
-                      {collected ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                      ) : (
-                        <Circle className="w-3.5 h-3.5 text-text-muted shrink-0" />
-                      )}
-                      <span className={`text-xs truncate ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
-                        {field.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Column 2: Update Information button */}
-            <button
-              type="button"
-              onClick={onEditProfile}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium
-                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
-                transition-colors whitespace-nowrap"
-            >
-              <Pencil className="w-3 h-3" />
-              Update Information
-            </button>
-
-            {/* Column 3: Generate Structure button */}
-            {canGenerate && !isSending && (
-              <button
-                onClick={() => onSendMessage('__generate_structure__')}
-                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-[11px]
-                  hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
-              >
-                <Sparkles className="w-3 h-3" />
-                Generate Structure
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Input bar — pinned to bottom */}
-        <div className="flex items-end gap-2 bg-surface border border-border rounded-xl px-3 py-2 shrink-0">
+        {/* Input area - larger, Claude-style */}
+        <div className="shrink-0 bg-surface border border-border rounded-2xl px-4 py-3 mb-2">
           <textarea
             ref={textareaRef}
             value={input}
@@ -329,32 +264,88 @@ export function BusinessChatStep({
                 : 'Tell me more about your team, tools, or workflows...'
             }
             disabled={isSending}
-            rows={1}
-            className="flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[160px]"
+            rows={2}
+            className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
           />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isSending}
-            className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
-              hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {isSending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
-          </button>
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
+            <p className="text-[11px] text-text-muted">
+              <kbd className="px-1 py-0.5 rounded bg-elevated border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
+              to send
+              <span className="mx-1.5 text-text-muted/50">|</span>
+              <kbd className="px-1 py-0.5 rounded bg-elevated border border-border text-text-muted text-[10px]">Shift + Enter</kbd>{' '}
+              for new line
+            </p>
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isSending}
+              className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
+                hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {isSending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Keyboard hint */}
-        <p className="text-center text-[11px] text-text-muted mt-1.5">
-          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Enter</kbd>{' '}
-          to send
-          <span className="mx-1.5 text-text-muted/50">|</span>
-          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Shift</kbd>+
-          <kbd className="px-1 py-0.5 rounded bg-surface border border-border text-text-muted text-[11px]">Enter</kbd>{' '}
-          for new line
-        </p>
+        {/* Actions bar - discovery progress + buttons at the bottom */}
+        <div className="shrink-0 flex items-center gap-3 px-1">
+          {/* Discovery progress */}
+          <div className="flex-1 flex items-center gap-3 min-w-0">
+            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide whitespace-nowrap">
+              Discovery {completeness}/{PROFILE_FORM_FIELDS.length}
+            </span>
+            <div className="flex items-center gap-2">
+              {PROFILE_FORM_FIELDS.map((field) => {
+                const collected = isFormFieldCollected(field.key);
+                const displayVal = getFormFieldValue(field.key);
+                return (
+                  <div
+                    key={field.key}
+                    className="flex items-center gap-1"
+                    title={collected && displayVal ? `${field.label}: ${displayVal}` : field.hint}
+                  >
+                    {collected ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                    ) : (
+                      <Circle className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                    )}
+                    <span className={`text-[11px] ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
+                      {field.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onEditProfile}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium
+                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
+                transition-colors whitespace-nowrap"
+            >
+              <Pencil className="w-3 h-3" />
+              Update Info
+            </button>
+
+            {canGenerate && !isSending && (
+              <button
+                onClick={() => onSendMessage('__generate_structure__')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-[11px]
+                  hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
+              >
+                <Sparkles className="w-3 h-3" />
+                Generate Structure
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
