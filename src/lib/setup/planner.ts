@@ -176,8 +176,9 @@ Return a single JSON object with this exact structure:
 }
 
 ## RULES
-- STRUCTURE BEST PRACTICE: Use a FLAT hierarchy. Each major business area should be its own Space with Lists directly inside. Only add Folders when a Space genuinely needs a 3rd layer of sub-grouping. NEVER default to a single Space with Folders for distinct business areas.
-- Each space must have at least 1 folder
+- STRUCTURE BEST PRACTICE: Use a FLAT hierarchy. Each major business area should be its own Space with Lists directly inside. Only add Folders when a Space genuinely needs a 3rd layer of sub-grouping (e.g. 6+ lists that need categorization). NEVER default to a single Space with Folders for distinct business areas.
+- FOLDERS: Only use Folders to group 2+ related Lists within a Space when the Space has many lists. Do NOT create a Folder to hold a single list. If a Space only has 3-5 lists, keep them flat without Folders.
+- Each space must have at least 1 folder (technical constraint: folderless lists not yet supported in the builder)
 - Each folder must have at least 1 list
 - Each list must have at least 2 statuses: minimum one "open" type and one "done" or "closed" type
 - Status colors must be valid hex codes
