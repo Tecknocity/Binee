@@ -270,131 +270,192 @@ export async function executeSetupPlan(
 
   // -------------------------------------------------------------------------
   // Phase 4: Create Tags (in the first space that has an ID)
+  // Wrapped in outer try-catch so unexpected errors don't crash the build.
   // -------------------------------------------------------------------------
   if (plan.recommended_tags && plan.recommended_tags.length > 0) {
-    const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
+    try {
+      const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
 
-    // Fetch existing tags for duplicate detection (safe for retry)
-    let existingTagNames = new Set<string>();
-    if (firstSpaceId) {
-      try {
-        const existingTags = await client.getSpaceTags(firstSpaceId);
-        existingTagNames = new Set(existingTags.map(t => t.name.toLowerCase()));
-      } catch {
-        // If we can't fetch tags, proceed without duplicate check
-      }
-    }
-
-    for (const tag of plan.recommended_tags) {
-      const item = findItem(items, "tag", tag.name);
-
-      if (!firstSpaceId) {
-        markError(item, new Error("No space available to create tags in"));
-      } else if (existingTagNames.has(tag.name.toLowerCase())) {
-        markSkipped(item, firstSpaceId);
-      } else {
+      // Fetch existing tags for duplicate detection (safe for retry)
+      let existingTagNames = new Set<string>();
+      if (firstSpaceId) {
         try {
-          await withRetry(() =>
-            client.post(`/space/${firstSpaceId}/tag`, {
-              tag: { name: tag.name, tag_bg: tag.tag_bg, tag_fg: tag.tag_fg },
-            })
-          );
-          markSuccess(item, firstSpaceId);
-        } catch (err) {
-          markError(item, err);
-          console.error(`[setup/executor] Failed to create tag "${tag.name}":`, err);
+          const existingTags = await client.getSpaceTags(firstSpaceId);
+          existingTagNames = new Set(existingTags.map(t => t.name.toLowerCase()));
+        } catch {
+          // If we can't fetch tags, proceed without duplicate check
         }
       }
 
-      completed++;
-      onProgress?.(item, { completed, total: totalItems });
+      for (const tag of plan.recommended_tags) {
+        const item = findItem(items, "tag", tag.name);
+
+        if (!firstSpaceId) {
+          markError(item, new Error("No space available to create tags in"));
+        } else if (existingTagNames.has(tag.name.toLowerCase())) {
+          markSkipped(item, firstSpaceId);
+        } else {
+          try {
+            await withRetry(() =>
+              client.post(`/space/${firstSpaceId}/tag`, {
+                tag: { name: tag.name, tag_bg: tag.tag_bg, tag_fg: tag.tag_fg },
+              })
+            );
+            markSuccess(item, firstSpaceId);
+          } catch (err) {
+            markError(item, err);
+            console.error(`[setup/executor] Failed to create tag "${tag.name}":`, err);
+          }
+        }
+
+        completed++;
+        onProgress?.(item, { completed, total: totalItems });
+      }
+    } catch (phaseErr) {
+      console.error('[setup/executor] Tags phase failed unexpectedly:', phaseErr);
+      // Mark any remaining pending tag items as errors
+      for (const tag of plan.recommended_tags) {
+        const item = items.find(i => i.type === 'tag' && i.name === tag.name && i.status === 'pending');
+        if (item) {
+          markError(item, new Error('Tags phase encountered an unexpected error'));
+          completed++;
+          onProgress?.(item, { completed, total: totalItems });
+        }
+      }
     }
   }
 
   // -------------------------------------------------------------------------
   // Phase 5: Create Docs (uses ClickUp API v3)
+  // Wrapped in outer try-catch so unexpected errors don't crash the build.
   // -------------------------------------------------------------------------
   if (plan.recommended_docs && plan.recommended_docs.length > 0) {
-    const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
-
-    // Fetch existing docs for duplicate detection (safe for retry)
-    let existingDocNames = new Set<string>();
     try {
-      const existingDocs = await client.searchDocs(teamId);
-      existingDocNames = new Set(existingDocs.map(d => d.name.toLowerCase()));
-    } catch {
-      // If we can't fetch docs, proceed without duplicate check
-    }
+      const firstSpaceId = createdSpaceIds[0] || spaceIdMap.values().next().value;
 
-    for (const doc of plan.recommended_docs) {
-      const item = findItem(items, "doc", doc.name);
-
-      if (!firstSpaceId) {
-        markError(item, new Error("No space available to create docs in"));
-      } else if (existingDocNames.has(doc.name.toLowerCase())) {
-        markSkipped(item);
-      } else {
-        try {
-          // ClickUp Docs API requires v3 endpoint with parent container
-          const body: Record<string, unknown> = {
-            name: doc.name,
-            parent: { id: firstSpaceId, type: 4 }, // 4 = space
-            visibility: "PUBLIC",
-            create_page: true,
-          };
-          const result = await withRetry(() =>
-            client.postV3<{ id?: string }>(`/workspaces/${teamId}/docs`, body)
-          );
-          markSuccess(item, result?.id || firstSpaceId);
-        } catch (err) {
-          markError(item, err);
-          console.error(`[setup/executor] Failed to create doc "${doc.name}":`, err);
-        }
+      // Fetch existing docs for duplicate detection (safe for retry)
+      let existingDocNames = new Set<string>();
+      try {
+        const existingDocs = await client.searchDocs(teamId);
+        existingDocNames = new Set(existingDocs.map(d => d.name.toLowerCase()));
+      } catch {
+        // If we can't fetch docs, proceed without duplicate check
       }
 
-      completed++;
-      onProgress?.(item, { completed, total: totalItems });
+      for (const doc of plan.recommended_docs) {
+        const item = findItem(items, "doc", doc.name);
+
+        if (!firstSpaceId) {
+          markError(item, new Error("No space available to create docs in"));
+        } else if (existingDocNames.has(doc.name.toLowerCase())) {
+          markSkipped(item);
+        } else {
+          try {
+            // Try ClickUp v3 Docs API first, fall back to v2 if unavailable
+            let docId: string | undefined;
+            try {
+              const body: Record<string, unknown> = {
+                name: doc.name,
+                parent: { id: Number(firstSpaceId), type: 4 }, // 4 = space
+                visibility: "PUBLIC",
+                create_page: true,
+              };
+              const v3Result = await withRetry(() =>
+                client.postV3<{ id?: string }>(`/workspaces/${teamId}/docs`, body)
+              );
+              docId = v3Result?.id;
+            } catch {
+              // v3 failed (might not be available on this plan), try v2
+              try {
+                const v2Result = await withRetry(() =>
+                  client.post<{ id?: string }>(`/team/${teamId}/doc`, {
+                    name: doc.name,
+                    content: doc.description || '',
+                  })
+                );
+                docId = v2Result?.id;
+              } catch (v2Err) {
+                throw v2Err; // Let the outer per-item catch handle it
+              }
+            }
+            markSuccess(item, docId || firstSpaceId);
+          } catch (err) {
+            markError(item, err);
+            console.error(`[setup/executor] Failed to create doc "${doc.name}":`, err);
+          }
+        }
+
+        completed++;
+        onProgress?.(item, { completed, total: totalItems });
+      }
+    } catch (phaseErr) {
+      console.error('[setup/executor] Docs phase failed unexpectedly:', phaseErr);
+      for (const doc of plan.recommended_docs) {
+        const item = items.find(i => i.type === 'doc' && i.name === doc.name && i.status === 'pending');
+        if (item) {
+          markError(item, new Error('Docs phase encountered an unexpected error'));
+          completed++;
+          onProgress?.(item, { completed, total: totalItems });
+        }
+      }
     }
   }
 
   // -------------------------------------------------------------------------
   // Phase 6: Create Goals
+  // Note: Goals API requires ClickUp Business+ plan. On Free/Unlimited plans
+  // these will fail gracefully and be reported as errors (non-blocking).
+  // Wrapped in outer try-catch so unexpected errors don't crash the build.
   // -------------------------------------------------------------------------
   if (plan.recommended_goals && plan.recommended_goals.length > 0) {
-    // Fetch existing goals for duplicate detection (safe for retry)
-    let existingGoalNames = new Set<string>();
     try {
-      const existingGoals = await client.getGoals(teamId);
-      existingGoalNames = new Set(existingGoals.map(g => g.name.toLowerCase()));
-    } catch {
-      // If we can't fetch goals, proceed without duplicate check
-    }
-
-    for (const goal of plan.recommended_goals) {
-      const item = findItem(items, "goal", goal.name);
-
-      if (existingGoalNames.has(goal.name.toLowerCase())) {
-        markSkipped(item);
-      } else {
-        try {
-          const body: Record<string, unknown> = {
-            name: goal.name,
-            due_date: new Date(goal.due_date).getTime(),
-          };
-          if (goal.description) body.description = goal.description;
-          if (goal.color) body.color = goal.color;
-          const result = await withRetry(() =>
-            client.post<{ goal?: { id?: string } }>(`/team/${teamId}/goal`, body)
-          );
-          markSuccess(item, result?.goal?.id || teamId);
-        } catch (err) {
-          markError(item, err);
-          console.error(`[setup/executor] Failed to create goal "${goal.name}":`, err);
-        }
+      // Fetch existing goals for duplicate detection (safe for retry)
+      let existingGoalNames = new Set<string>();
+      try {
+        const existingGoals = await client.getGoals(teamId);
+        existingGoalNames = new Set(existingGoals.map(g => g.name.toLowerCase()));
+      } catch {
+        // If we can't fetch goals (e.g. plan doesn't support it), proceed
       }
 
-      completed++;
-      onProgress?.(item, { completed, total: totalItems });
+      for (const goal of plan.recommended_goals) {
+        const item = findItem(items, "goal", goal.name);
+
+        if (existingGoalNames.has(goal.name.toLowerCase())) {
+          markSkipped(item);
+        } else {
+          try {
+            const dueMs = goal.due_date ? new Date(goal.due_date).getTime() : undefined;
+            const body: Record<string, unknown> = {
+              name: goal.name,
+            };
+            // Only set due_date if we have a valid timestamp
+            if (dueMs && !isNaN(dueMs)) body.due_date = dueMs;
+            if (goal.description) body.description = goal.description;
+            if (goal.color) body.color = goal.color;
+            const result = await withRetry(() =>
+              client.post<{ goal?: { id?: string } }>(`/team/${teamId}/goal`, body)
+            );
+            markSuccess(item, result?.goal?.id || teamId);
+          } catch (err) {
+            markError(item, err);
+            console.error(`[setup/executor] Failed to create goal "${goal.name}":`, err);
+          }
+        }
+
+        completed++;
+        onProgress?.(item, { completed, total: totalItems });
+      }
+    } catch (phaseErr) {
+      console.error('[setup/executor] Goals phase failed unexpectedly:', phaseErr);
+      for (const goal of plan.recommended_goals) {
+        const item = items.find(i => i.type === 'goal' && i.name === goal.name && i.status === 'pending');
+        if (item) {
+          markError(item, new Error('Goals require ClickUp Business+ plan'));
+          completed++;
+          onProgress?.(item, { completed, total: totalItems });
+        }
+      }
     }
   }
 
