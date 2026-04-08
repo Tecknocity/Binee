@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, PartyPopper, AlertTriangle, RefreshCw, Link2, BarChart3, MessageSquare, Eye } from 'lucide-react';
+import { Check, PartyPopper, Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
 import type { SetupStep } from '@/hooks/useSetup';
@@ -22,21 +21,9 @@ const STEPS = [
   { label: 'Finish', number: 5 },
 ] as const;
 
-// Labels for the redo buttons per step
-const REDO_LABELS: Record<number, { label: string; icon: typeof RefreshCw }> = {
-  0: { label: 'Choose Another Workspace', icon: Link2 },
-  1: { label: 'Re-analyze Workspace', icon: BarChart3 },
-  2: { label: 'Restart Discussion', icon: MessageSquare },
-  3: { label: 'Regenerate Structure', icon: RefreshCw },
-};
-
 export default function SetupWizard() {
   const setup = useSetup();
   const router = useRouter();
-  const [confirmDialog, setConfirmDialog] = useState<{
-    targetStep: number;
-    type: 'navigate' | 'redo';
-  } | null>(null);
 
   // Determine if a step has been completed (has data)
   const isStepCompleted = (step: number): boolean => {
@@ -64,39 +51,6 @@ export default function SetupWizard() {
     if (!canNavigateToStep(step)) return;
     // Just navigate to view the completed stage, no data clearing
     setup.navigateToStep(step as SetupStep);
-  };
-
-  // Handle redo button click - this requires confirmation (except step 3 which just navigates back)
-  const handleRedoClick = (step: number) => {
-    if (step === 3) {
-      // Regenerate Structure: just go back to Describe without resetting data or sending messages
-      setup.navigateToStep(2 as SetupStep);
-      return;
-    }
-    setConfirmDialog({ targetStep: step, type: 'redo' });
-  };
-
-  // Confirm the redo action
-  const confirmRedo = () => {
-    if (!confirmDialog) return;
-    if (confirmDialog.targetStep === 0) {
-      // Step 0 redo: trigger OAuth flow to connect a different workspace
-      setConfirmDialog(null);
-      setup.handleClickUpConnect();
-    } else {
-      setup.resetStage(confirmDialog.targetStep as SetupStep);
-      setConfirmDialog(null);
-    }
-  };
-
-  // Get the warning message for the confirmation dialog
-  const getWarningMessage = (step: number): string => {
-    if (step === 2) {
-      return 'This will delete your current chat and start a new discussion from scratch. Your profile information will be kept.';
-    }
-    const stepsAfter = STEPS.filter((s) => s.number > step).map((s) => s.label);
-    if (stepsAfter.length === 0) return 'This action cannot be undone.';
-    return `This will reset your progress for ${stepsAfter.join(', ')}. You will need to redo ${stepsAfter.length === 1 ? 'this step' : 'these steps'}.`;
   };
 
   // Check if current step is being viewed (not the furthest step reached)
@@ -144,25 +98,13 @@ export default function SetupWizard() {
         })}
       </div>
 
-      {/* Viewing past step banner + redo button (also shows redo on current completed step) */}
-      {(isViewingPastStep || (isStepCompleted(setup.currentStep) && !!REDO_LABELS[setup.currentStep])) && setup.currentStep <= 4 && (
-        <div className="flex items-center justify-between px-4 pb-3 max-w-3xl mx-auto w-full shrink-0">
-          {isViewingPastStep ? (
-            <div className="flex items-center gap-2 text-sm text-text-secondary">
-              <Eye className="w-4 h-4 text-text-muted" />
-              <span>Viewing completed step. You can continue from where you left off.</span>
-            </div>
-          ) : <div />}
-          {REDO_LABELS[setup.currentStep] && (
-            <button
-              onClick={() => handleRedoClick(setup.currentStep)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-warning border border-warning/30 rounded-lg
-                hover:bg-warning/10 transition-colors"
-            >
-              {(() => { const Icon = REDO_LABELS[setup.currentStep].icon; return <Icon className="w-3.5 h-3.5" />; })()}
-              {REDO_LABELS[setup.currentStep].label}
-            </button>
-          )}
+      {/* Viewing past step banner */}
+      {isViewingPastStep && setup.currentStep <= 4 && (
+        <div className="flex items-center justify-center px-4 pb-3 max-w-3xl mx-auto w-full shrink-0">
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            <Eye className="w-4 h-4 text-text-muted" />
+            <span>Viewing completed step. You can continue from where you left off.</span>
+          </div>
         </div>
       )}
 
@@ -191,6 +133,7 @@ export default function SetupWizard() {
             findings={setup.workspaceFindings}
             recommendations={setup.workspaceRecommendations}
             onContinue={setup.continueFromAnalysis}
+            onReanalyze={() => setup.resetStage(1 as SetupStep)}
           />
         )}
 
@@ -296,42 +239,6 @@ export default function SetupWizard() {
         )}
       </div>
 
-      {/* Confirmation Dialog */}
-      {confirmDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-warning/15 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5 text-warning" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-text-primary">
-                  {confirmDialog.targetStep === 2 ? 'Delete chat and start over?' : 'Reset progress?'}
-                </h3>
-                <p className="text-sm text-text-secondary mt-1">
-                  {getWarningMessage(confirmDialog.targetStep)}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 mt-6">
-              <button
-                onClick={() => setConfirmDialog(null)}
-                className="px-4 py-2 text-sm text-text-secondary border border-border rounded-lg
-                  hover:bg-surface-hover transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmRedo}
-                className="px-4 py-2 text-sm font-medium text-white bg-warning rounded-lg
-                  hover:bg-warning/90 transition-colors"
-              >
-                {confirmDialog.targetStep === 2 ? 'Yes, delete and start over' : 'Yes, reset and redo'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

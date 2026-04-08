@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Wrench,
   Plus,
+  RefreshCw,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -29,6 +30,7 @@ interface WorkspaceAnalysisProps {
   findings: Array<{ type: string; text: string }>;
   recommendations: Array<{ action: string; text: string }>;
   onContinue: () => void;
+  onReanalyze?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,6 +60,7 @@ export function WorkspaceAnalysis({
   findings,
   recommendations,
   onContinue,
+  onReanalyze,
 }: WorkspaceAnalysisProps) {
   // Loading state
   if (isAnalyzing) {
@@ -223,7 +226,17 @@ export function WorkspaceAnalysis({
         </div>
 
         {/* CTA */}
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-3">
+          {onReanalyze && (
+            <button
+              onClick={onReanalyze}
+              className="flex items-center gap-2 px-5 py-3.5 text-text-secondary text-base font-medium border border-border rounded-xl
+                hover:border-accent/40 hover:text-text-primary transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Re-analyze
+            </button>
+          )}
           <button
             onClick={onContinue}
             className="flex items-center gap-2.5 px-8 py-3.5 bg-accent text-white font-semibold text-base rounded-xl
