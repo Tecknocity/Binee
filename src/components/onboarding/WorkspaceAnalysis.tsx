@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   Loader2,
   FolderOpen,
@@ -62,6 +63,7 @@ export function WorkspaceAnalysis({
   onContinue,
   onReanalyze,
 }: WorkspaceAnalysisProps) {
+  const [showConfirm, setShowConfirm] = useState(false);
   // Loading state
   if (isAnalyzing) {
     return (
@@ -229,7 +231,7 @@ export function WorkspaceAnalysis({
         <div className="flex justify-center gap-3">
           {onReanalyze && (
             <button
-              onClick={onReanalyze}
+              onClick={() => setShowConfirm(true)}
               className="flex items-center gap-2 px-5 py-3.5 text-text-secondary text-base font-medium border border-border rounded-xl
                 hover:border-accent/40 hover:text-text-primary transition-colors"
             >
@@ -247,6 +249,41 @@ export function WorkspaceAnalysis({
           </button>
         </div>
       </div>
+
+      {/* Re-analyze confirmation dialog */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-border rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-warning/15 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-warning" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-text-primary">Re-analyze workspace?</h3>
+                <p className="text-sm text-text-secondary mt-1">
+                  This will re-sync and re-analyze your ClickUp workspace. Your progress on later steps will be reset.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-6">
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="px-4 py-2 text-sm text-text-secondary border border-border rounded-lg
+                  hover:bg-surface-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowConfirm(false); onReanalyze?.(); }}
+                className="px-4 py-2 text-sm font-medium text-white bg-warning rounded-lg
+                  hover:bg-warning/90 transition-colors"
+              >
+                Yes, re-analyze
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

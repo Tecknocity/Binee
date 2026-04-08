@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, PartyPopper, Eye } from 'lucide-react';
+import { Check, PartyPopper } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useSetup } from '@/hooks/useSetup';
 import type { SetupStep } from '@/hooks/useSetup';
@@ -53,9 +53,6 @@ export default function SetupWizard() {
     setup.navigateToStep(step as SetupStep);
   };
 
-  // Check if current step is being viewed (not the furthest step reached)
-  const isViewingPastStep = setup.currentStep < setup.furthestStep;
-
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Step indicator */}
@@ -97,16 +94,6 @@ export default function SetupWizard() {
           );
         })}
       </div>
-
-      {/* Viewing past step banner */}
-      {isViewingPastStep && setup.currentStep <= 4 && (
-        <div className="flex items-center justify-center px-4 pb-3 max-w-3xl mx-auto w-full shrink-0">
-          <div className="flex items-center gap-2 text-sm text-text-secondary">
-            <Eye className="w-4 h-4 text-text-muted" />
-            <span>Viewing completed step. You can continue from where you left off.</span>
-          </div>
-        </div>
-      )}
 
       {/* Step content */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
