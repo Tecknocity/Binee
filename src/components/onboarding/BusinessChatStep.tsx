@@ -253,47 +253,8 @@ export function BusinessChatStep({
 
         {/* Input container - Claude Code style unified card */}
         <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">
-          {/* Textarea area */}
-          <div className="px-4 pt-3 pb-2">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                messageCount === 0
-                  ? 'Describe your business, team, and how you work...'
-                  : 'Tell me more about your team, tools, or workflows...'
-              }
-              disabled={isSending}
-              rows={2}
-              className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
-            />
-            <div className="flex items-center justify-between mt-1">
-              <p className="text-[11px] text-text-muted">
-                <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
-                to send
-                <span className="mx-1.5 text-text-muted/50">|</span>
-                <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Shift + Enter</kbd>{' '}
-                for new line
-              </p>
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || isSending}
-                className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
-                  hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                {isSending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Bottom bar - discovery progress + actions, visually distinct */}
-          <div className="flex items-center justify-between gap-3 px-4 py-2 border-t border-border bg-navy-dark/60">
+          {/* Top bar - discovery progress + actions, visually distinct */}
+          <div className="flex items-center justify-between gap-3 px-4 py-2 bg-navy-dark/60">
             {/* Left: Discovery progress */}
             <div className="flex items-center gap-2.5 min-w-0">
               <span className="text-[11px] font-semibold text-text-secondary whitespace-nowrap">
@@ -346,6 +307,45 @@ export function BusinessChatStep({
                   Generate Structure
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* Textarea area */}
+          <div className="px-4 pt-3 pb-2 border-t border-border">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                messageCount === 0
+                  ? 'Describe your business, team, and how you work...'
+                  : 'Tell me more about your team, tools, or workflows...'
+              }
+              disabled={isSending}
+              rows={2}
+              className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
+            />
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-[11px] text-text-muted">
+                <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
+                to send
+                <span className="mx-1.5 text-text-muted/50">|</span>
+                <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Shift + Enter</kbd>{' '}
+                for new line
+              </p>
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isSending}
+                className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
+                  hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {isSending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
         </div>
