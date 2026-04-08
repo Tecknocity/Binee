@@ -112,10 +112,13 @@ ${planContext.conversationContext}`);
     const spaces = Array.isArray(prev.spaces) ? prev.spaces : [];
     const summary = spaces.map((s: Record<string, unknown>) => {
       const folders = Array.isArray(s.folders) ? s.folders : [];
-      return `Space: ${s.name}\n${folders.map((f: Record<string, unknown>) => {
+      const directLists = Array.isArray(s.lists) ? s.lists : [];
+      const directListsStr = directLists.map((l: Record<string, unknown>) => `  List: ${l.name}`).join('\n');
+      const foldersStr = folders.map((f: Record<string, unknown>) => {
         const lists = Array.isArray(f.lists) ? f.lists : [];
         return `  Folder: ${f.name}\n${lists.map((l: Record<string, unknown>) => `    List: ${l.name}`).join('\n')}`;
-      }).join('\n')}`;
+      }).join('\n');
+      return `Space: ${s.name}\n${directListsStr}${directListsStr && foldersStr ? '\n' : ''}${foldersStr}`;
     }).join('\n');
 
     parts.push(`## PREVIOUS PLAN (most recent)
@@ -146,13 +149,22 @@ Return a single JSON object with this exact structure:
   "spaces": [
     {
       "name": "Space Name",
+      "lists": [
+        {
+          "name": "List Name (directly in space, no folder)",
+          "description": "optional description",
+          "statuses": [
+            { "name": "Status Name", "color": "#hex", "type": "open|active|done|closed" }
+          ]
+        }
+      ],
       "folders": [
         {
-          "name": "Folder Name",
+          "name": "Folder Name (only when needed for sub-grouping)",
           "lists": [
             {
               "name": "List Name",
-              "description": "optional description of this list's purpose",
+              "description": "optional description",
               "statuses": [
                 { "name": "Status Name", "color": "#hex", "type": "open|active|done|closed" }
               ]
@@ -176,7 +188,9 @@ Return a single JSON object with this exact structure:
 }
 
 ## RULES
-- Each space must have at least 1 folder
+- STRUCTURE BEST PRACTICE: Use a FLAT hierarchy. Prefer "lists" directly in spaces over "folders". Each major business area should be its own Space with Lists directly inside. Only add Folders when a Space genuinely needs a 3rd layer of sub-grouping (e.g. 6+ lists that need categorization). NEVER default to a single Space with Folders for distinct business areas.
+- FOLDERS: Only use Folders to group 2+ related Lists within a Space when the Space has many lists. Do NOT create a Folder to hold a single list. If a Space only has 3-5 lists, keep them flat without Folders.
+- Each space must have at least 1 list (directly in the space) or 1 folder (containing lists)
 - Each folder must have at least 1 list
 - Each list must have at least 2 statuses: minimum one "open" type and one "done" or "closed" type
 - Status colors must be valid hex codes
@@ -288,11 +302,18 @@ function normalizeSpace(space: Record<string, unknown>): {
       description?: string;
     }>;
   }>;
+  lists?: Array<{
+    name: string;
+    statuses: Array<{ name: string; color: string; type: 'open' | 'active' | 'done' | 'closed' }>;
+    description?: string;
+  }>;
 } {
   const folders = Array.isArray(space.folders) ? space.folders : [];
+  const directLists = Array.isArray(space.lists) ? space.lists : [];
   return {
     name: String(space.name ?? 'Unnamed Space'),
     folders: folders.map(normalizeFolder),
+    ...(directLists.length > 0 ? { lists: directLists.map(normalizeList) } : {}),
   };
 }
 
@@ -404,36 +425,36 @@ export function validateSetupPlan(plan: SetupPlan): SetupPlanValidationResult {
     errors.push(`Plan has ${plan.spaces.length} spaces — this seems excessive`);
   }
 
+  const validateList = (list: { name: string; statuses: Array<{ type: string }> }, context: string) => {
+    if (list.statuses.length < 2) {
+      errors.push(`List "${list.name}" in ${context} must have at least 2 statuses`);
+    }
+    const hasOpen = list.statuses.some((s) => s.type === 'open');
+    const hasDoneOrClosed = list.statuses.some((s) => s.type === 'done' || s.type === 'closed');
+    if (!hasOpen) errors.push(`List "${list.name}" is missing an "open" type status`);
+    if (!hasDoneOrClosed) errors.push(`List "${list.name}" is missing a "done" or "closed" type status`);
+  };
+
   for (const space of plan.spaces) {
-    if (space.folders.length === 0) {
-      errors.push(`Space "${space.name}" must have at least 1 folder`);
+    const hasFolders = space.folders.length > 0;
+    const hasDirectLists = (space.lists?.length ?? 0) > 0;
+
+    if (!hasFolders && !hasDirectLists) {
+      errors.push(`Space "${space.name}" must have at least 1 folder or list`);
     }
 
     for (const folder of space.folders) {
       if (folder.lists.length === 0) {
         errors.push(`Folder "${folder.name}" in space "${space.name}" must have at least 1 list`);
       }
-
       for (const list of folder.lists) {
-        if (list.statuses.length < 2) {
-          errors.push(
-            `List "${list.name}" in "${folder.name}" must have at least 2 statuses`,
-          );
-        }
+        validateList(list, `"${folder.name}"`);
+      }
+    }
 
-        const hasOpen = list.statuses.some((s) => s.type === 'open');
-        const hasDoneOrClosed = list.statuses.some(
-          (s) => s.type === 'done' || s.type === 'closed',
-        );
-
-        if (!hasOpen) {
-          errors.push(`List "${list.name}" is missing an "open" type status`);
-        }
-        if (!hasDoneOrClosed) {
-          errors.push(`List "${list.name}" is missing a "done" or "closed" type status`);
-        }
-
-        // Colors are auto-fixed during normalization, so no hard validation needed here
+    if (space.lists) {
+      for (const list of space.lists) {
+        validateList(list, `space "${space.name}"`);
       }
     }
   }

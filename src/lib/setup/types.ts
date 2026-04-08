@@ -69,7 +69,10 @@ export interface RecommendedGoal {
 
 export interface SpacePlan {
   name: string;
+  /** Folders containing lists (3rd layer, optional) */
   folders: FolderPlan[];
+  /** Lists directly in the space without a folder (preferred flat structure) */
+  lists?: ListPlan[];
 }
 
 export interface FolderPlan {

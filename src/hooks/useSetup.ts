@@ -679,7 +679,15 @@ export function useSetup(): UseSetupReturn {
       const { plan } = await res.json();
       store?.getState().setPlan(plan);
       const version = (history.length || 0) + (currentPlan ? 2 : 1);
-      addMessage('assistant', `I've designed your workspace structure (v${version}) with **${plan.spaces.length} spaces**, organized folders, lists, and statuses.\n\nTake a look and let me know if you'd like any changes.`);
+      const totalLists = plan.spaces.reduce((acc: number, s: { folders: Array<{ lists: unknown[] }>; lists?: unknown[] }) => {
+        const folderLists = s.folders.reduce((a: number, f: { lists: unknown[] }) => a + f.lists.length, 0);
+        return acc + folderLists + (s.lists?.length ?? 0);
+      }, 0);
+      const totalFolders = plan.spaces.reduce((acc: number, s: { folders: unknown[] }) => acc + s.folders.length, 0);
+      const structureDesc = totalFolders > 0
+        ? `**${plan.spaces.length} spaces**, **${totalLists} lists**, and ${totalFolders} folders`
+        : `**${plan.spaces.length} spaces** and **${totalLists} lists**`;
+      addMessage('assistant', `I've designed your workspace structure (v${version}) with ${structureDesc}.\n\nTake a look and let me know if you'd like any changes.`);
       setCurrentStep(3);
     } catch {
       addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');
@@ -954,7 +962,7 @@ export function useSetup(): UseSetupReturn {
   }, [store]);
 
   const submitProfileForm = useCallback(
-    async (data: ProfileFormData) => {
+    (data: ProfileFormData) => {
       store?.getState().setProfileFormData(data);
       store?.getState().setProfileFormCompleted(true);
 
@@ -965,45 +973,13 @@ export function useSetup(): UseSetupReturn {
         'operations-based': 'operations management (ongoing processes and workflows)',
       };
 
-      // Build a business description from the form data
+      // Build a business description from the form data and store it
+      // The profile data is passed to the AI via the system prompt (profileData param)
+      // so we don't need to send it as a chat message
       const desc = `We're in the ${data.industry} industry. Our work style is ${workStyleLabel[data.workStyle] || data.workStyle}. Our services/products include: ${data.services}. Team size: ${data.teamSize}.`;
       store?.getState().setBusinessDescription(desc);
-
-      // Add the description as a user message and trigger the chat
-      addMessage('user', desc);
-      store?.getState().incrementMessageCount();
-      setIsSending(true);
-
-      try {
-        const response = await fetchWithTimeout('/api/setup/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workspace_id,
-            conversation_id: conversationId,
-            message: `Here's my business profile:\n- Industry: ${data.industry}\n- Work style: ${workStyleLabel[data.workStyle] || data.workStyle}\n- Services/Products: ${data.services}\n- Team size: ${data.teamSize}\n\nBased on my current workspace analysis and this profile, please recommend the optimal ClickUp workspace structure. Summarize what you'd build and ask if I want to make any changes before generating the structure.`,
-            workspace_analysis: fullAnalysisContext,
-          }),
-        });
-
-        if (response.ok) {
-          const resData = await response.json();
-          if (resData.content) {
-            addMessage('assistant', resData.content);
-            setIsSending(false);
-            return;
-          }
-        }
-      } catch {
-        // Fall through to fallback
-      }
-
-      // Fallback if API fails
-      await new Promise((r) => setTimeout(r, 800));
-      addMessage('assistant', `Great! Based on your **${data.industry}** business with a **${data.workStyle}** work style, I can see how to structure your workspace.\n\nI'll create spaces for your core operations, organize folders by ${data.services.includes(',') ? 'service areas' : 'your workflow'}, and set up lists with custom statuses.\n\nWould you like to share any more details about your workflows, tools, or pain points? Or click **"Generate Structure"** to see the proposed plan.`);
-      setIsSending(false);
     },
-    [addMessage, workspace_id, conversationId, fullAnalysisContext, store],
+    [store],
   );
 
   const updatePlan = useCallback((newPlan: SetupPlan) => {

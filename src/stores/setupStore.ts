@@ -31,6 +31,13 @@ export interface ExistingSpaceInfo {
       statuses: unknown;
     }>;
   }>;
+  /** Folderless lists that live directly in the space */
+  lists?: Array<{
+    clickup_id: string;
+    name: string;
+    task_count: number;
+    statuses: unknown;
+  }>;
 }
 
 export interface ExistingWorkspaceStructure {

@@ -126,13 +126,18 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
 
   // Include the proposed plan so the AI knows exactly what structure was generated
   if (input.proposedPlan?.spaces?.length) {
-    const planSummary = input.proposedPlan.spaces.map(s =>
-      `Space: ${s.name}\n${s.folders.map(f =>
+    const planSummary = input.proposedPlan.spaces.map(s => {
+      const directLists = (s as Record<string, unknown>).lists as Array<{ name: string; statuses: Array<{ name: string }> }> | undefined;
+      const directListsStr = directLists?.map(l =>
+        `  List: ${l.name} (statuses: ${l.statuses.map(st => st.name).join(', ')})`
+      ).join('\n') || '';
+      const foldersStr = s.folders.map(f =>
         `  Folder: ${f.name}\n${f.lists.map(l =>
           `    List: ${l.name} (statuses: ${l.statuses.map(st => st.name).join(', ')})`
         ).join('\n')}`
-      ).join('\n')}`
-    ).join('\n');
+      ).join('\n');
+      return `Space: ${s.name}\n${directListsStr}${directListsStr && foldersStr ? '\n' : ''}${foldersStr}`;
+    }).join('\n');
     systemPrompt += `\n\nPREVIOUSLY GENERATED WORKSPACE PLAN (the user has already seen this structure):\n${planSummary}${input.proposedPlan.reasoning ? `\nReasoning: ${input.proposedPlan.reasoning}` : ''}${input.proposedPlan.clickApps?.length ? `\nRecommended ClickApps: ${input.proposedPlan.clickApps.join(', ')}` : ''}\n\nIMPORTANT: The user is coming back from reviewing this plan. Reference THIS specific structure when they ask about changes. Do NOT generate a new structure from scratch or claim you don't know what was proposed.`;
   }
 

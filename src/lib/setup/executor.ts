@@ -82,7 +82,11 @@ export async function executeSetupPlan(
   const client = new ClickUpClient(workspaceId);
 
   // Build lookup maps from existing structure for quick matching (case-insensitive)
-  const existingSpaces = new Map<string, { clickup_id: string; folders: Map<string, { clickup_id: string; lists: Set<string> }> }>();
+  const existingSpaces = new Map<string, {
+    clickup_id: string;
+    folders: Map<string, { clickup_id: string; lists: Set<string> }>;
+    folderlessLists: Set<string>;
+  }>();
   if (existingStructure?.spaces) {
     for (const space of existingStructure.spaces) {
       const folderMap = new Map<string, { clickup_id: string; lists: Set<string> }>();
@@ -90,7 +94,14 @@ export async function executeSetupPlan(
         const listNames = new Set(folder.lists.map((l) => l.name.toLowerCase()));
         folderMap.set(folder.name.toLowerCase(), { clickup_id: folder.clickup_id, lists: listNames });
       }
-      existingSpaces.set(space.name.toLowerCase(), { clickup_id: space.clickup_id, folders: folderMap });
+      const folderlessLists = new Set(
+        (space.lists ?? []).map((l) => l.name.toLowerCase())
+      );
+      existingSpaces.set(space.name.toLowerCase(), {
+        clickup_id: space.clickup_id,
+        folders: folderMap,
+        folderlessLists,
+      });
     }
   }
 
@@ -179,7 +190,7 @@ export async function executeSetupPlan(
   }
 
   // -------------------------------------------------------------------------
-  // Phase 3: Create Lists with Statuses (or skip if they already exist)
+  // Phase 3a: Create Lists inside Folders (or skip if they already exist)
   // -------------------------------------------------------------------------
   for (const spacePlan of plan.spaces) {
     const existingSpace = existingSpaces.get(spacePlan.name.toLowerCase());
@@ -201,7 +212,6 @@ export async function executeSetupPlan(
 
         const listExists = existingFolder?.lists.has(listPlan.name.toLowerCase());
         if (listExists) {
-          // List already exists - skip creation
           markSkipped(item);
         } else {
           try {
@@ -217,6 +227,44 @@ export async function executeSetupPlan(
         completed++;
         onProgress?.(item, { completed, total: totalItems });
       }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Phase 3b: Create Folderless Lists (directly in spaces)
+  // -------------------------------------------------------------------------
+  for (const spacePlan of plan.spaces) {
+    if (!spacePlan.lists?.length) continue;
+
+    const spaceId = spaceIdMap.get(spacePlan.name);
+    const existingSpace = existingSpaces.get(spacePlan.name.toLowerCase());
+    const existingFolderlessLists = existingSpace?.folderlessLists ?? new Set<string>();
+
+    for (const listPlan of spacePlan.lists) {
+      const item = findItem(items, "list", listPlan.name, spacePlan.name);
+
+      if (!spaceId) {
+        markError(item, new Error(`Skipped: parent space "${spacePlan.name}" was not created`));
+        completed++;
+        onProgress?.(item, { completed, total: totalItems });
+        continue;
+      }
+
+      if (existingFolderlessLists.has(listPlan.name.toLowerCase())) {
+        markSkipped(item);
+      } else {
+        try {
+          const list = await withRetry(() => createFolderlessListWithStatuses(client, spaceId, listPlan));
+          createdListIds.push(list.id);
+          await upsertCachedLists(workspaceId, [list]);
+          markSuccess(item, list.id);
+        } catch (err) {
+          markError(item, err);
+        }
+      }
+
+      completed++;
+      onProgress?.(item, { completed, total: totalItems });
     }
   }
 
@@ -305,6 +353,19 @@ function buildExecutionItems(plan: SetupPlan): ExecutionItem[] {
   for (const space of plan.spaces) {
     items.push({ type: "space", name: space.name, status: "pending" });
 
+    // Folderless lists (directly in space)
+    if (space.lists) {
+      for (const list of space.lists) {
+        items.push({
+          type: "list",
+          name: list.name,
+          parentName: space.name,
+          status: "pending",
+        });
+      }
+    }
+
+    // Folders and their lists
     for (const folder of space.folders) {
       items.push({
         type: "folder",
@@ -409,23 +470,11 @@ async function getTeamId(client: ClickUpClient): Promise<string> {
 }
 
 /**
- * Create a list via the ClickUp API, including custom statuses.
- * The ClickUp API accepts statuses in the POST /folder/{id}/list body.
+ * Build the list creation body (shared between folder-based and folderless).
  */
-async function createListWithStatuses(
-  client: ClickUpClient,
-  folderId: string,
-  listPlan: ListPlan
-): Promise<ClickUpList> {
-  const body: Record<string, unknown> = {
-    name: listPlan.name,
-  };
-
-  if (listPlan.description) {
-    body.content = listPlan.description;
-  }
-
-  // Include custom statuses if defined
+function buildListBody(listPlan: ListPlan): Record<string, unknown> {
+  const body: Record<string, unknown> = { name: listPlan.name };
+  if (listPlan.description) body.content = listPlan.description;
   if (listPlan.statuses && listPlan.statuses.length > 0) {
     body.statuses = listPlan.statuses.map((s, index) => ({
       status: s.name,
@@ -434,6 +483,27 @@ async function createListWithStatuses(
       orderindex: index,
     }));
   }
+  return body;
+}
 
-  return client.post<ClickUpList>(`/folder/${folderId}/list`, body);
+/**
+ * Create a list inside a folder via the ClickUp API, including custom statuses.
+ */
+async function createListWithStatuses(
+  client: ClickUpClient,
+  folderId: string,
+  listPlan: ListPlan
+): Promise<ClickUpList> {
+  return client.post<ClickUpList>(`/folder/${folderId}/list`, buildListBody(listPlan));
+}
+
+/**
+ * Create a folderless list directly in a space via the ClickUp API.
+ */
+async function createFolderlessListWithStatuses(
+  client: ClickUpClient,
+  spaceId: string,
+  listPlan: ListPlan
+): Promise<ClickUpList> {
+  return client.post<ClickUpList>(`/space/${spaceId}/list`, buildListBody(listPlan));
 }
