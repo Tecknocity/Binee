@@ -46,13 +46,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not a member of this workspace' }, { status: 403 });
     }
 
-    const result = await executeSetupPlan(
-      plan,
-      workspace_id,
-      '', // accessToken param is unused - ClickUpClient fetches its own token server-side
-      undefined, // no progress callback needed for non-streaming response
-      existing_structure,
-    );
+    let result;
+    try {
+      result = await executeSetupPlan(
+        plan,
+        workspace_id,
+        '', // accessToken param is unused - ClickUpClient fetches its own token server-side
+        undefined, // no progress callback needed for non-streaming response
+        existing_structure,
+      );
+    } catch (execErr) {
+      // Log the actual error for debugging
+      console.error('[setup/execute] Executor threw:', execErr);
+
+      // Return a minimal result so the frontend can still show partial progress
+      // rather than a generic "Internal server error"
+      const errorMessage = execErr instanceof Error ? execErr.message : 'Execution failed unexpectedly';
+      result = {
+        success: false,
+        totalItems: 0,
+        successCount: 0,
+        errorCount: 1,
+        items: [],
+        createdSpaceIds: [],
+        createdFolderIds: [],
+        createdListIds: [],
+        executorError: errorMessage,
+      };
+    }
 
     return NextResponse.json({ result });
   } catch (err) {

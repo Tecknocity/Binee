@@ -135,7 +135,7 @@ export default function SetupWizard() {
         {setup.currentStep === 2 && !setup.profileFormCompleted && (
           <BusinessProfileForm
             onSubmit={setup.submitProfileForm}
-            isSubmitting={setup.isSending}
+            isSubmitting={false}
             initialData={setup.profileFormData}
           />
         )}

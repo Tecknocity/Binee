@@ -64,18 +64,17 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 2: Read hard counts from cached Supabase tables (source of truth for numbers)
-    const [spacesRes, foldersRes, listsRes, tasksRes, membersRes] = await Promise.all([
-      adminClient.from('cached_spaces').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
-      adminClient.from('cached_folders').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
-      adminClient.from('cached_lists').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
+    // For structure counts (spaces/folders/lists), prefer the fresh sync counts when available
+    // since they come directly from the ClickUp API and avoid any cache delay.
+    const [tasksRes, membersRes] = await Promise.all([
       adminClient.from('cached_tasks').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
       adminClient.from('cached_members').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace_id),
     ]);
 
     const counts = {
-      spaces: spacesRes.count ?? 0,
-      folders: foldersRes.count ?? 0,
-      lists: listsRes.count ?? 0,
+      spaces: structureCounts.spaces,
+      folders: structureCounts.folders,
+      lists: structureCounts.lists,
       tasks: tasksRes.count ?? 0,
       members: membersRes.count ?? 0,
     };
@@ -168,13 +167,13 @@ If workspace is empty: {"findings":[{"type":"info","text":"Clean slate, perfect 
           findings.push({ type: 'warning', text: `${counts.tasks} tasks managed by only ${counts.members} team member. Consider inviting your team.` });
         }
         if (counts.lists > 0 && counts.folders === 0) {
-          findings.push({ type: 'info', text: 'Lists are not organized into folders — adding folders would improve navigation' });
+          findings.push({ type: 'info', text: 'Workspace uses a flat structure with lists directly in spaces. Folders can be added later as complexity grows.' });
         }
         if (counts.spaces > 0) {
           findings.push({ type: 'good', text: `Workspace has an existing foundation with ${counts.spaces > 1 ? 'multiple spaces' : 'a space'} to build on` });
         }
         if (counts.tasks === 0) {
-          findings.push({ type: 'info', text: 'No tasks created yet — structure exists but is not actively used' });
+          findings.push({ type: 'info', text: 'No tasks created yet - structure exists but is not actively used' });
         }
         if (counts.tasks > 50 && counts.members <= 2) {
           findings.push({ type: 'warning', text: 'High task-to-member ratio may indicate workload imbalance' });

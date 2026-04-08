@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Building2,
   Users,
@@ -10,8 +10,14 @@ import {
   Loader2,
   ChevronDown,
   Layout,
+  Upload,
+  FileSpreadsheet,
+  FileText,
+  X,
 } from 'lucide-react';
 import type { ProfileFormData } from '@/hooks/useSetup';
+import { parseFile, getFileError, isFileSupported, formatAttachmentsForAI } from '@/lib/file-parser';
+import type { FileAttachment } from '@/lib/file-parser';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -85,9 +91,56 @@ export function BusinessProfileForm({
   const [services, setServices] = useState(initialData?.services ?? '');
   const [teamSize, setTeamSize] = useState(initialData?.teamSize ?? '');
 
+  // File upload state
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const effectiveIndustry = industry === 'Other' ? industryCustom.trim() : industry;
   const isValid = effectiveIndustry && workStyle && services.trim() && teamSize;
   const filledCount = [effectiveIndustry, workStyle, services.trim(), teamSize].filter(Boolean).length;
+
+  const handleFiles = async (files: FileList | File[]) => {
+    setFileError(null);
+    const fileArray = Array.from(files);
+
+    if (attachments.length + fileArray.length > 3) {
+      setFileError('Maximum 3 files');
+      return;
+    }
+
+    for (const file of fileArray) {
+      const error = getFileError(file);
+      if (error) { setFileError(error); return; }
+    }
+
+    setIsParsing(true);
+    try {
+      const parsed = await Promise.all(
+        fileArray.map(async (file) => {
+          const result = await parseFile(file);
+          return {
+            name: result.name,
+            type: result.type,
+            content: result.content,
+            rowCount: result.rowCount,
+            columns: result.columns,
+          } as FileAttachment;
+        }),
+      );
+      setAttachments((prev) => [...prev, ...parsed]);
+    } catch {
+      setFileError('Failed to parse file. Please try a different format.');
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +151,7 @@ export function BusinessProfileForm({
       workStyle,
       services: services.trim(),
       teamSize,
+      fileContext: attachments.length > 0 ? formatAttachmentsForAI(attachments) : undefined,
     });
   };
 
@@ -215,6 +269,104 @@ export function BusinessProfileForm({
               ))}
             </div>
           </FormField>
+
+          {/* File upload drop zone (optional) */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-accent"><Upload className="w-4 h-4" /></span>
+              <label className="text-sm font-semibold text-text-primary">
+                Additional context
+                <span className="text-text-muted font-normal ml-1">(optional)</span>
+              </label>
+            </div>
+            <p className="text-xs text-text-muted mb-2">
+              Have existing Excel files, spreadsheets, or docs with your current workflows? Share them for better results.
+            </p>
+
+            {/* Drop zone */}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragOver(false);
+                const files = Array.from(e.dataTransfer.files).filter(isFileSupported);
+                if (files.length > 0) handleFiles(files);
+                else if (e.dataTransfer.files.length > 0) setFileError('Unsupported file type. Use CSV, XLSX, TXT, MD, or JSON.');
+              }}
+              className={`
+                cursor-pointer border-2 border-dashed rounded-xl px-4 py-4 text-center transition-all
+                ${isDragOver
+                  ? 'border-accent/50 bg-accent/5'
+                  : 'border-border hover:border-accent/30 hover:bg-surface/50'
+                }
+                ${isParsing ? 'opacity-60 pointer-events-none' : ''}
+              `}
+            >
+              {isParsing ? (
+                <div className="flex items-center justify-center gap-2 text-sm text-text-secondary">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Parsing file...
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1">
+                  <Upload className="w-5 h-5 text-text-muted" />
+                  <span className="text-sm text-text-secondary">
+                    Drop files here or <span className="text-accent font-medium">browse</span>
+                  </span>
+                  <span className="text-xs text-text-muted">CSV, XLSX, TXT, MD, JSON (max 5MB)</span>
+                </div>
+              )}
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv"
+              multiple
+              onChange={(e) => {
+                if (e.target.files?.length) handleFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+
+            {/* File error */}
+            {fileError && (
+              <p className="mt-1.5 text-xs text-error">{fileError}</p>
+            )}
+
+            {/* Attached files list */}
+            {attachments.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {attachments.map((att, i) => {
+                  const Icon = att.type === 'csv' || att.type === 'xlsx' ? FileSpreadsheet : FileText;
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+                    >
+                      <Icon className="w-4 h-4 text-accent flex-shrink-0" />
+                      <span className="truncate text-text-secondary">{att.name}</span>
+                      {att.rowCount !== undefined && (
+                        <span className="text-xs text-text-muted flex-shrink-0">
+                          {att.rowCount} rows
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); removeAttachment(i); }}
+                        className="ml-auto p-0.5 text-text-muted hover:text-error transition-colors flex-shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Progress indicator */}
           <div className="pt-2">

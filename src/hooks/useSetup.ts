@@ -44,6 +44,8 @@ export interface ProfileFormData {
   workStyle: string;
   services: string;
   teamSize: string;
+  /** Optional context from uploaded files (Excel, CSV, etc.) */
+  fileContext?: string;
 }
 
 export interface UseSetupReturn {
@@ -980,7 +982,13 @@ export function useSetup(): UseSetupReturn {
       // Build a business description from the form data and store it
       // The profile data is passed to the AI via the system prompt (profileData param)
       // so we don't need to send it as a chat message
-      const desc = `We're in the ${data.industry} industry. Our work style is ${workStyleLabel[data.workStyle] || data.workStyle}. Our services/products include: ${data.services}. Team size: ${data.teamSize}.`;
+      let desc = `We're in the ${data.industry} industry. Our work style is ${workStyleLabel[data.workStyle] || data.workStyle}. Our services/products include: ${data.services}. Team size: ${data.teamSize}.`;
+
+      // Include uploaded file context if available
+      if (data.fileContext) {
+        desc += `\n\nAdditional context from uploaded files:\n${data.fileContext}`;
+      }
+
       store?.getState().setBusinessDescription(desc);
     },
     [store],
