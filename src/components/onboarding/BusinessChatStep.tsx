@@ -251,99 +251,102 @@ export function BusinessChatStep({
           </div>
         )}
 
-        {/* Input area - larger, Claude-style */}
-        <div className="shrink-0 bg-surface border border-border rounded-2xl px-4 py-3 mb-2">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              messageCount === 0
-                ? 'Describe your business, team, and how you work...'
-                : 'Tell me more about your team, tools, or workflows...'
-            }
-            disabled={isSending}
-            rows={2}
-            className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
-          />
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
-            <p className="text-[11px] text-text-muted">
-              <kbd className="px-1 py-0.5 rounded bg-elevated border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
-              to send
-              <span className="mx-1.5 text-text-muted/50">|</span>
-              <kbd className="px-1 py-0.5 rounded bg-elevated border border-border text-text-muted text-[10px]">Shift + Enter</kbd>{' '}
-              for new line
-            </p>
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isSending}
-              className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
-                hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              {isSending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-        </div>
+        {/* Input container - Claude Code style unified card */}
+        <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">
+          {/* Top bar - discovery progress + actions, visually distinct */}
+          <div className="flex items-center justify-between gap-3 px-4 py-2 bg-navy-dark/60">
+            {/* Left: Discovery progress */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="text-[11px] font-semibold text-text-secondary whitespace-nowrap">
+                Discovery {completeness}/{PROFILE_FORM_FIELDS.length}
+              </span>
+              <div className="flex items-center gap-2">
+                {PROFILE_FORM_FIELDS.map((field) => {
+                  const collected = isFormFieldCollected(field.key);
+                  const displayVal = getFormFieldValue(field.key);
+                  return (
+                    <div
+                      key={field.key}
+                      className="flex items-center gap-1"
+                      title={collected && displayVal ? `${field.label}: ${displayVal}` : field.hint}
+                    >
+                      {collected ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                      ) : (
+                        <Circle className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                      )}
+                      <span className={`text-[11px] ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
+                        {field.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
-        {/* Actions bar - discovery progress + buttons at the bottom */}
-        <div className="shrink-0 flex items-center gap-3 px-1">
-          {/* Discovery progress */}
-          <div className="flex-1 flex items-center gap-3 min-w-0">
-            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide whitespace-nowrap">
-              Discovery {completeness}/{PROFILE_FORM_FIELDS.length}
-            </span>
-            <div className="flex items-center gap-2">
-              {PROFILE_FORM_FIELDS.map((field) => {
-                const collected = isFormFieldCollected(field.key);
-                const displayVal = getFormFieldValue(field.key);
-                return (
-                  <div
-                    key={field.key}
-                    className="flex items-center gap-1"
-                    title={collected && displayVal ? `${field.label}: ${displayVal}` : field.hint}
-                  >
-                    {collected ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                    ) : (
-                      <Circle className="w-3.5 h-3.5 text-text-muted shrink-0" />
-                    )}
-                    <span className={`text-[11px] ${collected ? 'text-text-primary' : 'text-text-muted'}`}>
-                      {field.label}
-                    </span>
-                  </div>
-                );
-              })}
+            {/* Right: Action buttons */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={onEditProfile}
+                className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium
+                  text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
+                  transition-colors whitespace-nowrap"
+              >
+                <Pencil className="w-3 h-3" />
+                Update Info
+              </button>
+
+              {canGenerate && !isSending && (
+                <button
+                  onClick={() => onSendMessage('__generate_structure__')}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-accent text-white font-medium text-[11px]
+                    hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Generate Structure
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={onEditProfile}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium
-                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
-                transition-colors whitespace-nowrap"
-            >
-              <Pencil className="w-3 h-3" />
-              Update Info
-            </button>
-
-            {canGenerate && !isSending && (
+          {/* Textarea area */}
+          <div className="px-4 pt-3 pb-2 border-t border-border">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                messageCount === 0
+                  ? 'Describe your business, team, and how you work...'
+                  : 'Tell me more about your team, tools, or workflows...'
+              }
+              disabled={isSending}
+              rows={2}
+              className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
+            />
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-[11px] text-text-muted">
+                <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Enter</kbd>{' '}
+                to send
+                <span className="mx-1.5 text-text-muted/50">|</span>
+                <kbd className="px-1 py-0.5 rounded bg-navy-dark border border-border text-text-muted text-[10px]">Shift + Enter</kbd>{' '}
+                for new line
+              </p>
               <button
-                onClick={() => onSendMessage('__generate_structure__')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-[11px]
-                  hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
+                onClick={handleSend}
+                disabled={!input.trim() || isSending}
+                className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
+                  hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                <Sparkles className="w-3 h-3" />
-                Generate Structure
+                {isSending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </button>
-            )}
+            </div>
           </div>
         </div>
       </div>
