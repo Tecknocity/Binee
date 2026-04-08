@@ -118,8 +118,30 @@ export async function executeSetupPlan(
   const spaceIdMap = new Map<string, string>(); // space name -> clickup id
   const folderIdMap = new Map<string, string>(); // "spaceName/folderName" -> clickup id
 
-  // We need the ClickUp team ID to create spaces
-  const teamId = await getTeamId(client);
+  // We need the ClickUp team ID to create spaces.
+  // If this fails (token expired, no teams), the entire build cannot proceed.
+  let teamId: string;
+  try {
+    teamId = await getTeamId(client);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Failed to connect to ClickUp';
+    console.error('[setup/executor] getTeamId failed:', err);
+    // Mark all items as errored and return immediately
+    for (const item of items) {
+      item.status = 'error';
+      item.error = `ClickUp connection failed: ${errorMsg}`;
+    }
+    return {
+      success: false,
+      totalItems,
+      successCount: 0,
+      errorCount: totalItems,
+      items,
+      createdSpaceIds: [],
+      createdFolderIds: [],
+      createdListIds: [],
+    };
+  }
 
   // -------------------------------------------------------------------------
   // Phase 1: Create Spaces (or skip if they already exist)
@@ -356,9 +378,7 @@ export async function executeSetupPlan(
             try {
               const body: Record<string, unknown> = {
                 name: doc.name,
-                parent: { id: Number(firstSpaceId), type: 4 }, // 4 = space
-                visibility: "PUBLIC",
-                create_page: true,
+                parent: { id: firstSpaceId, type: 4 }, // 4 = space
               };
               const v3Result = await withRetry(() =>
                 client.postV3<{ id?: string }>(`/workspaces/${teamId}/docs`, body)
