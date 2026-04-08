@@ -10,6 +10,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 export interface ClickUpConnectionStatus {
   connected: boolean;
   teamName: string | null;
+  planTier: string;
   loading: boolean;
 }
 
@@ -29,10 +30,12 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
   // This eliminates the network round-trip that was blocking page rendering.
   const connected = !!workspace?.clickup_team_id;
   const teamName = workspace?.clickup_team_name ?? null;
+  const planTier = workspace?.clickup_plan_tier ?? 'free';
 
   const [status, setStatus] = useState<ClickUpConnectionStatus>({
     connected,
     teamName,
+    planTier,
     loading: workspaceLoading,
   });
 
@@ -41,14 +44,15 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
     setStatus({
       connected: !!workspace?.clickup_team_id,
       teamName: workspace?.clickup_team_name ?? null,
+      planTier: workspace?.clickup_plan_tier ?? 'free',
       loading: workspaceLoading,
     });
-  }, [workspace?.clickup_team_id, workspace?.clickup_team_name, workspaceLoading]);
+  }, [workspace?.clickup_team_id, workspace?.clickup_team_name, workspace?.clickup_plan_tier, workspaceLoading]);
 
   // Explicit refetch via API (for manual refresh scenarios)
   const refetch = useCallback(async () => {
     if (!workspace_id) {
-      setStatus({ connected: false, teamName: null, loading: false });
+      setStatus({ connected: false, teamName: null, planTier: 'free', loading: false });
       return;
     }
 
@@ -59,6 +63,7 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
         setStatus({
           connected: data.connected ?? false,
           teamName: data.team_name ?? null,
+          planTier: data.plan_tier ?? 'free',
           loading: false,
         });
       }
