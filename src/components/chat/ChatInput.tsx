@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { SendHorizontal, Hexagon, Paperclip, X, FileSpreadsheet, FileText } from 'lucide-react';
-import { parseFile, getFileError, isFileSupported } from '@/lib/file-parser';
+import { parseFile, getFileError, isFileSupported, formatAttachmentsForAI } from '@/lib/file-parser';
 import type { FileAttachment } from '@/lib/file-parser';
 
 interface ChatInputProps {
@@ -99,17 +99,7 @@ export default function ChatInput({ onSend, disabled, placeholder, autoFocus = t
     if ((!trimmed && attachments.length === 0) || disabled) return;
 
     // Build file context string from attachments
-    let fileContext: string | undefined;
-    if (attachments.length > 0) {
-      const parts = attachments.map((att, i) => {
-        const header = attachments.length > 1 ? `[Attachment ${i + 1}: ${att.name}]` : `[Attached file: ${att.name}]`;
-        const meta = att.rowCount
-          ? ` (${att.rowCount} rows, columns: ${att.columns?.join(', ') ?? 'unknown'})`
-          : '';
-        return `${header}${meta}\n${att.content}`;
-      });
-      fileContext = parts.join('\n\n---\n\n');
-    }
+    const fileContext = attachments.length > 0 ? formatAttachmentsForAI(attachments) : undefined;
 
     onSend(trimmed || 'Please analyze the attached file(s).', fileContext);
     setValue('');

@@ -32,6 +32,7 @@ const LOW_RISK_OPERATIONS = new Set([
   'add_task_link',
   'start_time_tracking',
   'add_manual_time_entry',
+  'attach_file_content_to_task',
 ]);
 
 /** Medium risk — modify existing data. Eligible for "Always Allow". */
@@ -47,6 +48,7 @@ const MEDIUM_RISK_OPERATIONS = new Set([
   'remove_dependency',
   'remove_task_link',
   'stop_time_tracking',
+  'batch_create_tasks',
 ]);
 
 /** High risk — destructive operations. Always require confirmation, never auto-approve. */
@@ -328,6 +330,25 @@ export function describeAction(
           'Duration': `${toolInput.duration_hours} hours`,
           ...(toolInput.date ? { Date: toolInput.date } : { Date: 'Today' }),
           ...(toolInput.description ? { Description: toolInput.description } : {}),
+        }),
+      };
+
+    case 'batch_create_tasks': {
+      const tasks = (toolInput.tasks as Array<{ name: string; list_name: string }>) || [];
+      return {
+        description: `Create ${tasks.length} tasks in bulk`,
+        details: tasks.length <= 5
+          ? tasks.map(t => `- "${t.name}" in ${t.list_name}`).join('\n')
+          : tasks.slice(0, 5).map(t => `- "${t.name}" in ${t.list_name}`).join('\n') + `\n... and ${tasks.length - 5} more`,
+      };
+    }
+
+    case 'attach_file_content_to_task':
+      return {
+        description: `Attach file "${toolInput.file_name}" to task ${toolInput.task_id}`,
+        details: formatDetails({
+          'Task ID': toolInput.task_id,
+          'File name': toolInput.file_name,
         }),
       };
 

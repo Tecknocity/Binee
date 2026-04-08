@@ -776,6 +776,57 @@ export const CLICKUP_TOOL_REGISTRY: Anthropic.Tool[] = [
       required: ['task_id', 'links_to_task_id'],
     },
   },
+  {
+    name: 'batch_create_tasks',
+    description:
+      'Create multiple tasks at once from structured data (e.g. imported from a CSV file). Each task needs a name and list_name, with optional fields like description, status, assignee, priority, and due_date.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        tasks: {
+          type: 'array',
+          description: 'Array of task objects to create',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Task name (required)' },
+              list_name: { type: 'string', description: 'List name to create the task in (required)' },
+              description: { type: 'string', description: 'Task description' },
+              status: { type: 'string', description: 'Task status' },
+              assignee_name: { type: 'string', description: 'Assignee name' },
+              priority: { type: 'number', description: 'Priority: 1=Urgent, 2=High, 3=Normal, 4=Low' },
+              due_date: { type: 'string', description: 'Due date (YYYY-MM-DD)' },
+            },
+            required: ['name', 'list_name'],
+          },
+        },
+      },
+      required: ['tasks'],
+    },
+  },
+  {
+    name: 'attach_file_content_to_task',
+    description:
+      'Attach file content (from an uploaded CSV, XLSX, TXT, or JSON file) to a ClickUp task as a comment. Use this when a user wants to attach or save file data to a specific task.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: {
+          type: 'string',
+          description: 'The task ID to attach file content to',
+        },
+        file_name: {
+          type: 'string',
+          description: 'Original file name (e.g. "report.csv")',
+        },
+        file_content: {
+          type: 'string',
+          description: 'The parsed file content to attach',
+        },
+      },
+      required: ['task_id', 'file_name', 'file_content'],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
