@@ -30,7 +30,7 @@ type ItemState = 'pending' | 'in-progress' | 'success' | 'error' | 'cascade' | '
 
 interface DerivedItem {
   name: string;
-  type: 'space' | 'folder' | 'list';
+  type: 'space' | 'folder' | 'list' | 'tag' | 'doc' | 'goal';
   parentName?: string;
   state: ItemState;
   error?: string;
