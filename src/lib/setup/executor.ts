@@ -6,6 +6,7 @@
 
 import { ClickUpClient, ClickUpApiError } from "@/lib/clickup/client";
 import { upsertCachedSpaces, upsertCachedFolders, upsertCachedLists } from "@/lib/clickup/sync";
+import { isItemTypeSupported, classifyClickUpError, getPlanCapabilities } from "@/lib/clickup/plan-capabilities";
 import type { ClickUpList } from "@/types/clickup";
 import type { SetupPlan, ListPlan } from "@/lib/setup/types";
 import type { ExistingWorkspaceStructure } from "@/stores/setupStore";
@@ -78,6 +79,7 @@ export async function executeSetupPlan(
   accessToken: string,
   onProgress?: ExecutionProgressCallback,
   existingStructure?: ExistingWorkspaceStructure | null,
+  planTier?: string,
 ): Promise<ExecutionResult> {
   const client = new ClickUpClient(workspaceId);
 
@@ -118,8 +120,30 @@ export async function executeSetupPlan(
   const spaceIdMap = new Map<string, string>(); // space name -> clickup id
   const folderIdMap = new Map<string, string>(); // "spaceName/folderName" -> clickup id
 
-  // We need the ClickUp team ID to create spaces
-  const teamId = await getTeamId(client);
+  // We need the ClickUp team ID to create spaces.
+  // If this fails (token expired, no teams), the entire build cannot proceed.
+  let teamId: string;
+  try {
+    teamId = await getTeamId(client);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Failed to connect to ClickUp';
+    console.error('[setup/executor] getTeamId failed:', err);
+    // Mark all items as errored and return immediately
+    for (const item of items) {
+      item.status = 'error';
+      item.error = `ClickUp connection failed: ${errorMsg}`;
+    }
+    return {
+      success: false,
+      totalItems,
+      successCount: 0,
+      errorCount: totalItems,
+      items,
+      createdSpaceIds: [],
+      createdFolderIds: [],
+      createdListIds: [],
+    };
+  }
 
   // -------------------------------------------------------------------------
   // Phase 1: Create Spaces (or skip if they already exist)
@@ -140,7 +164,7 @@ export async function executeSetupPlan(
         await upsertCachedSpaces(workspaceId, [space]);
         markSuccess(item, space.id);
       } catch (err) {
-        markError(item, err);
+        markError(item, err, planTier);
       }
     }
 
@@ -180,7 +204,7 @@ export async function executeSetupPlan(
           await upsertCachedFolders(workspaceId, [folder]);
           markSuccess(item, folder.id);
         } catch (err) {
-          markError(item, err);
+          markError(item, err, planTier);
         }
       }
 
@@ -220,7 +244,7 @@ export async function executeSetupPlan(
             await upsertCachedLists(workspaceId, [list]);
             markSuccess(item, list.id);
           } catch (err) {
-            markError(item, err);
+            markError(item, err, planTier);
           }
         }
 
@@ -259,7 +283,7 @@ export async function executeSetupPlan(
           await upsertCachedLists(workspaceId, [list]);
           markSuccess(item, list.id);
         } catch (err) {
-          markError(item, err);
+          markError(item, err, planTier);
         }
       }
 
@@ -303,7 +327,7 @@ export async function executeSetupPlan(
             );
             markSuccess(item, firstSpaceId);
           } catch (err) {
-            markError(item, err);
+            markError(item, err, planTier);
             console.error(`[setup/executor] Failed to create tag "${tag.name}":`, err);
           }
         }
@@ -356,9 +380,7 @@ export async function executeSetupPlan(
             try {
               const body: Record<string, unknown> = {
                 name: doc.name,
-                parent: { id: Number(firstSpaceId), type: 4 }, // 4 = space
-                visibility: "PUBLIC",
-                create_page: true,
+                parent: { id: firstSpaceId, type: 4 }, // 4 = space
               };
               const v3Result = await withRetry(() =>
                 client.postV3<{ id?: string }>(`/workspaces/${teamId}/docs`, body)
@@ -380,7 +402,7 @@ export async function executeSetupPlan(
             }
             markSuccess(item, docId || firstSpaceId);
           } catch (err) {
-            markError(item, err);
+            markError(item, err, planTier);
             console.error(`[setup/executor] Failed to create doc "${doc.name}":`, err);
           }
         }
@@ -403,57 +425,70 @@ export async function executeSetupPlan(
 
   // -------------------------------------------------------------------------
   // Phase 6: Create Goals
-  // Note: Goals API requires ClickUp Business+ plan. On Free/Unlimited plans
-  // these will fail gracefully and be reported as errors (non-blocking).
+  // Smart skip: Goals require ClickUp Business+ plan. If the plan doesn't
+  // support goals, skip them entirely with a helpful message instead of
+  // wasting API calls that will fail.
   // Wrapped in outer try-catch so unexpected errors don't crash the build.
   // -------------------------------------------------------------------------
   if (plan.recommended_goals && plan.recommended_goals.length > 0) {
-    try {
-      // Fetch existing goals for duplicate detection (safe for retry)
-      let existingGoalNames = new Set<string>();
-      try {
-        const existingGoals = await client.getGoals(teamId);
-        existingGoalNames = new Set(existingGoals.map(g => g.name.toLowerCase()));
-      } catch {
-        // If we can't fetch goals (e.g. plan doesn't support it), proceed
-      }
-
+    // Smart skip: check plan capabilities before making any API calls
+    if (planTier && !isItemTypeSupported('goal', planTier)) {
+      const caps = getPlanCapabilities(planTier);
       for (const goal of plan.recommended_goals) {
         const item = findItem(items, "goal", goal.name);
-
-        if (existingGoalNames.has(goal.name.toLowerCase())) {
-          markSkipped(item);
-        } else {
-          try {
-            const dueMs = goal.due_date ? new Date(goal.due_date).getTime() : undefined;
-            const body: Record<string, unknown> = {
-              name: goal.name,
-            };
-            // Only set due_date if we have a valid timestamp
-            if (dueMs && !isNaN(dueMs)) body.due_date = dueMs;
-            if (goal.description) body.description = goal.description;
-            if (goal.color) body.color = goal.color;
-            const result = await withRetry(() =>
-              client.post<{ goal?: { id?: string } }>(`/team/${teamId}/goal`, body)
-            );
-            markSuccess(item, result?.goal?.id || teamId);
-          } catch (err) {
-            markError(item, err);
-            console.error(`[setup/executor] Failed to create goal "${goal.name}":`, err);
-          }
-        }
-
+        item.status = 'skipped';
+        item.error = `Goals are not available on the ${caps.label} plan. Upgrade to Business or higher to use Goals.`;
         completed++;
         onProgress?.(item, { completed, total: totalItems });
       }
-    } catch (phaseErr) {
-      console.error('[setup/executor] Goals phase failed unexpectedly:', phaseErr);
-      for (const goal of plan.recommended_goals) {
-        const item = items.find(i => i.type === 'goal' && i.name === goal.name && i.status === 'pending');
-        if (item) {
-          markError(item, new Error('Goals require ClickUp Business+ plan'));
+    } else {
+      try {
+        // Fetch existing goals for duplicate detection (safe for retry)
+        let existingGoalNames = new Set<string>();
+        try {
+          const existingGoals = await client.getGoals(teamId);
+          existingGoalNames = new Set(existingGoals.map(g => g.name.toLowerCase()));
+        } catch {
+          // If we can't fetch goals (e.g. plan doesn't support it), proceed
+        }
+
+        for (const goal of plan.recommended_goals) {
+          const item = findItem(items, "goal", goal.name);
+
+          if (existingGoalNames.has(goal.name.toLowerCase())) {
+            markSkipped(item);
+          } else {
+            try {
+              const dueMs = goal.due_date ? new Date(goal.due_date).getTime() : undefined;
+              const body: Record<string, unknown> = {
+                name: goal.name,
+              };
+              // Only set due_date if we have a valid timestamp
+              if (dueMs && !isNaN(dueMs)) body.due_date = dueMs;
+              if (goal.description) body.description = goal.description;
+              if (goal.color) body.color = goal.color;
+              const result = await withRetry(() =>
+                client.post<{ goal?: { id?: string } }>(`/team/${teamId}/goal`, body)
+              );
+              markSuccess(item, result?.goal?.id || teamId);
+            } catch (err) {
+              markError(item, err, planTier);
+              console.error(`[setup/executor] Failed to create goal "${goal.name}":`, err);
+            }
+          }
+
           completed++;
           onProgress?.(item, { completed, total: totalItems });
+        }
+      } catch (phaseErr) {
+        console.error('[setup/executor] Goals phase failed unexpectedly:', phaseErr);
+        for (const goal of plan.recommended_goals) {
+          const item = items.find(i => i.type === 'goal' && i.name === goal.name && i.status === 'pending');
+          if (item) {
+            markError(item, new Error('Goals phase encountered an unexpected error'));
+            completed++;
+            onProgress?.(item, { completed, total: totalItems });
+          }
         }
       }
     }
@@ -573,10 +608,16 @@ function markSuccess(item: ExecutionItem, clickupId: string): void {
   item.clickupId = clickupId;
 }
 
-function markError(item: ExecutionItem, err: unknown): void {
+function markError(item: ExecutionItem, err: unknown, planTier?: string): void {
   item.status = "error";
-  if (err instanceof ClickUpApiError && err.statusCode === 403) {
-    item.error = `Not allowed by ClickUp. Your plan may limit ${item.type} creation.`;
+  if (err instanceof ClickUpApiError) {
+    const classified = classifyClickUpError(
+      err.statusCode,
+      err.message,
+      item.type,
+      planTier,
+    );
+    item.error = `${classified.message}. ${classified.detail}`;
   } else {
     item.error = err instanceof Error ? err.message : String(err);
   }

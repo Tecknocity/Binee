@@ -85,6 +85,11 @@ function isCascadeError(error?: string): boolean {
   return error.startsWith('Skipped: parent ');
 }
 
+/** Detect items skipped due to ClickUp plan limitations */
+function isPlanLimitationSkip(item: { status: string; error?: string }): boolean {
+  return item.status === 'skipped' && !!item.error && item.error.includes('not available on the');
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -191,6 +196,10 @@ export function ExecutionProgress({
   const skippedCount = items.filter((i) => i.state === 'skipped').length;
   const totalItems = items.length;
   const hasErrors = realErrorCount > 0;
+
+  // Detect plan-limitation skipped items (from executor smart skip)
+  const planSkippedItems = executionItems?.filter(isPlanLimitationSkip) ?? [];
+  const hasPlanSkips = planSkippedItems.length > 0;
 
   // Auto-scroll to keep active item visible
   useEffect(() => {
@@ -483,8 +492,8 @@ export function ExecutionProgress({
         </div>
       </div>
 
-      {/* Error + cascade summary - fixed at bottom, scrollable if tall */}
-      {isComplete && (hasErrors || cascadeCount > 0) && (
+      {/* Error + cascade + plan limitation summary - fixed at bottom, scrollable if tall */}
+      {isComplete && (hasErrors || cascadeCount > 0 || hasPlanSkips) && (
         <div className="mt-3 flex-shrink-0 max-h-40 overflow-y-auto space-y-2">
           {/* Root errors */}
           {hasErrors && (
@@ -525,6 +534,23 @@ export function ExecutionProgress({
                   {cascadeCount} item{cascadeCount !== 1 ? 's were' : ' was'} skipped because {cascadeCount !== 1 ? 'their' : 'its'} parent failed to create.
                   Retrying the failed items will also create these.
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* Plan limitation skips */}
+          {hasPlanSkips && (
+            <div className="bg-accent/5 border border-accent/15 rounded-xl p-3">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-medium text-accent">
+                    {planSkippedItems.length} item{planSkippedItems.length !== 1 ? 's' : ''} skipped due to plan limitations
+                  </p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    {planSkippedItems[0].error || 'Upgrade your ClickUp plan to unlock these features.'}
+                  </p>
+                </div>
               </div>
             </div>
           )}

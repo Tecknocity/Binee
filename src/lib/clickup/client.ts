@@ -472,12 +472,28 @@ export class ClickUpClient {
   }
 
   async searchDocs(
-    workspaceId: string
+    teamId: string
   ): Promise<ClickUpDoc[]> {
-    const res = await this.request<{ docs: ClickUpDoc[] }>(
-      `/workspace/${workspaceId}/doc`
-    );
-    return res.docs ?? [];
+    // Try v3 endpoint first (more reliable across plans), fall back to v2
+    try {
+      const res = await this.request<{ docs: ClickUpDoc[] }>(
+        `/workspaces/${teamId}/docs`,
+        { method: "GET" },
+        BASE_URL_V3,
+      );
+      return res.docs ?? [];
+    } catch {
+      // v3 not available, try v2 endpoint
+      try {
+        const res = await this.request<{ docs: ClickUpDoc[] }>(
+          `/team/${teamId}/doc`
+        );
+        return res.docs ?? [];
+      } catch {
+        // Docs search not available on this plan
+        return [];
+      }
+    }
   }
 
   async getDocPages(docId: string): Promise<ClickUpDocPage[]> {

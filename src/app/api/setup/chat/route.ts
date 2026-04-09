@@ -40,6 +40,14 @@ export async function POST(request: NextRequest) {
 
     const templates = templateModules?.map(m => m.content).join('\n\n') || '';
 
+    // Fetch ClickUp plan tier for this workspace
+    const { data: workspaceRow } = await adminClient
+      .from('workspaces')
+      .select('clickup_plan_tier')
+      .eq('id', workspace_id)
+      .single();
+    const planTier = workspaceRow?.clickup_plan_tier || 'free';
+
     // Load conversation history for this setup session
     const { data: historyMessages } = await adminClient
       .from('messages')
@@ -67,6 +75,7 @@ export async function POST(request: NextRequest) {
       conversationHistory,
       templates,
       precomputedAnalysis: workspace_analysis || undefined,
+      planTier,
       proposedPlan: proposed_plan || undefined,
       profileData: profile_data || undefined,
     });

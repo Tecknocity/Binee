@@ -1,0 +1,303 @@
+// ClickUp plan tier feature capabilities and error classification
+//
+// Maps ClickUp plan tiers to available features so we can:
+// 1. Warn users before building items their plan doesn't support
+// 2. Smart-skip unsupported items instead of wasting API calls
+// 3. Give actionable error messages when things fail
+
+import type { ClickUpPlanTier } from '@/lib/clickup/rate-limits';
+
+// ---------------------------------------------------------------------------
+// Feature capabilities per plan
+// ---------------------------------------------------------------------------
+
+export interface PlanCapabilities {
+  spaces: boolean;
+  folders: boolean;
+  lists: boolean;
+  statuses: boolean;
+  tags: boolean;
+  customFields: boolean;
+  docs: boolean;
+  goals: boolean;
+  timeTracking: boolean;
+  automations: boolean;
+  dashboards: boolean;
+  /** Human-readable plan label */
+  label: string;
+  /** Minimum plan needed to unlock next tier of features */
+  upgradeTarget: ClickUpPlanTier | null;
+}
+
+const PLAN_CAPABILITIES: Record<ClickUpPlanTier, PlanCapabilities> = {
+  free: {
+    spaces: true,
+    folders: true,
+    lists: true,
+    statuses: true,
+    tags: true,
+    customFields: true,
+    docs: true,
+    goals: false,
+    timeTracking: false,
+    automations: false,
+    dashboards: false,
+    label: 'Free',
+    upgradeTarget: 'unlimited',
+  },
+  unlimited: {
+    spaces: true,
+    folders: true,
+    lists: true,
+    statuses: true,
+    tags: true,
+    customFields: true,
+    docs: true,
+    goals: false,
+    timeTracking: true,
+    automations: true,
+    dashboards: true,
+    label: 'Unlimited',
+    upgradeTarget: 'business',
+  },
+  business: {
+    spaces: true,
+    folders: true,
+    lists: true,
+    statuses: true,
+    tags: true,
+    customFields: true,
+    docs: true,
+    goals: true,
+    timeTracking: true,
+    automations: true,
+    dashboards: true,
+    label: 'Business',
+    upgradeTarget: 'enterprise',
+  },
+  business_plus: {
+    spaces: true,
+    folders: true,
+    lists: true,
+    statuses: true,
+    tags: true,
+    customFields: true,
+    docs: true,
+    goals: true,
+    timeTracking: true,
+    automations: true,
+    dashboards: true,
+    label: 'Business Plus',
+    upgradeTarget: 'enterprise',
+  },
+  enterprise: {
+    spaces: true,
+    folders: true,
+    lists: true,
+    statuses: true,
+    tags: true,
+    customFields: true,
+    docs: true,
+    goals: true,
+    timeTracking: true,
+    automations: true,
+    dashboards: true,
+    label: 'Enterprise',
+    upgradeTarget: null,
+  },
+};
+
+/**
+ * Get the capabilities for a given ClickUp plan tier.
+ */
+export function getPlanCapabilities(planTier: string): PlanCapabilities {
+  const tier = planTier.toLowerCase().replace(/\s+/g, '_') as ClickUpPlanTier;
+  return PLAN_CAPABILITIES[tier] ?? PLAN_CAPABILITIES.free;
+}
+
+/**
+ * Map setup item types to the capability key they require.
+ */
+const ITEM_TYPE_TO_CAPABILITY: Record<string, keyof PlanCapabilities> = {
+  space: 'spaces',
+  folder: 'folders',
+  list: 'lists',
+  tag: 'tags',
+  doc: 'docs',
+  goal: 'goals',
+};
+
+/**
+ * Check if a given setup item type is supported on the plan.
+ */
+export function isItemTypeSupported(itemType: string, planTier: string): boolean {
+  const caps = getPlanCapabilities(planTier);
+  const capKey = ITEM_TYPE_TO_CAPABILITY[itemType];
+  if (!capKey) return true; // Unknown types are assumed supported
+  return caps[capKey] === true;
+}
+
+/**
+ * Get a list of unsupported item types for a given plan.
+ * Returns tuples of [itemType, requiredPlan].
+ */
+export function getUnsupportedFeatures(planTier: string): Array<{
+  feature: string;
+  requiredPlan: string;
+}> {
+  const caps = getPlanCapabilities(planTier);
+  const unsupported: Array<{ feature: string; requiredPlan: string }> = [];
+
+  if (!caps.goals) {
+    unsupported.push({ feature: 'Goals', requiredPlan: 'Business' });
+  }
+  if (!caps.timeTracking) {
+    unsupported.push({ feature: 'Time Tracking', requiredPlan: 'Unlimited' });
+  }
+  if (!caps.automations) {
+    unsupported.push({ feature: 'Automations', requiredPlan: 'Unlimited' });
+  }
+  if (!caps.dashboards) {
+    unsupported.push({ feature: 'Dashboards', requiredPlan: 'Unlimited' });
+  }
+
+  return unsupported;
+}
+
+// ---------------------------------------------------------------------------
+// Error classification
+// ---------------------------------------------------------------------------
+
+export type ClickUpErrorType =
+  | 'plan_limitation'
+  | 'permission'
+  | 'rate_limit'
+  | 'auth_expired'
+  | 'not_found'
+  | 'clickup_error'
+  | 'binee_error';
+
+export interface ClassifiedError {
+  type: ClickUpErrorType;
+  /** Short user-facing message */
+  message: string;
+  /** Longer explanation with action the user can take */
+  detail: string;
+  /** Whether the user can resolve this themselves */
+  userResolvable: boolean;
+}
+
+/**
+ * Classify a ClickUp API error into an actionable category with a
+ * user-friendly message. Works with raw status codes or ClickUpApiError.
+ */
+export function classifyClickUpError(
+  statusCode: number,
+  errorBody?: string,
+  itemType?: string,
+  planTier?: string,
+): ClassifiedError {
+  // 401 - Authentication expired
+  if (statusCode === 401) {
+    return {
+      type: 'auth_expired',
+      message: 'ClickUp connection expired',
+      detail: 'Your ClickUp authorization has expired. Please reconnect your ClickUp account in Settings to continue.',
+      userResolvable: true,
+    };
+  }
+
+  // 403 - Permission or plan limitation
+  if (statusCode === 403) {
+    // Check if this is a plan limitation vs a permission issue
+    if (itemType && planTier && !isItemTypeSupported(itemType, planTier)) {
+      const caps = getPlanCapabilities(planTier);
+      const featureName = itemType.charAt(0).toUpperCase() + itemType.slice(1) + 's';
+      return {
+        type: 'plan_limitation',
+        message: `${featureName} not available on ${caps.label} plan`,
+        detail: `ClickUp ${featureName} require a higher plan. You can upgrade your ClickUp plan at clickup.com/pricing, then retry the build.`,
+        userResolvable: true,
+      };
+    }
+    return {
+      type: 'permission',
+      message: 'ClickUp permission denied',
+      detail: 'Your ClickUp user does not have permission for this action. Check your ClickUp workspace role and permissions.',
+      userResolvable: true,
+    };
+  }
+
+  // 404 - Resource not found
+  if (statusCode === 404) {
+    return {
+      type: 'not_found',
+      message: 'Resource not found in ClickUp',
+      detail: 'The requested resource was not found in ClickUp. It may have been deleted or moved.',
+      userResolvable: false,
+    };
+  }
+
+  // 429 - Rate limit
+  if (statusCode === 429) {
+    return {
+      type: 'rate_limit',
+      message: 'ClickUp rate limit reached',
+      detail: 'Too many requests to ClickUp. Wait a moment and try again. The build will automatically retry.',
+      userResolvable: true,
+    };
+  }
+
+  // 5xx - ClickUp server error
+  if (statusCode >= 500) {
+    return {
+      type: 'clickup_error',
+      message: 'ClickUp is experiencing issues',
+      detail: 'ClickUp returned a server error. This is usually temporary. Try again in a few minutes.',
+      userResolvable: true,
+    };
+  }
+
+  // Check error body for common messages
+  const bodyLower = (errorBody || '').toLowerCase();
+  if (bodyLower.includes('oauth') || bodyLower.includes('token')) {
+    return {
+      type: 'auth_expired',
+      message: 'ClickUp connection expired',
+      detail: 'Your ClickUp authorization has expired. Reconnect in Settings.',
+      userResolvable: true,
+    };
+  }
+
+  // Default
+  return {
+    type: 'binee_error',
+    message: 'Something went wrong',
+    detail: 'An unexpected error occurred. Please try again or contact support if the issue persists.',
+    userResolvable: false,
+  };
+}
+
+/**
+ * Build a concise plan limitations summary for the AI prompt.
+ * Tells the AI what NOT to recommend based on the user's plan.
+ */
+export function buildPlanContextForAI(planTier: string): string {
+  const caps = getPlanCapabilities(planTier);
+  const unsupported = getUnsupportedFeatures(planTier);
+
+  if (unsupported.length === 0) {
+    return `CLICKUP PLAN: ${caps.label} - All features are available. You can recommend any ClickUp features.`;
+  }
+
+  const lines = [
+    `CLICKUP PLAN: ${caps.label}`,
+    `Available: Spaces, Folders, Lists, Tags, Custom Fields, Statuses${caps.docs ? ', Docs' : ''}${caps.timeTracking ? ', Time Tracking' : ''}`,
+    `NOT available on this plan:`,
+    ...unsupported.map(u => `- ${u.feature} (requires ${u.requiredPlan}+ plan)`),
+    '',
+    `IMPORTANT: Do NOT recommend ${unsupported.map(u => u.feature).join(', ')} in the workspace structure. These features are not available on the user's ${caps.label} plan. Focus on what IS available. If the user asks about these features, explain they need to upgrade their ClickUp plan.`,
+  ];
+
+  return lines.join('\n');
+}

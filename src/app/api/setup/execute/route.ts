@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import { executeSetupPlan } from '@/lib/setup/executor';
 import type { SetupPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
@@ -46,6 +47,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not a member of this workspace' }, { status: 403 });
     }
 
+    // Fetch ClickUp plan tier for smart skip and error classification
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data: workspaceRow } = await adminClient
+      .from('workspaces')
+      .select('clickup_plan_tier')
+      .eq('id', workspace_id)
+      .single();
+    const planTier = workspaceRow?.clickup_plan_tier || 'free';
+
     let result;
     try {
       result = await executeSetupPlan(
@@ -54,6 +67,7 @@ export async function POST(request: NextRequest) {
         '', // accessToken param is unused - ClickUpClient fetches its own token server-side
         undefined, // no progress callback needed for non-streaming response
         existing_structure,
+        planTier,
       );
     } catch (execErr) {
       // Log the actual error for debugging

@@ -19,8 +19,10 @@ import {
   FileText,
   Target,
 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
+import { getUnsupportedFeatures, getPlanCapabilities } from '@/lib/clickup/plan-capabilities';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -34,13 +36,15 @@ interface StructurePreviewProps {
   onPlanChange?: (plan: SetupPlan) => void;
   /** Current workspace structure from ClickUp (for showing existing vs new) */
   existingStructure?: ExistingWorkspaceStructure | null;
+  /** ClickUp plan tier for showing feature limitation warnings */
+  planTier?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure }: StructurePreviewProps) {
+export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier }: StructurePreviewProps) {
   // Count totals for summary
   let totalFolders = 0;
   let totalLists = 0;
@@ -269,6 +273,13 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
 
   const editable = !!onPlanChange;
 
+  // Compute plan limitations to show warnings
+  const unsupportedFeatures = planTier ? getUnsupportedFeatures(planTier) : [];
+  const planCaps = planTier ? getPlanCapabilities(planTier) : null;
+  const hasGoalsInPlan = (plan.recommended_goals?.length ?? 0) > 0;
+  const goalsUnsupported = unsupportedFeatures.some(f => f.feature === 'Goals');
+  const showGoalWarning = hasGoalsInPlan && goalsUnsupported;
+
   return (
     <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-6 overflow-hidden">
       {/* Header */}
@@ -293,6 +304,22 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
           )}
         </p>
       </div>
+
+      {/* Plan limitation warning */}
+      {showGoalWarning && planCaps && (
+        <div className="mb-3 shrink-0 bg-warning/10 border border-warning/20 rounded-xl p-3 flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-warning">
+              Goals are not available on your {planCaps.label} plan
+            </p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              The {plan.recommended_goals?.length} goal{(plan.recommended_goals?.length ?? 0) !== 1 ? 's' : ''} below will be skipped during build.
+              Upgrade to Business or higher to use ClickUp Goals.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Tree */}
       <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pb-4">
@@ -540,10 +567,10 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
         {/* Recommended Goals */}
         {(plan.recommended_goals?.length || editable) && (
           <TreeNode
-            icon={<Target className="w-4 h-4 text-success" />}
-            label="Recommended Goals"
+            icon={<Target className={`w-4 h-4 ${goalsUnsupported ? 'text-text-muted' : 'text-success'}`} />}
+            label={goalsUnsupported ? `Recommended Goals (requires upgrade)` : 'Recommended Goals'}
             badge={`${plan.recommended_goals?.length || 0}`}
-            badgeColor="bg-success/15 text-success"
+            badgeColor={goalsUnsupported ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success'}
             defaultOpen
           >
             <div className="space-y-1 py-1 pl-2">

@@ -19,6 +19,8 @@ interface SetupperInput {
   templates: string;
   /** Pre-computed analysis from the analyzer step — avoids redundant sub-agent call */
   precomputedAnalysis?: string;
+  /** ClickUp plan tier for the workspace (e.g. 'free', 'business') */
+  planTier?: string;
   /** The currently proposed workspace plan (if one has been generated) */
   proposedPlan?: {
     spaces: Array<{
@@ -118,7 +120,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
       return `[${label}]: ${(c.summary as string).slice(0, 200)}`;
     });
 
-  let systemPrompt = buildSetupperPrompt(workspaceAnalysis, input.templates);
+  let systemPrompt = buildSetupperPrompt(workspaceAnalysis, input.templates, input.planTier);
   if (userMemories) systemPrompt += `\n\n${userMemories}`;
   if (crossChatLines.length > 0) {
     systemPrompt += `\n\nCONTEXT FROM OTHER CONVERSATIONS:\nThe user has had other recent interactions. Use for continuity, but do not reference unless relevant:\n${crossChatLines.join('\n')}`;
