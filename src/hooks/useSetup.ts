@@ -845,8 +845,135 @@ export function useSetup(): UseSetupReturn {
     }
   }, [proposedPlan, workspace_id, store, setCurrentStep]);
 
+  // Delete old items then build new plan
+  const confirmDeletionsAndBuild = useCallback(async () => {
+    if (!proposedPlan || isExecuting || isDeleting) return;
+    setCurrentStep(4);
+    setIsDeleting(true);
+    setIsExecuting(true);
+
+    let deletionSucceeded = false;
+
+    try {
+      // Delete items from previous builds that are no longer in the plan
+      const deleteResponse = await fetchWithTimeout('/api/setup/delete-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id,
+          items_to_delete: itemsToDelete,
+        }),
+      }, 60_000);
+
+      if (deleteResponse.ok) {
+        const { results: deleteResults } = await deleteResponse.json();
+        const deletedIds = new Set(
+          deleteResults
+            .filter((r: ExecutionItem) => r.status === 'success' && r.clickupId)
+            .map((r: ExecutionItem) => r.clickupId)
+        );
+
+        // Check if any deletions actually failed
+        const failedDeletions = deleteResults.filter(
+          (r: ExecutionItem) => r.status === 'error'
+        );
+
+        // Remove successfully deleted items from previouslyBuiltItems
+        const remaining = previouslyBuiltItems.filter(i => !deletedIds.has(i.clickupId));
+        store?.getState().setPreviouslyBuiltItems(remaining);
+
+        if (failedDeletions.length > 0) {
+          console.error('[useSetup] Some deletions failed:', failedDeletions);
+          // If structural items (spaces) failed to delete, abort the build
+          // because creating new spaces will hit plan limits
+          const failedStructural = failedDeletions.filter(
+            (r: ExecutionItem) => r.type === 'space' || r.type === 'folder'
+          );
+          if (failedStructural.length > 0) {
+            const names = failedStructural.map((r: ExecutionItem) => r.name).join(', ');
+            setExecutionProgress({
+              phase: 'complete',
+              current: 0,
+              total: 0,
+              currentItem: '',
+              errors: [`Failed to delete old items from ClickUp: ${names}. Please delete them manually in ClickUp and retry.`],
+            });
+            setIsDeleting(false);
+            setIsExecuting(false);
+            return;
+          }
+        }
+
+        deletionSucceeded = true;
+      } else {
+        // API returned an error response - abort the build
+        const errData = await deleteResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[useSetup] Delete API returned error:', errData);
+        setExecutionProgress({
+          phase: 'complete',
+          current: 0,
+          total: 0,
+          currentItem: '',
+          errors: [`Failed to remove old items from ClickUp: ${errData.error || 'Server error'}. Please try again.`],
+        });
+        setIsDeleting(false);
+        setIsExecuting(false);
+        return;
+      }
+    } catch (err) {
+      console.error('[useSetup] Failed to delete old items:', err);
+      setExecutionProgress({
+        phase: 'complete',
+        current: 0,
+        total: 0,
+        currentItem: '',
+        errors: [`Failed to remove old items from ClickUp: ${err instanceof Error ? err.message : 'Network error'}. Please try again.`],
+      });
+      setIsDeleting(false);
+      setIsExecuting(false);
+      return;
+    }
+
+    setIsDeleting(false);
+
+    if (!deletionSucceeded) {
+      setIsExecuting(false);
+      return;
+    }
+
+    // Fetch fresh structure after deletions
+    let freshStructure = existingStructure;
+    try {
+      const structRes = await fetchWithTimeout('/api/setup/existing-structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id }),
+      });
+      if (structRes.ok) {
+        const data = await structRes.json();
+        if (data.structure) {
+          freshStructure = data.structure;
+          store?.getState().setExistingStructure(data.structure);
+        }
+      }
+    } catch (err) {
+      console.error('[useSetup] Failed to refresh structure after deletion:', err);
+    }
+
+    await runExecution(freshStructure);
+  }, [proposedPlan, isExecuting, isDeleting, workspace_id, setCurrentStep, itemsToDelete, previouslyBuiltItems, existingStructure, store, runExecution]);
+
   const approvePlan = useCallback(async () => {
     if (!proposedPlan || isExecuting) return;
+
+    // Safety net: if there are items pending deletion, route through the
+    // deletion flow first. This prevents hitting plan limits when old items
+    // still occupy space slots in ClickUp.
+    if (itemsToDelete.length > 0) {
+      await confirmDeletionsAndBuild();
+      return;
+    }
+
     setCurrentStep(4);
     setIsExecuting(true);
 
@@ -882,45 +1009,17 @@ export function useSetup(): UseSetupReturn {
     }
 
     await runExecution(freshStructure);
-  }, [proposedPlan, isExecuting, workspace_id, setCurrentStep, existingStructure, store, runExecution]);
+  }, [proposedPlan, isExecuting, workspace_id, setCurrentStep, existingStructure, store, runExecution, itemsToDelete, confirmDeletionsAndBuild]);
 
-  // Delete old items then build new plan
-  const confirmDeletionsAndBuild = useCallback(async () => {
-    if (!proposedPlan || isExecuting || isDeleting) return;
+  // Skip deletions and just build (old items remain in ClickUp).
+  // This bypasses the safety net in approvePlan since the user explicitly
+  // chose to keep old items.
+  const skipDeletionsAndBuild = useCallback(async () => {
+    if (!proposedPlan || isExecuting) return;
     setCurrentStep(4);
-    setIsDeleting(true);
     setIsExecuting(true);
 
-    try {
-      // Delete items from previous builds that are no longer in the plan
-      const deleteResponse = await fetchWithTimeout('/api/setup/delete-items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace_id,
-          items_to_delete: itemsToDelete,
-        }),
-      }, 60_000);
-
-      if (deleteResponse.ok) {
-        const { results: deleteResults } = await deleteResponse.json();
-        const deletedIds = new Set(
-          deleteResults
-            .filter((r: ExecutionItem) => r.status === 'success' && r.clickupId)
-            .map((r: ExecutionItem) => r.clickupId)
-        );
-        // Remove successfully deleted items from previouslyBuiltItems
-        const remaining = previouslyBuiltItems.filter(i => !deletedIds.has(i.clickupId));
-        store?.getState().setPreviouslyBuiltItems(remaining);
-      }
-    } catch (err) {
-      console.error('[useSetup] Failed to delete old items:', err);
-      // Continue with build even if deletion fails
-    }
-
-    setIsDeleting(false);
-
-    // Fetch fresh structure after deletions
+    // Fetch fresh structure so the executor can skip already-existing items
     let freshStructure = existingStructure;
     try {
       const structRes = await fetchWithTimeout('/api/setup/existing-structure', {
@@ -936,17 +1035,11 @@ export function useSetup(): UseSetupReturn {
         }
       }
     } catch (err) {
-      console.error('[useSetup] Failed to refresh structure after deletion:', err);
+      console.error('[useSetup] Failed to refresh existing structure:', err);
     }
 
     await runExecution(freshStructure);
-  }, [proposedPlan, isExecuting, isDeleting, workspace_id, setCurrentStep, itemsToDelete, previouslyBuiltItems, existingStructure, store, runExecution]);
-
-  // Skip deletions and just build (old items remain)
-  const skipDeletionsAndBuild = useCallback(async () => {
-    // Just run approvePlan normally - old items stay in ClickUp
-    await approvePlan();
-  }, [approvePlan]);
+  }, [proposedPlan, isExecuting, workspace_id, setCurrentStep, existingStructure, store, runExecution]);
 
   const retryFailedItems = useCallback(async () => {
     if (!proposedPlan || isExecuting) return;
@@ -961,7 +1054,38 @@ export function useSetup(): UseSetupReturn {
     store?.getState().setExecutionResult(null);
     store?.getState().setExecutionItems([]);
 
-    // Re-fetch existing structure to get fresh state after partial build
+    // If there are items pending deletion, delete them first before retrying
+    // This handles the case where the first build failed because old items
+    // weren't removed (e.g., hit plan limits on spaces)
+    if (itemsToDelete.length > 0) {
+      setIsDeleting(true);
+      try {
+        const deleteResponse = await fetchWithTimeout('/api/setup/delete-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspace_id,
+            items_to_delete: itemsToDelete,
+          }),
+        }, 60_000);
+
+        if (deleteResponse.ok) {
+          const { results: deleteResults } = await deleteResponse.json();
+          const deletedIds = new Set(
+            deleteResults
+              .filter((r: ExecutionItem) => r.status === 'success' && r.clickupId)
+              .map((r: ExecutionItem) => r.clickupId)
+          );
+          const remaining = previouslyBuiltItems.filter(i => !deletedIds.has(i.clickupId));
+          store?.getState().setPreviouslyBuiltItems(remaining);
+        }
+      } catch (err) {
+        console.error('[useSetup] Failed to delete old items during retry:', err);
+      }
+      setIsDeleting(false);
+    }
+
+    // Re-fetch existing structure to get fresh state after partial build / deletions
     let freshStructure = existingStructure;
     try {
       const structRes = await fetchWithTimeout('/api/setup/existing-structure', {
@@ -981,7 +1105,7 @@ export function useSetup(): UseSetupReturn {
     }
 
     await runExecution(freshStructure);
-  }, [proposedPlan, isExecuting, workspace_id, existingStructure, store, runExecution]);
+  }, [proposedPlan, isExecuting, workspace_id, existingStructure, store, runExecution, itemsToDelete, previouslyBuiltItems]);
 
   const requestChanges = useCallback(
     async (feedback: string) => {
