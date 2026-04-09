@@ -92,8 +92,10 @@ export default function GeneralSettings() {
     setWorkRole(profile.work_role || 'Founder/Owner');
     setPersonalPreferences(profile.personal_preferences || '');
     if (profile.timezone) setTimezone(profile.timezone);
+    // Load avatar from profile DB if not already set from JWT metadata
+    if (!avatarPreview && profile.avatar_url) setAvatarPreview(profile.avatar_url);
     setProfileLoaded(true);
-  }, [profileLoading, profileLoaded, profile, user?.display_name]);
+  }, [profileLoading, profileLoaded, profile, user?.display_name, avatarPreview]);
 
   // Rotating placeholder for personal preferences
   const [placeholderIndex, setPlaceholderIndex] = useState(0);

@@ -364,6 +364,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (session?.user) {
           const mappedUser = mapSupabaseUser(session.user);
+
+          // If JWT doesn't have avatar_url, check user_profiles table.
+          // Uploaded avatars are stored in DB only (data URIs are too large
+          // for JWT metadata), so we need this fallback.
+          if (!mappedUser.avatar_url) {
+            try {
+              const { data: profileData } = await supabase
+                .from('user_profiles')
+                .select('avatar_url')
+                .eq('user_id', session.user.id)
+                .maybeSingle();
+              if (profileData?.avatar_url) {
+                mappedUser.avatar_url = profileData.avatar_url;
+              }
+            } catch {
+              // Non-critical — avatar is cosmetic
+            }
+          }
+
           setUser(mappedUser);
           // Phase 1 done — auth determined. Unblock rendering.
           initAuthDone.current = true;
