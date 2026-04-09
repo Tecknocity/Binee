@@ -43,8 +43,8 @@ interface StructurePreviewProps {
   planTier?: string;
   /** Items from previous builds that will be removed (not in current plan) */
   itemsToDelete?: ExecutionItem[];
-  /** Approve with deletions confirmed */
-  onApproveWithDeletions?: () => void;
+  /** Approve with user-selected deletions. Receives the checked items. */
+  onApproveWithDeletions?: (selectedItems: ExecutionItem[]) => void;
   /** Approve but skip deletions (keep old items) */
   onApproveSkipDeletions?: () => void;
 }
@@ -56,6 +56,45 @@ interface StructurePreviewProps {
 export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, onApproveWithDeletions, onApproveSkipDeletions }: StructurePreviewProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const hasDeletions = itemsToDelete && itemsToDelete.length > 0;
+
+  // Track which items the user has UNCHECKED (all are checked by default).
+  // When the user opens the dialog, everything is selected. They uncheck
+  // items they want to keep.
+  const [uncheckedItems, setUncheckedItems] = useState<Set<string>>(new Set());
+
+  // Reset unchecked state whenever the dialog opens
+  const handleShowDeleteConfirm = () => {
+    setUncheckedItems(new Set());
+    setShowDeleteConfirm(true);
+  };
+
+  const toggleDeletionItem = (item: ExecutionItem) => {
+    const key = item.clickupId ?? `${item.type}:${item.name}`;
+    setUncheckedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const isItemChecked = (item: ExecutionItem) => {
+    const key = item.clickupId ?? `${item.type}:${item.name}`;
+    return !uncheckedItems.has(key);
+  };
+
+  const selectedDeletionItems = useMemo(() => {
+    if (!itemsToDelete) return [];
+    return itemsToDelete.filter(i => isItemChecked(i));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsToDelete, uncheckedItems]);
+
+  const totalTasksInSelection = useMemo(() => {
+    return selectedDeletionItems.reduce((sum, i) => sum + (i.taskCount ?? 0), 0);
+  }, [selectedDeletionItems]);
   // Count totals for summary
   let totalFolders = 0;
   let totalLists = 0;
@@ -645,29 +684,77 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
               <p className="text-sm font-semibold text-warning mb-1">Items to remove from ClickUp</p>
               <p className="text-xs text-text-secondary mb-2">
                 These items were created by Binee in a previous build but are no longer in the updated structure.
-                Would you like to remove them from your ClickUp workspace?
+                Uncheck any items you want to keep.
               </p>
             </div>
           </div>
-          <div className="space-y-1 mb-3 ml-7">
-            {itemsToDelete.map((item, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm">
-                <Trash2 className="w-3.5 h-3.5 text-warning/70 flex-shrink-0" />
-                <span className="text-text-secondary">
-                  {item.parentName ? `${item.parentName} / ` : ''}{item.name}
-                </span>
-                <span className="text-[11px] font-medium text-text-muted uppercase">{item.type}</span>
-              </div>
-            ))}
+
+          {/* Per-item checkboxes */}
+          <div className="space-y-1.5 mb-3 ml-7">
+            {itemsToDelete.map((item, i) => {
+              const isChecked = isItemChecked(item);
+              const hasTasksInside = (item.taskCount ?? 0) > 0;
+              return (
+                <label key={i} className="flex items-start gap-2.5 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleDeletionItem(item)}
+                    className="mt-0.5 w-4 h-4 rounded border-border accent-warning cursor-pointer"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={isChecked ? 'text-text-primary' : 'text-text-muted line-through'}>
+                        {item.parentName ? `${item.parentName} / ` : ''}{item.name}
+                      </span>
+                      <span className="text-[11px] font-medium text-text-muted uppercase">{item.type}</span>
+                    </div>
+                    {hasTasksInside && (
+                      <p className="text-[11px] text-red-400 mt-0.5 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                        Contains {item.taskCount} task{item.taskCount !== 1 ? 's' : ''} that will be permanently deleted
+                      </p>
+                    )}
+                  </div>
+                </label>
+              );
+            })}
           </div>
+
+          {/* Warning banner when selected items contain tasks */}
+          {totalTasksInSelection > 0 && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3 ml-7">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-red-400">
+                    Warning: {totalTasksInSelection} task{totalTasksInSelection !== 1 ? 's' : ''} will be permanently deleted
+                  </p>
+                  <p className="text-[11px] text-red-400/80 mt-0.5">
+                    The selected items contain tasks. Removing these items from ClickUp will delete all tasks inside them.
+                    This cannot be undone. Uncheck items you want to keep.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 ml-7">
             <button
-              onClick={() => { setShowDeleteConfirm(false); onApproveWithDeletions?.(); }}
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                onApproveWithDeletions?.(selectedDeletionItems);
+              }}
+              disabled={selectedDeletionItems.length === 0}
               className="flex items-center gap-1.5 px-4 py-1.5 bg-warning/90 text-white text-xs font-medium rounded-lg
-                hover:bg-warning transition-colors"
+                hover:bg-warning transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              Remove &amp; Build
+              {selectedDeletionItems.length === 0
+                ? 'Select items to remove'
+                : selectedDeletionItems.length === itemsToDelete.length
+                  ? 'Remove All & Build'
+                  : `Remove ${selectedDeletionItems.length} & Build`}
             </button>
             <button
               onClick={() => { setShowDeleteConfirm(false); onApproveSkipDeletions?.(); }}
@@ -699,7 +786,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
         <button
           onClick={() => {
             if (hasDeletions) {
-              setShowDeleteConfirm(true);
+              handleShowDeleteConfirm();
             } else {
               onApprove();
             }

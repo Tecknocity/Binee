@@ -98,8 +98,8 @@ export interface UseSetupReturn {
   itemsToDelete: ExecutionItem[];
   /** Whether deletion is pending user confirmation */
   hasPendingDeletions: boolean;
-  /** Confirm and execute deletion of old items, then build new plan */
-  confirmDeletionsAndBuild: () => void;
+  /** Confirm and execute deletion of selected old items, then build new plan */
+  confirmDeletionsAndBuild: (selectedItems?: ExecutionItem[]) => void;
   /** Skip deletions and just build new plan (old items remain in ClickUp) */
   skipDeletionsAndBuild: () => void;
   /** Whether deletions are currently being executed */
@@ -337,11 +337,40 @@ export function useSetup(): UseSetupReturn {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Reconciliation: compute items to delete when rebuilding
+  // Reconciliation: compute items to delete when rebuilding, enriched with
+  // task counts from the existing workspace structure so the UI can warn
+  // about non-empty lists/spaces before deletion.
   const itemsToDelete = useMemo(() => {
     if (!proposedPlan || previouslyBuiltItems.length === 0) return [];
-    return computeItemsToDelete(previouslyBuiltItems, proposedPlan);
-  }, [proposedPlan, previouslyBuiltItems]);
+    const raw = computeItemsToDelete(previouslyBuiltItems, proposedPlan);
+    if (!existingStructure?.spaces || raw.length === 0) return raw;
+
+    // Build a lookup: clickupId → task count from existing structure
+    const taskCounts = new Map<string, number>();
+    for (const space of existingStructure.spaces) {
+      // Sum all tasks across all lists in this space
+      let spaceTotal = 0;
+      for (const folder of space.folders) {
+        let folderTotal = 0;
+        for (const list of folder.lists) {
+          taskCounts.set(list.clickup_id, list.task_count);
+          folderTotal += list.task_count;
+        }
+        taskCounts.set(folder.clickup_id, folderTotal);
+        spaceTotal += folderTotal;
+      }
+      for (const list of space.lists ?? []) {
+        taskCounts.set(list.clickup_id, list.task_count);
+        spaceTotal += list.task_count;
+      }
+      taskCounts.set(space.clickup_id, spaceTotal);
+    }
+
+    return raw.map(item => ({
+      ...item,
+      taskCount: item.clickupId ? (taskCounts.get(item.clickupId) ?? 0) : 0,
+    }));
+  }, [proposedPlan, previouslyBuiltItems, existingStructure]);
 
   const hasPendingDeletions = itemsToDelete.length > 0;
 
@@ -853,11 +882,13 @@ export function useSetup(): UseSetupReturn {
   // before new ones are created, preventing plan-limit collisions.
   //
   // Options:
-  //   skipDeletions - true when user explicitly chose "Keep All & Build"
-  //   isRetry       - true when retrying a failed build (resets UI state)
+  //   skipDeletions  - true when user explicitly chose "Keep All & Build"
+  //   selectedItems  - user-selected subset of itemsToDelete (from checkboxes)
+  //   isRetry        - true when retrying a failed build (resets UI state)
   // ---------------------------------------------------------------------------
   const executeBuild = useCallback(async (options?: {
     skipDeletions?: boolean;
+    selectedItems?: ExecutionItem[];
     isRetry?: boolean;
   }) => {
     if (!proposedPlan || isExecuting) return;
@@ -890,8 +921,13 @@ export function useSetup(): UseSetupReturn {
     // Phase 1: DELETE — Remove items from previous builds that are no
     // longer in the current plan. This frees up plan slots (e.g. spaces
     // on the Free tier) before we attempt to create new ones.
+    //
+    // Only deletes items the user explicitly selected (or all pending
+    // items if no explicit selection was provided). Items Binee never
+    // created are never touched.
     // ------------------------------------------------------------------
-    if (!options?.skipDeletions && itemsToDelete.length > 0) {
+    const deletionList = options?.selectedItems ?? itemsToDelete;
+    if (!options?.skipDeletions && deletionList.length > 0) {
       setIsDeleting(true);
 
       try {
@@ -900,7 +936,7 @@ export function useSetup(): UseSetupReturn {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workspace_id,
-            items_to_delete: itemsToDelete,
+            items_to_delete: deletionList,
           }),
         }, 60_000);
 
@@ -916,7 +952,7 @@ export function useSetup(): UseSetupReturn {
           const remaining = previouslyBuiltItems.filter(i => !deletedIds.has(i.clickupId));
           store?.getState().setPreviouslyBuiltItems(remaining);
 
-          // If structural items (spaces/folders) failed to delete, abort —
+          // If structural items (spaces/folders) failed to delete, abort -
           // creating new ones will hit plan limits
           const failedStructural = deleteResults.filter(
             (r: ExecutionItem) => r.status === 'error' && (r.type === 'space' || r.type === 'folder')
@@ -1001,9 +1037,13 @@ export function useSetup(): UseSetupReturn {
     await executeBuild();
   }, [executeBuild]);
 
-  /** Same as approvePlan — called when user confirms deletion dialog */
-  const confirmDeletionsAndBuild = useCallback(async () => {
-    await executeBuild();
+  /**
+   * Build with user-selected deletions. The selectedItems parameter
+   * contains only the items the user checked in the deletion dialog.
+   * Items the user unchecked are kept in ClickUp.
+   */
+  const confirmDeletionsAndBuild = useCallback(async (selectedItems?: ExecutionItem[]) => {
+    await executeBuild({ selectedItems });
   }, [executeBuild]);
 
   /** User explicitly chose to keep old items — skip the delete phase */
