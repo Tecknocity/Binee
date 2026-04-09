@@ -33,7 +33,13 @@ Summary rules:
 
 Facts rules:
 - Extract user preferences, decisions, and important context that should be remembered across conversations.
-- Examples: "User runs a solo consulting business", "User prefers 3 separate spaces over 1 space with folders", "Team size is just 1 person"
+- PRIORITY FACTS (always extract these if mentioned, even if previously captured):
+  * Business type / industry (e.g., "User runs an operations consulting firm")
+  * Team size (e.g., "Team has 2-5 people")
+  * Services or products they offer
+  * Work style (client-based, product-based, project-based)
+  * Key business decisions about workspace structure
+- Other examples: "User prefers 3 separate spaces over 1 space with folders", "User wants a simple flat structure"
 - Only include facts explicitly stated by the user, not inferred.
 - If no new facts are found, return an empty array.
 - Keep each fact to one concise sentence.
