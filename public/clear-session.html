@@ -17,49 +17,57 @@
 </head>
 <body>
   <div class="card">
-    <h1>Clear Session</h1>
-    <p>This clears all authentication cookies and redirects you to sign in again. Use this if you see a "Request Header Too Large" error.</p>
-    <button onclick="clearAll()">Clear Session &amp; Sign In</button>
-    <div id="status"></div>
+    <h1>Clearing Session</h1>
+    <p>Your session cookies grew too large. Clearing them now and redirecting you to sign in.</p>
+    <div id="status">Clearing cookies...</div>
+    <button onclick="clearAll()" style="display:none" id="retryBtn">Retry Clear &amp; Sign In</button>
   </div>
   <script>
     function clearAll() {
       var status = document.getElementById('status');
-      status.innerHTML = 'Trimming metadata and clearing session...';
+      status.innerHTML = 'Clearing cookies...';
 
-      // First, try to trim server-side metadata so the next JWT is smaller
-      fetch('/api/auth/trim-metadata', { method: 'POST' })
-        .catch(function() { /* ignore - cookies may already be too big for this to work */ })
-        .then(function() {
-          // Delete every cookie for this domain
-          var cookies = document.cookie.split(';');
-          var cleared = 0;
-          for (var i = 0; i < cookies.length; i++) {
-            var name = cookies[i].split('=')[0].trim();
-            if (name) {
-              document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
-              document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=' + location.hostname + ';';
-              document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.' + location.hostname + ';';
-              cleared++;
-            }
+      // Step 1: Clear all cookies immediately (no server call needed).
+      // The trim-metadata API call would also get 494'd if cookies are too
+      // large, so we skip it and just nuke cookies directly.
+      var cookies = document.cookie.split(';');
+      var cleared = 0;
+      for (var i = 0; i < cookies.length; i++) {
+        var name = cookies[i].split('=')[0].trim();
+        if (name) {
+          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
+          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=' + location.hostname + ';';
+          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.' + location.hostname + ';';
+          cleared++;
+        }
+      }
+
+      // Step 2: Clear localStorage/sessionStorage auth data
+      try {
+        Object.keys(localStorage).forEach(function(key) {
+          if (key.startsWith('sb-') || key.includes('supabase') || key.startsWith('binee_')) {
+            localStorage.removeItem(key);
           }
-          // Also clear localStorage/sessionStorage auth data
-          try {
-            Object.keys(localStorage).forEach(function(key) {
-              if (key.startsWith('sb-') || key.includes('supabase') || key.startsWith('binee_')) {
-                localStorage.removeItem(key);
-              }
-            });
-            Object.keys(sessionStorage).forEach(function(key) {
-              if (key.startsWith('sb-') || key.includes('supabase') || key.startsWith('binee_')) {
-                sessionStorage.removeItem(key);
-              }
-            });
-          } catch(e) {}
-          status.innerHTML = '<span class="done">Cleared ' + cleared + ' cookies. Redirecting to login...</span>';
-          setTimeout(function() { window.location.href = '/login'; }, 1500);
         });
+        Object.keys(sessionStorage).forEach(function(key) {
+          if (key.startsWith('sb-') || key.includes('supabase') || key.startsWith('binee_')) {
+            sessionStorage.removeItem(key);
+          }
+        });
+      } catch(e) {}
+
+      // Step 3: Now that cookies are cleared, try to trim metadata in the
+      // database so the NEXT sign-in produces a small JWT. This call should
+      // succeed now that cookies are cleared (no more 494).
+      // We fire-and-forget since the user needs to re-authenticate anyway.
+      fetch('/api/auth/trim-metadata', { method: 'POST' }).catch(function() {});
+
+      status.innerHTML = '<span class="done">Cleared ' + cleared + ' cookies. Redirecting to login...</span>';
+      setTimeout(function() { window.location.href = '/login'; }, 1200);
     }
+
+    // Auto-clear on page load - don't wait for user to click
+    clearAll();
   </script>
 </body>
 </html>
