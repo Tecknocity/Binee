@@ -115,26 +115,25 @@ async function markConnectionError(
  * Checks the token expiry for a workspace and refreshes if within 5 minutes
  * of expiration. Returns a valid access token.
  *
- * Falls back to the workspaces table if no clickup_connections row exists,
- * maintaining backwards compatibility with B-022.
+ * Falls back to the workspaces table if no clickup_connections row exists
+ * OR if the clickup_connections row has no tokens stored (the OAuth callback
+ * stores tokens in the workspaces table, not clickup_connections).
  */
 export async function refreshTokenIfNeeded(
   workspaceId: string
 ): Promise<string> {
   const connection = await getConnection(workspaceId);
 
-  if (!connection) {
-    // Fall back to legacy workspaces-based token retrieval
+  if (!connection || !connection.access_token_encrypted) {
+    // Fall back to legacy workspaces-based token retrieval.
+    // This is the normal path because the OAuth callback stores tokens in
+    // the workspaces table, while clickup_connections is used for sync tracking.
     const { getAccessToken } = await import("@/lib/clickup/oauth");
     const token = await getAccessToken(workspaceId);
     if (!token) {
       throw new Error("No valid ClickUp connection found for workspace");
     }
     return token;
-  }
-
-  if (!connection.access_token_encrypted) {
-    throw new Error("No access token stored for this connection");
   }
 
   // Check if refresh is needed
@@ -154,24 +153,36 @@ export async function refreshTokenIfNeeded(
  * Forces a token refresh regardless of expiry time.
  * Useful when an API call returns 401, indicating the token may have been
  * revoked or invalidated early.
+ *
+ * If the clickup_connections table has no refresh token (normal case when
+ * tokens live in the workspaces table), falls back to legacy token retrieval
+ * WITHOUT marking the connection as errored.
  */
 export async function forceRefreshToken(
   workspaceId: string
 ): Promise<string> {
   const connection = await getConnection(workspaceId);
 
-  if (!connection) {
-    throw new Error("No ClickUp connection found for workspace");
-  }
-
-  if (!connection.refresh_token_encrypted) {
-    await markConnectionError(
-      connection.id,
-      "No refresh token available — please reconnect ClickUp"
-    );
-    throw new Error(
-      "No refresh token available. User must reconnect ClickUp."
-    );
+  if (!connection || !connection.refresh_token_encrypted) {
+    // No refresh token in clickup_connections — try legacy path.
+    // ClickUp tokens often don't expire, so the existing token may still be
+    // valid even after a 401 (transient issue). Don't mark connection as
+    // errored, just return the legacy token.
+    const { getAccessToken } = await import("@/lib/clickup/oauth");
+    const token = await getAccessToken(workspaceId);
+    if (!token) {
+      // Only mark error if we truly have no token anywhere
+      if (connection) {
+        await markConnectionError(
+          connection.id,
+          "No valid access token available. Please reconnect ClickUp."
+        );
+      }
+      throw new Error(
+        "No valid access token available. User must reconnect ClickUp."
+      );
+    }
+    return token;
   }
 
   return performRefresh(connection);
