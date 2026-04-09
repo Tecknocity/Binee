@@ -7,15 +7,6 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  // Clean up stale Supabase auth cookie chunks that accumulate over time.
-  // When @supabase/ssr re-chunks cookies (e.g., token refresh shrinks the JWT),
-  // old higher-numbered chunks may linger, inflating the Cookie header until
-  // Vercel rejects it with 494 REQUEST_HEADER_TOO_LARGE.
-  const allCookies = request.cookies.getAll();
-  const supabaseCookieNames = allCookies
-    .map((c) => c.name)
-    .filter((name) => name.startsWith('sb-') && /\.\d+$/.test(name));
-
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -29,16 +20,6 @@ export async function updateSession(request: NextRequest) {
         cookiesToSet.forEach(({ name, value, options }) =>
           supabaseResponse.cookies.set(name, value, options)
         );
-
-        // After Supabase sets its cookies, expire any stale chunks that
-        // were NOT included in the new setAll batch. This prevents
-        // orphaned high-index chunks from inflating headers.
-        const freshNames = new Set(cookiesToSet.map((c) => c.name));
-        for (const staleName of supabaseCookieNames) {
-          if (!freshNames.has(staleName)) {
-            supabaseResponse.cookies.set(staleName, '', { maxAge: 0 });
-          }
-        }
       },
     },
   });
