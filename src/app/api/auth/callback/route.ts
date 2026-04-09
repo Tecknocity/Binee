@@ -57,12 +57,24 @@ export async function GET(request: Request) {
             trimmed.avatar_url = meta.avatar_url;
           }
 
-          // Only trim if there are extra keys worth removing
-          if (Object.keys(meta).length > Object.keys(trimmed).length + 2) {
+          // Always trim if there are ANY extra keys beyond what we keep.
+          // Even a few extra keys (iss, sub, email_verified, etc.) add up
+          // in the JWT and contribute to cookie bloat over time.
+          const extraKeys = Object.keys(meta).filter(
+            (k) => !(k in trimmed),
+          );
+          if (extraKeys.length > 0) {
             const admin = getSupabaseAdmin();
             await admin.auth.admin.updateUserById(user.id, {
               user_metadata: trimmed,
             });
+
+            // CRITICAL: Refresh the session so the response cookies use
+            // the trimmed metadata. Without this, exchangeCodeForSession()
+            // already wrote fat JWT cookies to the response. refreshSession()
+            // generates a NEW smaller JWT that overwrites the fat cookies
+            // via the setAll callback.
+            await supabase.auth.refreshSession();
           }
         } catch (trimErr) {
           // Non-fatal - the user can still sign in, just with a larger JWT
