@@ -10,6 +10,7 @@ import { WorkspaceAnalysis } from './WorkspaceAnalysis';
 import { BusinessProfileForm } from './BusinessProfileForm';
 import { BusinessChatStep } from './BusinessChatStep';
 import { StructurePreview } from './StructurePreview';
+import { GeneratingWorkspace } from './GeneratingWorkspace';
 import { ExecutionProgress } from './ExecutionProgress';
 import { ManualStepsGuide } from './ManualStepsGuide';
 
@@ -167,26 +168,21 @@ export default function SetupWizard() {
 
         {/* Step 3: Loading state when plan is being generated */}
         {setup.currentStep === 3 && !setup.proposedPlan && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            {setup.isSending ? (
-              <>
-                <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-text-secondary">Generating your workspace structure...</p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-text-secondary">
-                  No workspace structure available. Please go back and describe your business.
-                </p>
-                <button
-                  onClick={setup.restartSetup}
-                  className="text-sm text-accent hover:text-accent-hover transition-colors"
-                >
-                  Go Back
-                </button>
-              </>
-            )}
-          </div>
+          setup.isGenerating ? (
+            <GeneratingWorkspace />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <p className="text-sm text-text-secondary">
+                No workspace structure available. Please go back and describe your business.
+              </p>
+              <button
+                onClick={setup.restartSetup}
+                className="text-sm text-accent hover:text-accent-hover transition-colors"
+              >
+                Go Back
+              </button>
+            </div>
+          )
         )}
 
         {/* Step 4: Build / Execution Progress */}

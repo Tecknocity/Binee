@@ -68,6 +68,7 @@ export interface UseSetupReturn {
   manualSteps: ManualStep[];
   isExecuting: boolean;
   isSending: boolean;
+  isGenerating: boolean;
   isAnalyzing: boolean;
   isRestored: boolean;
   workspaceAnalysis: string | null;
@@ -319,6 +320,7 @@ export function useSetup(): UseSetupReturn {
     });
   }, [buildCompleted, persistedExecutionItems, persistedExecutionResult]);
   const [isSending, setIsSending] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const wizardStep = NUMERIC_TO_WIZARD_STEP[currentStep];
@@ -531,14 +533,14 @@ export function useSetup(): UseSetupReturn {
 
   // Fallback: if stuck on Review (step 3) without a plan for 15s, go back
   useEffect(() => {
-    if (currentStep === 3 && !proposedPlan && !isSending) {
+    if (currentStep === 3 && !proposedPlan && !isSending && !isGenerating) {
       const timer = setTimeout(() => {
         setCurrentStep(2);
         addMessage('assistant', "I wasn't able to generate the workspace structure. Let's try again. Tell me more about your business or click **\"Generate Structure\"** when ready.");
       }, 15000);
       return () => clearTimeout(timer);
     }
-  }, [currentStep, proposedPlan, isSending, addMessage, setCurrentStep]);
+  }, [currentStep, proposedPlan, isSending, isGenerating, addMessage, setCurrentStep]);
 
   const sendMessage = useCallback(
     async (msg: string, fileContext?: string) => {
@@ -639,7 +641,10 @@ export function useSetup(): UseSetupReturn {
   );
 
   const generateStructure = useCallback(async () => {
+    setIsGenerating(true);
     setIsSending(true);
+    // Immediately advance to step 3 so the user sees a "building" animation
+    setCurrentStep(3);
     try {
       // Save current plan to history before generating a new one
       const currentPlan = store?.getState().proposedPlan;
@@ -690,10 +695,12 @@ export function useSetup(): UseSetupReturn {
         ? `**${plan.spaces.length} spaces**, **${totalLists} lists**, and ${totalFolders} folders`
         : `**${plan.spaces.length} spaces** and **${totalLists} lists**`;
       addMessage('assistant', `I've designed your workspace structure (v${version}) with ${structureDesc}.\n\nTake a look and let me know if you'd like any changes.`);
-      setCurrentStep(3);
     } catch {
       addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');
+      // Go back to Describe step on failure
+      setCurrentStep(2);
     }
+    setIsGenerating(false);
     setIsSending(false);
   }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep]);
 
@@ -1022,6 +1029,7 @@ export function useSetup(): UseSetupReturn {
     manualSteps,
     isExecuting,
     isSending,
+    isGenerating,
     isAnalyzing,
     isRestored: true, // Always true with localStorage — instant hydration
     workspaceAnalysis,
