@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 
 // ---------------------------------------------------------------------------
@@ -26,33 +26,25 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
 } {
   const { workspace_id, workspace, loading: workspaceLoading } = useWorkspace();
 
+  // Override state — only set when an explicit refetch returns fresh data
+  const [override, setOverride] = useState<ClickUpConnectionStatus | null>(null);
+
   // Derive status synchronously from workspace object (instant, no API call).
   // This eliminates the network round-trip that was blocking page rendering.
-  const connected = !!workspace?.clickup_team_id;
-  const teamName = workspace?.clickup_team_name ?? null;
-  const planTier = workspace?.clickup_plan_tier ?? 'free';
-
-  const [status, setStatus] = useState<ClickUpConnectionStatus>({
-    connected,
-    teamName,
-    planTier,
+  const derived = useMemo<ClickUpConnectionStatus>(() => ({
+    connected: !!workspace?.clickup_team_id,
+    teamName: workspace?.clickup_team_name ?? null,
+    planTier: workspace?.clickup_plan_tier ?? 'free',
     loading: workspaceLoading,
-  });
+  }), [workspace?.clickup_team_id, workspace?.clickup_team_name, workspace?.clickup_plan_tier, workspaceLoading]);
 
-  // Update status synchronously whenever workspace data changes
-  useEffect(() => {
-    setStatus({
-      connected: !!workspace?.clickup_team_id,
-      teamName: workspace?.clickup_team_name ?? null,
-      planTier: workspace?.clickup_plan_tier ?? 'free',
-      loading: workspaceLoading,
-    });
-  }, [workspace?.clickup_team_id, workspace?.clickup_team_name, workspace?.clickup_plan_tier, workspaceLoading]);
+  // Use override if available, otherwise use derived state
+  const status = override ?? derived;
 
   // Explicit refetch via API (for manual refresh scenarios)
   const refetch = useCallback(async () => {
     if (!workspace_id) {
-      setStatus({ connected: false, teamName: null, planTier: 'free', loading: false });
+      setOverride({ connected: false, teamName: null, planTier: 'free', loading: false });
       return;
     }
 
@@ -60,7 +52,7 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
       const res = await fetch(`/api/clickup/status?workspace_id=${encodeURIComponent(workspace_id)}`);
       if (res.ok) {
         const data = await res.json();
-        setStatus({
+        setOverride({
           connected: data.connected ?? false,
           teamName: data.team_name ?? null,
           planTier: data.plan_tier ?? 'free',
