@@ -173,21 +173,8 @@ export function ClickUpConnectionCard() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workspace_id }),
-    }).then((res) => {
-      if (!res.ok) {
-        setStatus((prev) => ({
-          ...prev,
-          syncStatus: 'error',
-          syncError: `Sync request failed (${res.status}). Please try again.`,
-        }));
-      }
     }).catch((err) => {
       console.error('Failed to trigger re-sync:', err);
-      setStatus((prev) => ({
-        ...prev,
-        syncStatus: 'error',
-        syncError: 'Network error. Please check your connection and try again.',
-      }));
     });
   };
 

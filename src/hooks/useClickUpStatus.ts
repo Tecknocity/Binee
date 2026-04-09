@@ -59,8 +59,8 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
           loading: false,
         });
       }
-    } catch (err) {
-      console.error('Failed to refetch ClickUp status:', err);
+    } catch {
+      // Keep current status on error
     }
   }, [workspace_id]);
 
