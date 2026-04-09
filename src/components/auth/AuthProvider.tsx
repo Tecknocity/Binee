@@ -346,66 +346,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Flag to prevent onAuthStateChange from duplicating signUp/signIn work
   const manualAuthInProgress = useRef(false);
-  // Guard: only attempt metadata trim once per session
-  const metadataTrimDone = useRef(
-    typeof window !== 'undefined' && sessionStorage.getItem('binee_metadata_trim_done') === '1',
-  );
-
-  /**
-   * Proactive metadata trim for existing users.
-   *
-   * Checks if user_metadata has excess keys (from Google OAuth or old signups).
-   * If so, calls the trim-metadata API to reduce JWT size, then refreshes the
-   * session so the browser gets smaller cookies. Runs once per browser session.
-   *
-   * This is the key fix for the "accumulation over time" problem: users who
-   * signed up before the trim code was deployed, or whose metadata re-inflated
-   * after a Google re-auth, get trimmed proactively.
-   */
-  const trimMetadataIfNeeded = useCallback(async (sessionUser: SupabaseUser) => {
-    if (metadataTrimDone.current) return;
-    try {
-      const meta = sessionUser.user_metadata ?? {};
-      // We only need display_name and avatar_url. If there are more than
-      // 3 keys (those 2 + some leeway), trigger a trim.
-      const knownKeys = ['display_name', 'avatar_url'];
-      const extraKeys = Object.keys(meta).filter((k) => !knownKeys.includes(k));
-      if (extraKeys.length <= 1) {
-        // Metadata is already lean
-        metadataTrimDone.current = true;
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('binee_metadata_trim_done', '1');
-        }
-        return;
-      }
-
-      console.log(`[binee:auth] user_metadata has ${extraKeys.length} extra keys - trimming to prevent 494`);
-
-      const headers = await getAuthHeaders(supabase);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch('/api/auth/trim-metadata', {
-        method: 'POST',
-        headers,
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (res.ok) {
-        // Refresh the session so the browser gets a new JWT with trimmed metadata.
-        // This overwrites the current (fat) cookies with smaller ones.
-        await supabase.auth.refreshSession();
-        console.log('[binee:auth] Metadata trimmed and session refreshed');
-      }
-    } catch (err) {
-      console.warn('[binee:auth] trimMetadataIfNeeded failed (non-fatal):', err);
-    } finally {
-      metadataTrimDone.current = true;
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('binee_metadata_trim_done', '1');
-      }
-    }
-  }, [supabase]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -428,11 +368,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Phase 1 done — auth determined. Unblock rendering.
           initAuthDone.current = true;
           setLoading(false);
-
-          // Proactive metadata trim: check if this user's JWT metadata
-          // is bloated and trim it before it causes a 494. Runs in the
-          // background, doesn't block workspace loading.
-          trimMetadataIfNeeded(session.user).catch(() => {});
 
           // Phase 2: Load workspace data ASYNCHRONOUSLY.
           // The app shell (sidebar, nav) renders while this runs in background.
@@ -538,43 +473,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Global 494 detection: intercept fetch responses to catch
-    // REQUEST_HEADER_TOO_LARGE errors. When detected, clear all auth
-    // cookies immediately and redirect to login. This handles the case
-    // where cookies grew past Vercel's 16KB limit during the session
-    // (e.g., after a token refresh re-inflated the JWT).
-    const originalFetch = window.fetch;
-    let recovering494 = false;
-    window.fetch = async function patchedFetch(...args: Parameters<typeof fetch>) {
-      const response = await originalFetch.apply(this, args);
-      if (response.status === 494 && !recovering494) {
-        recovering494 = true;
-        console.error('[binee:auth] 494 REQUEST_HEADER_TOO_LARGE detected - clearing cookies');
-        document.cookie.split(';').forEach((c) => {
-          const name = c.trim().split('=')[0];
-          if (name.startsWith('sb-')) {
-            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
-          }
-        });
-        try {
-          Object.keys(localStorage).forEach((k) => {
-            if (k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
-          });
-        } catch { /* ignore */ }
-        window.location.href = '/login';
-      }
-      return response;
-    };
-
     return () => {
       cancelled = true;
       clearTimeout(timeout);
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.fetch = originalFetch;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspaces and queryClient are stable references; including them would cause unnecessary effect re-runs
-  }, [supabase, ensureAndLoad, trimMetadataIfNeeded]);
+  }, [supabase, ensureAndLoad]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     setLoading(true);
@@ -723,10 +629,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
     setWorkspaceLoading(false);
     ensureOwnerDone.current = false;
-    metadataTrimDone.current = false;
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('binee_ensure_owner_done');
-      sessionStorage.removeItem('binee_metadata_trim_done');
     }
 
     // Clear all cached data (conversations, messages, profile, etc.)
