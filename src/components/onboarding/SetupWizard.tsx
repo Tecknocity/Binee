@@ -161,6 +161,7 @@ export default function SetupWizard() {
             onEdit={() => setup.navigateToStep(2 as SetupStep)}
             onPlanChange={setup.updatePlan}
             existingStructure={setup.existingStructure}
+            planTier={workspace?.clickup_plan_tier ?? undefined}
           />
         )}
 
