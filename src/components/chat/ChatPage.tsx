@@ -12,6 +12,7 @@ import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
 import type { EmptyStateVariant } from './EmptyState';
 import WelcomeMessage from './WelcomeMessage';
+import WelcomeSuggestions from './WelcomeSuggestions';
 import ChatHeader from './ChatHeader';
 import OutOfCreditsModal from '@/components/credits/OutOfCreditsModal';
 import UpgradePrompt from '@/components/credits/UpgradePrompt';
@@ -382,6 +383,8 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
     (workspace?.clickup_connected || workspace?.clickup_team_id) &&
     conversations.length === 0;
 
+  const isWelcomeConversation = false;
+
   return (
     <div className="flex h-full overflow-hidden bg-navy-base">
       <div className="flex-1 min-w-0 flex flex-col">
@@ -407,6 +410,9 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
               onCancelAction={handleCancelAction}
               onAlwaysAllowAction={handleAlwaysAllowAction}
             />
+            {isWelcomeConversation && (
+              <WelcomeSuggestions onSuggestedPrompt={handleSuggestedPrompt} />
+            )}
             {isOutOfCredits ? (
               <UpgradePrompt />
             ) : (
