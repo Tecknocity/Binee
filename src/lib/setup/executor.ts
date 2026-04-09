@@ -30,6 +30,8 @@ export interface ExecutionItem {
   error?: string;
   /** The ClickUp ID of the created resource */
   clickupId?: string;
+  /** Number of tasks in this item (for deletion warnings). Only set on deletion candidates. */
+  taskCount?: number;
 }
 
 export interface ExecutionResult {

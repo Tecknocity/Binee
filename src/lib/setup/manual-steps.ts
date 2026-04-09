@@ -48,7 +48,7 @@ export function generateManualSteps(plan: SetupPlan): ManualStep[] {
           : status.type === 'done' || status.type === 'closed' ? '(done/closed status)'
           : '(active status)';
         statusInstructions.push(
-          `Add status "${status.name}" with color ${status.color} ${typeLabel}`
+          `Add status "${status.name}" ${typeLabel}`
         );
       }
 
