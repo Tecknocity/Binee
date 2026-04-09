@@ -18,10 +18,12 @@ import {
   Tag,
   FileText,
   Target,
+  AlertTriangle,
+  Trash2,
 } from 'lucide-react';
-import { AlertTriangle } from 'lucide-react';
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
+import type { ExecutionItem } from '@/lib/setup/executor';
 import { getUnsupportedFeatures, getPlanCapabilities } from '@/lib/clickup/plan-capabilities';
 
 // ---------------------------------------------------------------------------
@@ -38,13 +40,21 @@ interface StructurePreviewProps {
   existingStructure?: ExistingWorkspaceStructure | null;
   /** ClickUp plan tier for showing feature limitation warnings */
   planTier?: string;
+  /** Items from previous builds that will be removed (not in current plan) */
+  itemsToDelete?: ExecutionItem[];
+  /** Approve with deletions confirmed */
+  onApproveWithDeletions?: () => void;
+  /** Approve but skip deletions (keep old items) */
+  onApproveSkipDeletions?: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier }: StructurePreviewProps) {
+export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, onApproveWithDeletions, onApproveSkipDeletions }: StructurePreviewProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const hasDeletions = itemsToDelete && itemsToDelete.length > 0;
   // Count totals for summary
   let totalFolders = 0;
   let totalLists = 0;
@@ -610,6 +620,56 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
         )}
       </div>
 
+      {/* Deletion confirmation dialog */}
+      {showDeleteConfirm && hasDeletions && (
+        <div className="bg-warning/5 border border-warning/20 rounded-xl p-4 mt-2">
+          <div className="flex items-start gap-2.5 mb-3">
+            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-warning mb-1">Items to remove from ClickUp</p>
+              <p className="text-xs text-text-secondary mb-2">
+                These items were created by Binee in a previous build but are no longer in the updated structure.
+                Would you like to remove them from your ClickUp workspace?
+              </p>
+            </div>
+          </div>
+          <div className="space-y-1 mb-3 ml-7">
+            {itemsToDelete.map((item, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                <Trash2 className="w-3.5 h-3.5 text-warning/70 flex-shrink-0" />
+                <span className="text-text-secondary">
+                  {item.parentName ? `${item.parentName} / ` : ''}{item.name}
+                </span>
+                <span className="text-[11px] font-medium text-text-muted uppercase">{item.type}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 ml-7">
+            <button
+              onClick={() => { setShowDeleteConfirm(false); onApproveWithDeletions?.(); }}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-warning/90 text-white text-xs font-medium rounded-lg
+                hover:bg-warning transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Remove &amp; Build
+            </button>
+            <button
+              onClick={() => { setShowDeleteConfirm(false); onApproveSkipDeletions?.(); }}
+              className="px-4 py-1.5 text-xs font-medium text-text-secondary border border-border rounded-lg
+                hover:bg-surface-hover transition-colors"
+            >
+              Keep All &amp; Build
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="px-3 py-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex items-center justify-end gap-2 pt-3 border-t border-border shrink-0">
         <button
@@ -621,7 +681,13 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
           Revise with AI
         </button>
         <button
-          onClick={onApprove}
+          onClick={() => {
+            if (hasDeletions) {
+              setShowDeleteConfirm(true);
+            } else {
+              onApprove();
+            }
+          }}
           className="flex items-center gap-1.5 px-5 py-2 bg-accent text-white text-sm font-medium rounded-lg
             hover:bg-accent/90 transition-colors shadow-lg shadow-accent/20"
         >

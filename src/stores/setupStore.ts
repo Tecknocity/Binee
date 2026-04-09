@@ -103,6 +103,8 @@ interface SetupState {
   executionResult: ExecutionResult | null;
   executionItems: ExecutionItem[];
   buildCompleted: boolean;
+  /** Items successfully created by Binee in previous builds (for reconciliation/deletion) */
+  previouslyBuiltItems: ExecutionItem[];
 
   // Step 5: Manual steps
   manualSteps: ManualStep[];
@@ -123,6 +125,7 @@ interface SetupState {
   setExecutionResult: (result: ExecutionResult | null) => void;
   setExecutionItems: (items: ExecutionItem[]) => void;
   setBuildCompleted: (completed: boolean) => void;
+  setPreviouslyBuiltItems: (items: ExecutionItem[]) => void;
   setManualSteps: (steps: ManualStep[]) => void;
   toggleManualStep: (index: number) => void;
   resetFromStep: (step: SetupStep) => void;
@@ -161,6 +164,7 @@ function createSetupStore(workspaceId: string) {
         executionResult: null,
         executionItems: [],
         buildCompleted: false,
+        previouslyBuiltItems: [],
 
         manualSteps: [],
 
@@ -192,6 +196,7 @@ function createSetupStore(workspaceId: string) {
         setExecutionResult: (result) => set({ executionResult: result }),
         setExecutionItems: (items) => set({ executionItems: items }),
         setBuildCompleted: (completed) => set({ buildCompleted: completed }),
+        setPreviouslyBuiltItems: (items) => set({ previouslyBuiltItems: items }),
         setManualSteps: (steps) => set({ manualSteps: steps }),
         toggleManualStep: (index) =>
           set((s) => ({
@@ -233,6 +238,7 @@ function createSetupStore(workspaceId: string) {
             }
             if (step <= 4) {
               // Resetting from Build: clear build results + manual steps
+              // Note: previouslyBuiltItems is intentionally preserved for reconciliation
               updates.executionResult = null;
               updates.executionItems = [];
               updates.buildCompleted = false;
@@ -261,6 +267,7 @@ function createSetupStore(workspaceId: string) {
             executionResult: null,
             executionItems: [],
             buildCompleted: false,
+            previouslyBuiltItems: [],
             manualSteps: [],
           }),
       }),
@@ -286,6 +293,7 @@ function createSetupStore(workspaceId: string) {
           executionResult: state.executionResult,
           executionItems: state.executionItems,
           buildCompleted: state.buildCompleted,
+          previouslyBuiltItems: state.previouslyBuiltItems,
           manualSteps: state.manualSteps,
         }),
       }

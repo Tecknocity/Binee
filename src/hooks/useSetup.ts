@@ -9,6 +9,7 @@ import type {
   ManualStep,
 } from '@/lib/setup/types';
 import type { ExecutionItem, ExecutionResult as ExecutorResult } from '@/lib/setup/executor';
+import { computeItemsToDelete } from '@/lib/setup/executor';
 // generateSetupPlan is called via /api/setup/generate-plan (server-side only)
 import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
@@ -93,6 +94,16 @@ export interface UseSetupReturn {
   resetStage: (step: SetupStep) => void;
   restartSetup: () => void;
   goToDashboard: () => void;
+  /** Items from previous builds that should be deleted (not in current plan) */
+  itemsToDelete: ExecutionItem[];
+  /** Whether deletion is pending user confirmation */
+  hasPendingDeletions: boolean;
+  /** Confirm and execute deletion of old items, then build new plan */
+  confirmDeletionsAndBuild: () => void;
+  /** Skip deletions and just build new plan (old items remain in ClickUp) */
+  skipDeletionsAndBuild: () => void;
+  /** Whether deletions are currently being executed */
+  isDeleting: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +293,8 @@ export function useSetup(): UseSetupReturn {
   const persistedExecutionResult = storeState?.executionResult ?? null;
   const persistedExecutionItems = storeState?.executionItems ?? [];
   const buildCompleted = storeState?.buildCompleted ?? false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const previouslyBuiltItems = useMemo(() => storeState?.previouslyBuiltItems ?? [], [storeState?.previouslyBuiltItems]);
 
   // Force re-render when store changes
   const [, forceUpdate] = useState(0);
@@ -322,6 +335,15 @@ export function useSetup(): UseSetupReturn {
   const [isSending, setIsSending] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Reconciliation: compute items to delete when rebuilding
+  const itemsToDelete = useMemo(() => {
+    if (!proposedPlan || previouslyBuiltItems.length === 0) return [];
+    return computeItemsToDelete(previouslyBuiltItems, proposedPlan);
+  }, [proposedPlan, previouslyBuiltItems]);
+
+  const hasPendingDeletions = itemsToDelete.length > 0;
 
   const wizardStep = NUMERIC_TO_WIZARD_STEP[currentStep];
 
@@ -643,6 +665,21 @@ export function useSetup(): UseSetupReturn {
   const generateStructure = useCallback(async () => {
     setIsGenerating(true);
     setIsSending(true);
+
+    // If rebuilding after a previous build, clear stale state
+    if (store?.getState().buildCompleted) {
+      store?.getState().setBuildCompleted(false);
+      store?.getState().setExecutionResult(null);
+      store?.getState().setExecutionItems([]);
+      store?.getState().setExistingStructure(null);
+      existingStructureLoadedRef.current = false;
+      buildRestoredRef.current = false;
+      setExecutionProgress(null);
+      setExecutionResult(null);
+      setExecutionItems([]);
+      setIsExecuting(false);
+    }
+
     // Immediately advance to step 3 so the user sees a "building" animation
     setCurrentStep(3);
     try {
@@ -766,6 +803,20 @@ export function useSetup(): UseSetupReturn {
       store?.getState().setExecutionResult(executionResultData);
       store?.getState().setBuildCompleted(true);
 
+      // Save successfully created items for future reconciliation (deletion tracking)
+      // Merge with existing previouslyBuiltItems to track across multiple builds
+      const newlyCreated = resultItems.filter(i => i.status === 'success' && i.clickupId);
+      const existingBuilt = store?.getState().previouslyBuiltItems ?? [];
+      // Deduplicate by clickupId
+      const allBuiltMap = new Map<string, ExecutionItem>();
+      for (const item of existingBuilt) {
+        if (item.clickupId) allBuiltMap.set(item.clickupId, item);
+      }
+      for (const item of newlyCreated) {
+        if (item.clickupId) allBuiltMap.set(item.clickupId, item);
+      }
+      store?.getState().setPreviouslyBuiltItems(Array.from(allBuiltMap.values()));
+
       if (proposedPlan) {
         const steps = generateManualSteps(proposedPlan as SetupPlan);
         store?.getState().setManualSteps(steps);
@@ -810,8 +861,92 @@ export function useSetup(): UseSetupReturn {
       }),
     }).catch((err) => console.error('[useSetup] Pre-build snapshot failed:', err));
 
-    await runExecution(existingStructure);
-  }, [proposedPlan, isExecuting, workspace_id, setCurrentStep, existingStructure, runExecution]);
+    // Always fetch fresh existing structure before building to account for
+    // items created in previous builds or manual changes in ClickUp
+    let freshStructure = existingStructure;
+    try {
+      const structRes = await fetchWithTimeout('/api/setup/existing-structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id }),
+      });
+      if (structRes.ok) {
+        const data = await structRes.json();
+        if (data.structure) {
+          freshStructure = data.structure;
+          store?.getState().setExistingStructure(data.structure);
+        }
+      }
+    } catch (err) {
+      console.error('[useSetup] Failed to refresh existing structure before build:', err);
+    }
+
+    await runExecution(freshStructure);
+  }, [proposedPlan, isExecuting, workspace_id, setCurrentStep, existingStructure, store, runExecution]);
+
+  // Delete old items then build new plan
+  const confirmDeletionsAndBuild = useCallback(async () => {
+    if (!proposedPlan || isExecuting || isDeleting) return;
+    setCurrentStep(4);
+    setIsDeleting(true);
+    setIsExecuting(true);
+
+    try {
+      // Delete items from previous builds that are no longer in the plan
+      const deleteResponse = await fetchWithTimeout('/api/setup/delete-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id,
+          items_to_delete: itemsToDelete,
+        }),
+      }, 60_000);
+
+      if (deleteResponse.ok) {
+        const { results: deleteResults } = await deleteResponse.json();
+        const deletedIds = new Set(
+          deleteResults
+            .filter((r: ExecutionItem) => r.status === 'success' && r.clickupId)
+            .map((r: ExecutionItem) => r.clickupId)
+        );
+        // Remove successfully deleted items from previouslyBuiltItems
+        const remaining = previouslyBuiltItems.filter(i => !deletedIds.has(i.clickupId));
+        store?.getState().setPreviouslyBuiltItems(remaining);
+      }
+    } catch (err) {
+      console.error('[useSetup] Failed to delete old items:', err);
+      // Continue with build even if deletion fails
+    }
+
+    setIsDeleting(false);
+
+    // Fetch fresh structure after deletions
+    let freshStructure = existingStructure;
+    try {
+      const structRes = await fetchWithTimeout('/api/setup/existing-structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id }),
+      });
+      if (structRes.ok) {
+        const data = await structRes.json();
+        if (data.structure) {
+          freshStructure = data.structure;
+          store?.getState().setExistingStructure(data.structure);
+        }
+      }
+    } catch (err) {
+      console.error('[useSetup] Failed to refresh structure after deletion:', err);
+    }
+
+    await runExecution(freshStructure);
+  }, [proposedPlan, isExecuting, isDeleting, workspace_id, setCurrentStep, itemsToDelete, previouslyBuiltItems, existingStructure, store, runExecution]);
+
+  // Skip deletions and just build (old items remain)
+  const skipDeletionsAndBuild = useCallback(async () => {
+    // Just run approvePlan normally - old items stay in ClickUp
+    await approvePlan();
+  }, [approvePlan]);
 
   const retryFailedItems = useCallback(async () => {
     if (!proposedPlan || isExecuting) return;
@@ -922,9 +1057,44 @@ export function useSetup(): UseSetupReturn {
   }, [store, workspace_id]);
 
   const navigateToStep = useCallback((step: SetupStep) => {
-    // Just navigate - no data clearing. Used for viewing completed stages.
+    const wasBuildCompleted = store?.getState().buildCompleted ?? false;
+
+    // When navigating back to Describe (step 2) after a build, prepare for revision
+    if (step === 2 && wasBuildCompleted) {
+      // Clear build state so user can rebuild
+      store?.getState().setBuildCompleted(false);
+      store?.getState().setExecutionResult(null);
+      store?.getState().setExecutionItems([]);
+      // Clear stale existing structure so it's refetched at step 3
+      store?.getState().setExistingStructure(null);
+      existingStructureLoadedRef.current = false;
+      // Reset execution UI state
+      buildRestoredRef.current = false;
+      setExecutionProgress(null);
+      setExecutionResult(null);
+      setExecutionItems([]);
+      setIsExecuting(false);
+
+      // Add a revision prompt instead of auto-generating
+      addMessage('assistant', "Welcome back! Your workspace structure has already been built.\n\nWhat would you like to change? You can ask me to add, remove, rename, or restructure spaces, folders, lists, or statuses.\n\nOnce you're happy with the changes, click **\"Generate Structure\"** to create the updated plan.");
+    }
+
+    // When navigating back to Review (step 3) after a build, refresh existing structure
+    if (step === 3 && wasBuildCompleted) {
+      store?.getState().setBuildCompleted(false);
+      store?.getState().setExecutionResult(null);
+      store?.getState().setExecutionItems([]);
+      store?.getState().setExistingStructure(null);
+      existingStructureLoadedRef.current = false;
+      buildRestoredRef.current = false;
+      setExecutionProgress(null);
+      setExecutionResult(null);
+      setExecutionItems([]);
+      setIsExecuting(false);
+    }
+
     setCurrentStep(step);
-  }, [setCurrentStep]);
+  }, [setCurrentStep, store, addMessage]);
 
   const resetStage = useCallback((step: SetupStep) => {
     // Clear data from this step onward and navigate to it
@@ -1054,5 +1224,10 @@ export function useSetup(): UseSetupReturn {
     resetStage,
     restartSetup,
     goToDashboard,
+    itemsToDelete,
+    hasPendingDeletions,
+    confirmDeletionsAndBuild,
+    skipDeletionsAndBuild,
+    isDeleting,
   };
 }

@@ -163,6 +163,9 @@ export default function SetupWizard() {
             onPlanChange={setup.updatePlan}
             existingStructure={setup.existingStructure}
             planTier={workspace?.clickup_plan_tier ?? undefined}
+            itemsToDelete={setup.itemsToDelete}
+            onApproveWithDeletions={setup.confirmDeletionsAndBuild}
+            onApproveSkipDeletions={setup.skipDeletionsAndBuild}
           />
         )}
 
