@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateSetupPlan } from '@/lib/setup/planner';
 import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import type { BusinessProfile } from '@/lib/setup/types';
 
@@ -37,10 +38,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing business description' }, { status: 400 });
     }
 
+    // Load template knowledge base so the planner can reference proven structures
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data: templateModules } = await adminClient
+      .from('ai_knowledge_base')
+      .select('content')
+      .like('module_key', 'clickup-templates-database%');
+    const templates = templateModules?.map(m => m.content).join('\n\n') || '';
+
     const plan = await generateSetupPlan(businessProfile, workspaceAnalysis, {
       conversationContext,
       previousPlan,
       planHistorySummary,
+      templates,
     });
 
     return NextResponse.json({ plan });

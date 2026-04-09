@@ -23,13 +23,15 @@ const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Given a convers
 
 Return ONLY valid JSON matching this format:
 {
-  "summary": "2-3 sentence summary capturing main topics, decisions, actions taken, and pending questions",
+  "summary": "3-5 sentence summary capturing main topics, decisions, actions taken, and pending questions",
   "facts": ["fact 1", "fact 2"]
 }
 
 Summary rules:
+- CRITICAL: The previous summary contains context from earlier in the conversation. You MUST preserve all key decisions, instructions, and preferences from the previous summary. Only drop greetings or redundant pleasantries.
 - Be factual and specific. Include names, numbers, and key details.
-- Do not include greetings or pleasantries.
+- Always preserve: user decisions, explicit instructions/rules the user stated, workspace structure preferences, and any action items that are still pending.
+- When incorporating new messages, ADD to the previous summary rather than replacing it. The summary should grow in detail (up to the token limit), not lose earlier context.
 
 Facts rules:
 - Extract user preferences, decisions, and important context that should be remembered across conversations.
@@ -39,7 +41,11 @@ Facts rules:
   * Services or products they offer
   * Work style (client-based, product-based, project-based)
   * Key business decisions about workspace structure
-- Other examples: "User prefers 3 separate spaces over 1 space with folders", "User wants a simple flat structure"
+- ALSO EXTRACT these as facts:
+  * Any explicit instruction or rule the user stated (e.g., "I want only 2 spaces", "No folders, keep it flat")
+  * Workflow descriptions (e.g., "Our process is: backlog, in progress, review, done")
+  * Preferences about tags, statuses, or custom fields
+  * What the user wants to keep or remove from their existing workspace
 - Only include facts explicitly stated by the user, not inferred.
 - If no new facts are found, return an empty array.
 - Keep each fact to one concise sentence.
@@ -113,7 +119,7 @@ export async function maybeSummarizeConversation(
     const client = getClient();
     const response = await client.messages.create({
       model: HAIKU_MODEL_ID,
-      max_tokens: 300,
+      max_tokens: 500,
       messages: [{ role: 'user', content: prompt }],
     });
 

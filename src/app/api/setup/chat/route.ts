@@ -61,6 +61,40 @@ export async function POST(request: NextRequest) {
       content: m.content,
     }));
 
+    // Save profile data as persistent user memories (fire-and-forget, non-blocking).
+    // This ensures the user's company identity is available in ALL future conversations
+    // (both setup and regular chat) without waiting for the summarizer to extract it.
+    if (profile_data) {
+      const { industry, workStyle, services, teamSize } = profile_data;
+      const profileFacts: string[] = [];
+      if (industry) profileFacts.push(`User's industry is ${industry}`);
+      if (workStyle) profileFacts.push(`User's work style is ${workStyle}`);
+      if (services) profileFacts.push(`User's services/products: ${services}`);
+      if (teamSize) profileFacts.push(`User's team size is ${teamSize}`);
+
+      if (profileFacts.length > 0) {
+        // Delete old profile memories and insert fresh ones (handles profile updates)
+        adminClient
+          .from('user_memories')
+          .delete()
+          .eq('user_id', authUser.id)
+          .eq('workspace_id', workspace_id)
+          .eq('category', 'profile')
+          .then(() =>
+            adminClient.from('user_memories').insert(
+              profileFacts.map(fact => ({
+                user_id: authUser.id,
+                workspace_id,
+                category: 'profile',
+                content: fact,
+                source_conversation_id: conversation_id,
+              })),
+            ),
+          )
+          .catch(err => console.error('[setup/chat] Profile memory save failed:', err));
+      }
+    }
+
     // Enrich message with file context if the user attached files
     const enrichedMessage = file_context
       ? `${message.trim()}\n\n--- ATTACHED FILE CONTENT ---\n${file_context}\n--- END ATTACHED FILE CONTENT ---`
