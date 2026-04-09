@@ -589,14 +589,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase]);
 
   const updateUser = useCallback(async (data: { display_name?: string; avatar_url?: string | null }) => {
-    const { error } = await supabase.auth.updateUser({ data });
+    // Only write fields that actually changed to avoid bloating user_metadata
+    // (which lives in the JWT cookie and can trigger Vercel 494 errors).
+    const currentMeta = user ?? { display_name: '', avatar_url: null };
+    const patch: Record<string, unknown> = {};
+
+    if (data.display_name !== undefined && data.display_name !== currentMeta.display_name) {
+      patch.display_name = data.display_name;
+    }
+    if (data.avatar_url !== undefined && data.avatar_url !== currentMeta.avatar_url) {
+      // Never store large data-URIs in user_metadata - they bloat the JWT.
+      // Avatar URLs from Supabase Storage or Google are short HTTP URLs.
+      if (data.avatar_url && data.avatar_url.length > 500) {
+        console.warn('[binee:auth] Skipping avatar_url in JWT metadata (too large). Store in user_profiles table instead.');
+      } else {
+        patch.avatar_url = data.avatar_url;
+      }
+    }
+
+    if (Object.keys(patch).length === 0) {
+      // Nothing changed - skip the updateUser call entirely
+      return {};
+    }
+
+    const { error } = await supabase.auth.updateUser({ data: patch });
     if (error) return { error: error.message };
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       setUser(mapSupabaseUser(session.user));
     }
     return {};
-  }, [supabase]);
+  }, [supabase, user]);
 
   const signOut = useCallback(async () => {
     setUser(null);

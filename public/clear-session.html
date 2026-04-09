@@ -25,33 +25,40 @@
   <script>
     function clearAll() {
       var status = document.getElementById('status');
-      // Delete every cookie for this domain
-      var cookies = document.cookie.split(';');
-      var cleared = 0;
-      for (var i = 0; i < cookies.length; i++) {
-        var name = cookies[i].split('=')[0].trim();
-        if (name) {
-          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
-          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=' + location.hostname + ';';
-          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.' + location.hostname + ';';
-          cleared++;
-        }
-      }
-      // Also clear localStorage/sessionStorage auth data
-      try {
-        Object.keys(localStorage).forEach(function(key) {
-          if (key.startsWith('sb-') || key.includes('supabase')) {
-            localStorage.removeItem(key);
+      status.innerHTML = 'Trimming metadata and clearing session...';
+
+      // First, try to trim server-side metadata so the next JWT is smaller
+      fetch('/api/auth/trim-metadata', { method: 'POST' })
+        .catch(function() { /* ignore - cookies may already be too big for this to work */ })
+        .then(function() {
+          // Delete every cookie for this domain
+          var cookies = document.cookie.split(';');
+          var cleared = 0;
+          for (var i = 0; i < cookies.length; i++) {
+            var name = cookies[i].split('=')[0].trim();
+            if (name) {
+              document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
+              document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=' + location.hostname + ';';
+              document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.' + location.hostname + ';';
+              cleared++;
+            }
           }
+          // Also clear localStorage/sessionStorage auth data
+          try {
+            Object.keys(localStorage).forEach(function(key) {
+              if (key.startsWith('sb-') || key.includes('supabase') || key.startsWith('binee_')) {
+                localStorage.removeItem(key);
+              }
+            });
+            Object.keys(sessionStorage).forEach(function(key) {
+              if (key.startsWith('sb-') || key.includes('supabase') || key.startsWith('binee_')) {
+                sessionStorage.removeItem(key);
+              }
+            });
+          } catch(e) {}
+          status.innerHTML = '<span class="done">Cleared ' + cleared + ' cookies. Redirecting to login...</span>';
+          setTimeout(function() { window.location.href = '/login'; }, 1500);
         });
-        Object.keys(sessionStorage).forEach(function(key) {
-          if (key.startsWith('sb-') || key.includes('supabase')) {
-            sessionStorage.removeItem(key);
-          }
-        });
-      } catch(e) {}
-      status.innerHTML = '<span class="done">Cleared ' + cleared + ' cookies. Redirecting to login...</span>';
-      setTimeout(function() { window.location.href = '/login'; }, 1500);
     }
   </script>
 </body>
