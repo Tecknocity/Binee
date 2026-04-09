@@ -373,14 +373,14 @@ export default function ChatPage({ conversationId: propConversationId }: { conve
 
   const emptyStateVariant: EmptyStateVariant = isOutOfCredits
     ? 'no-credits'
-    : workspace && !workspace.clickup_connected
+    : workspace && !workspace.clickup_connected && !workspace.clickup_team_id
       ? 'no-clickup'
       : 'no-conversations';
 
   const showWelcome =
     !hasMessages &&
     emptyStateVariant === 'no-conversations' &&
-    workspace?.clickup_connected &&
+    (workspace?.clickup_connected || workspace?.clickup_team_id) &&
     conversations.length === 0;
 
   const isWelcomeConversation = false;

@@ -57,6 +57,17 @@ export async function GET(request: Request) {
     }
   }
 
+  // Self-heal: if clickup_team_id exists but clickup_connected is false,
+  // the connection flag was incorrectly cleared (e.g. by a token refresh error).
+  // Repair it so the user doesn't see "Connect ClickUp" when already connected.
+  if (!workspace.clickup_connected && workspace.clickup_team_id) {
+    workspace.clickup_connected = true;
+    await supabase
+      .from('workspaces')
+      .update({ clickup_connected: true, updated_at: new Date().toISOString() })
+      .eq('id', workspaceId);
+  }
+
   // Check webhook health: consider healthy if:
   // 1. Last webhook event was within 24 hours, OR
   // 2. No events received yet but workspace was synced recently (just connected)
