@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear Session - Binee</title>
+  <style>
+    body { background: #0A0A0F; color: #F0F0F5; font-family: Inter, system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .card { max-width: 420px; text-align: center; padding: 2rem; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    p { color: #A0A0B5; font-size: 0.875rem; line-height: 1.6; }
+    button { background: #854DF9; color: white; border: none; padding: 0.625rem 1.5rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; margin-top: 1rem; }
+    button:hover { background: #9D6FFA; }
+    .done { color: #4ade80; }
+    #status { margin-top: 1rem; font-size: 0.8rem; color: #A0A0B5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Clear Session</h1>
+    <p>This clears all authentication cookies and redirects you to sign in again. Use this if you see a "Request Header Too Large" error.</p>
+    <button onclick="clearAll()">Clear Session &amp; Sign In</button>
+    <div id="status"></div>
+  </div>
+  <script>
+    function clearAll() {
+      var status = document.getElementById('status');
+      // Delete every cookie for this domain
+      var cookies = document.cookie.split(';');
+      var cleared = 0;
+      for (var i = 0; i < cookies.length; i++) {
+        var name = cookies[i].split('=')[0].trim();
+        if (name) {
+          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
+          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=' + location.hostname + ';';
+          document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.' + location.hostname + ';';
+          cleared++;
+        }
+      }
+      // Also clear localStorage/sessionStorage auth data
+      try {
+        Object.keys(localStorage).forEach(function(key) {
+          if (key.startsWith('sb-') || key.includes('supabase')) {
+            localStorage.removeItem(key);
+          }
+        });
+        Object.keys(sessionStorage).forEach(function(key) {
+          if (key.startsWith('sb-') || key.includes('supabase')) {
+            sessionStorage.removeItem(key);
+          }
+        });
+      } catch(e) {}
+      status.innerHTML = '<span class="done">Cleared ' + cleared + ' cookies. Redirecting to login...</span>';
+      setTimeout(function() { window.location.href = '/login'; }, 1500);
+    }
+  </script>
+</body>
+</html>
