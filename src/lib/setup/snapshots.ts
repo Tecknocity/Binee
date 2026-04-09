@@ -10,6 +10,8 @@ interface SnapshotStructure {
   spaces: Array<{
     clickup_id: string;
     name: string;
+    /** Space-level statuses (inherited by all child folders/lists unless overridden) */
+    statuses?: unknown;
     folders: Array<{
       clickup_id: string;
       name: string;
@@ -127,7 +129,7 @@ export async function getExistingStructure(workspaceId: string): Promise<Snapsho
     );
 
     const [spacesRes, foldersRes, listsRes] = await Promise.all([
-      adminClient.from('cached_spaces').select('clickup_id, name').eq('workspace_id', workspaceId),
+      adminClient.from('cached_spaces').select('clickup_id, name, status').eq('workspace_id', workspaceId),
       adminClient.from('cached_folders').select('clickup_id, name, space_id').eq('workspace_id', workspaceId),
       adminClient.from('cached_lists').select('clickup_id, name, folder_id, space_id, task_count, status').eq('workspace_id', workspaceId),
     ]);
@@ -156,6 +158,7 @@ export async function getExistingStructure(workspaceId: string): Promise<Snapsho
         return {
           clickup_id: space.clickup_id,
           name: space.name,
+          statuses: space.status,
           folders: folders
             .filter((f) => f.space_id === space.clickup_id)
             .map((folder) => ({

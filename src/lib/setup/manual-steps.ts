@@ -3,8 +3,14 @@ import type { SetupPlan, ManualStep } from './types';
 /**
  * Generate manual steps from a setup plan.
  *
- * These are things Binee can't automate via the ClickUp API — automations,
- * views, certain settings, and custom fields that require manual configuration.
+ * These are things Binee can't automate via the ClickUp API — statuses,
+ * automations, views, certain settings, and custom fields that require
+ * manual configuration.
+ *
+ * IMPORTANT: The ClickUp API does NOT support creating or modifying task
+ * statuses. Status configuration is always a manual step. We generate
+ * per-Space status setup instructions because ClickUp statuses are
+ * inherited: setting them on a Space applies to all child Folders/Lists.
  *
  * Pattern-based: we examine Space/Folder/List names and generate relevant
  * manual steps. For example, a "Sprint" list gets a Sprint ClickApp suggestion,
@@ -13,6 +19,56 @@ import type { SetupPlan, ManualStep } from './types';
 export function generateManualSteps(plan: SetupPlan): ManualStep[] {
   const steps: ManualStep[] = [];
 
+  // -----------------------------------------------------------------------
+  // Status configuration steps (per-Space, since statuses cascade down)
+  // The ClickUp API cannot create statuses, so this is always manual.
+  // -----------------------------------------------------------------------
+  for (const space of plan.spaces) {
+    // Collect all unique statuses across lists in this space
+    const allLists = [
+      ...(space.lists ?? []),
+      ...space.folders.flatMap((f) => f.lists),
+    ];
+
+    // Use the first list's statuses as the representative set for the space
+    // (the planner is instructed to keep statuses consistent within a space)
+    const representativeStatuses = allLists[0]?.statuses ?? [];
+
+    if (representativeStatuses.length > 0) {
+      const statusNames = representativeStatuses.map((s) => s.name).join(', ');
+      const statusInstructions = [
+        `Open the "${space.name}" Space in ClickUp`,
+        'Click the Space name or gear icon to open Space settings',
+        'Go to the "Statuses" section',
+      ];
+
+      // Add instructions for each status to create
+      for (const status of representativeStatuses) {
+        const typeLabel = status.type === 'open' ? '(start status)'
+          : status.type === 'done' || status.type === 'closed' ? '(done/closed status)'
+          : '(active status)';
+        statusInstructions.push(
+          `Add status "${status.name}" with color ${status.color} ${typeLabel}`
+        );
+      }
+
+      statusInstructions.push(
+        'Save your changes. All lists in this space will inherit these statuses automatically.'
+      );
+
+      steps.push({
+        title: `Configure statuses for "${space.name}" Space`,
+        description: `Set up workflow statuses: ${statusNames}. All lists in this space will inherit them.`,
+        instructions: statusInstructions,
+        category: 'setting',
+        completed: false,
+      });
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // ClickApp, view, automation, and custom field suggestions
+  // -----------------------------------------------------------------------
   for (const space of plan.spaces) {
     // ClickApp suggestions per space
     if (hasNamePattern(space.name, ['engineering', 'development', 'product', 'sprint'])) {

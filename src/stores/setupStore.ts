@@ -21,6 +21,8 @@ export interface SetupChatMessage {
 export interface ExistingSpaceInfo {
   clickup_id: string;
   name: string;
+  /** Space-level statuses (inherited by all child folders/lists unless overridden) */
+  statuses?: unknown;
   folders: Array<{
     clickup_id: string;
     name: string;
