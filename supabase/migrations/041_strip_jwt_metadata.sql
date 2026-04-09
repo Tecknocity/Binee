@@ -11,6 +11,8 @@
 --
 -- The full profile data is already stored in the profiles and
 -- workspace_members tables, so nothing is lost.
+--
+-- This migration is idempotent (safe to re-run).
 
 -- Step 1: Sync avatar_url from user_metadata to profiles table
 -- (preserve Google avatar URLs before we strip them from metadata)
@@ -79,7 +81,10 @@ BEGIN
 END;
 $$;
 
--- Step 3: Create triggers on auth.users
+-- Step 3: Create triggers on auth.users (drop first to be idempotent)
+DROP TRIGGER IF EXISTS strip_user_metadata_on_insert ON auth.users;
+DROP TRIGGER IF EXISTS strip_user_metadata_on_update ON auth.users;
+
 -- BEFORE INSERT: strips metadata for new signups (email/password and OAuth)
 CREATE TRIGGER strip_user_metadata_on_insert
   BEFORE INSERT ON auth.users
