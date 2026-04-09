@@ -212,7 +212,10 @@ export function classifyClickUpError(
     // Check if this is a plan limitation vs a permission issue
     if (itemType && planTier && !isItemTypeSupported(itemType, planTier)) {
       const caps = getPlanCapabilities(planTier);
-      const featureName = itemType.charAt(0).toUpperCase() + itemType.slice(1) + 's';
+      const featureName = itemType
+        .split('_')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ') + 's';
       return {
         type: 'plan_limitation',
         message: `${featureName} not available on ${caps.label} plan`,

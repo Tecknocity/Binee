@@ -60,7 +60,6 @@ const WEBHOOK_EVENTS = [
 export async function registerWebhooks(
   workspaceId: string,
   teamId: string,
-  accessToken?: string
 ): Promise<ClickUpWebhookRegistration> {
   const client = new ClickUpClient(workspaceId);
   const endpoint = `${APP_URL}/api/webhooks/clickup`;
