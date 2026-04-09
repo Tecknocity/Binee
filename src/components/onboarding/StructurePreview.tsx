@@ -20,6 +20,7 @@ import {
   Target,
   AlertTriangle,
   Trash2,
+  Settings2,
 } from 'lucide-react';
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
@@ -303,7 +304,6 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
           {totalFolders > 0 && (
             <> &middot; {totalFolders} {totalFolders === 1 ? 'folder' : 'folders'}</>
           )}
-          {' '}&middot; {totalStatuses} statuses
           {hasExisting && (
             <span className="text-text-muted ml-2">
               ({newItems} new, {existingItems} already exist)
@@ -314,6 +314,22 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
           )}
         </p>
       </div>
+
+      {/* Status manual setup info */}
+      {totalStatuses > 0 && (
+        <div className="mb-3 shrink-0 bg-info/10 border border-info/20 rounded-xl p-3 flex items-start gap-2.5">
+          <Settings2 className="w-4 h-4 text-info flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-info">
+              Statuses require manual setup in ClickUp
+            </p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              Spaces, folders, and lists will be created automatically. The {totalStatuses} recommended statuses below will need to be configured in ClickUp after the build.
+              {' '}Set them once per Space and all lists will inherit them.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Plan limitation warning */}
       {showGoalWarning && planCaps && (
@@ -356,7 +372,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                 key={`flist-${si}-${li}`}
                 icon={<List className="w-4 h-4 text-info" />}
                 label={list.name}
-                badge={`${list.statuses.length} statuses`}
+                badge={`${list.statuses.length} statuses (manual)`}
                 badgeColor="bg-info/15 text-info"
                 editable={editable}
                 onRename={(name) => renameFolderlessList(si, li, name)}

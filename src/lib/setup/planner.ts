@@ -139,7 +139,14 @@ ${planContext.planHistorySummary}`);
   parts.push(`## CURRENT WORKSPACE ANALYSIS
 ${workspaceAnalysis || 'No workspace data yet. This may be a fresh workspace.'}
 
-If the workspace already has structures, build AROUND them. Do not recreate what already exists. Only add new spaces, folders, and lists that are missing.`);
+If the workspace already has structures, build AROUND them. Do not recreate what already exists. Only add new spaces, folders, and lists that are missing.
+
+## IMPORTANT: STATUS LIMITATIONS
+The ClickUp API does NOT support creating or modifying task statuses programmatically. Statuses cannot be set via API when creating spaces or lists.
+- For EXISTING spaces that already have statuses configured, new lists will inherit the space's statuses automatically. Still include recommended statuses in the plan so users can see what we suggest, but understand these are for display/guidance only.
+- For NEW spaces, statuses included in the plan are RECOMMENDATIONS that the user will configure manually in ClickUp after the build. The user will be guided through this in a post-build step.
+- In ClickUp, statuses are inherited: Space statuses cascade to all Folders and Lists within that Space. So recommend statuses that work well across all lists in each space.
+- Keep per-list statuses consistent within the same space where possible, since space-level status configuration will cover all lists at once.`);
 
   parts.push(`## OUTPUT SCHEMA
 Return a single JSON object with this exact structure:
@@ -197,7 +204,8 @@ Return a single JSON object with this exact structure:
 - Keep structure reasonable: 2-5 spaces for small businesses, up to 7 for larger ones
 - Use ClickUp naming conventions from the templates database
 - Tailor the structure to the specific business, don't just copy a generic template
-- Include statuses that reflect real workflow stages for each list type
+- Include statuses that reflect real workflow stages for each list type (these are recommendations for manual setup, not auto-created)
+- PREFER consistent statuses across lists in the same space, since ClickUp space-level statuses cascade to all lists. Only vary statuses per-list when the workflow genuinely differs.
 - Include 5-10 recommended_tags that match the business type (use lowercase kebab-case names)
 - Include 2-5 recommended_docs with starter templates relevant to their workflows
 - Only include recommended_goals if the business context suggests them (e.g. user mentioned targets, deadlines, quarterly plans). Omit the field entirely if goals are not relevant.`);

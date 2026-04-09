@@ -1,7 +1,9 @@
 // ---------------------------------------------------------------------------
 // B-075: Setup Execution Engine
 // Automated creation of approved workspace items via ClickUp API.
-// Creates Spaces, Folders, Lists, Statuses in dependency order.
+// Creates Spaces, Folders, Lists in dependency order.
+// NOTE: Statuses cannot be created via API - they are inherited from
+// parent Spaces and must be configured manually by the user.
 // ---------------------------------------------------------------------------
 
 import { ClickUpClient, ClickUpApiError } from "@/lib/clickup/client";
@@ -239,7 +241,7 @@ export async function executeSetupPlan(
           markSkipped(item);
         } else {
           try {
-            const list = await withRetry(() => createListWithStatuses(client, folderId, listPlan));
+            const list = await withRetry(() => createListInFolder(client, folderId, listPlan));
             createdListIds.push(list.id);
             await upsertCachedLists(workspaceId, [list]);
             markSuccess(item, list.id);
@@ -278,7 +280,7 @@ export async function executeSetupPlan(
         markSkipped(item);
       } else {
         try {
-          const list = await withRetry(() => createFolderlessListWithStatuses(client, spaceId, listPlan));
+          const list = await withRetry(() => createFolderlessList(client, spaceId, listPlan));
           createdListIds.push(list.id);
           await upsertCachedLists(workspaceId, [list]);
           markSuccess(item, list.id);
@@ -804,58 +806,14 @@ async function getTeamId(client: ClickUpClient): Promise<string> {
 }
 
 /**
- * Build the status payload for updating a list's statuses via PUT.
+ * Create a list inside a folder via the ClickUp API.
  *
- * ClickUp's Create List API does NOT support setting custom statuses -
- * the `statuses` field is silently ignored during creation. Custom statuses
- * must be set via PUT /list/{list_id} AFTER the list is created.
- *
- * ClickUp requires:
- * - At least one status with type "open"
- * - At least one status with type "closed" (not "done" - "done" is a separate category)
- * - Intermediate statuses use type "custom" (not "active")
+ * NOTE: The ClickUp API does NOT support creating or modifying task statuses
+ * programmatically. New lists inherit statuses from their parent Space/Folder.
+ * Status recommendations from the plan are shown to the user as a post-build
+ * manual setup step.
  */
-function buildStatusesPayload(statuses: ListPlan['statuses']): Array<{
-  status: string;
-  color: string;
-  type: string;
-  orderindex: number;
-}> {
-  const mapped = statuses.map((s, index) => ({
-    status: s.name,
-    color: s.color,
-    type: s.type === 'active' ? 'custom' : s.type,
-    orderindex: index,
-  }));
-
-  // Ensure we have a "closed" type status - ClickUp requires it.
-  // If the plan only has "done" but no "closed", convert the last "done" to "closed".
-  const hasClosed = mapped.some(s => s.type === 'closed');
-  if (!hasClosed) {
-    const lastDone = [...mapped].reverse().find(s => s.type === 'done');
-    if (lastDone) {
-      lastDone.type = 'closed';
-    } else {
-      // No done or closed - add a closed status at the end
-      mapped.push({
-        status: 'Complete',
-        color: '#6bc950',
-        type: 'closed',
-        orderindex: mapped.length,
-      });
-    }
-  }
-
-  return mapped;
-}
-
-/**
- * Create a list inside a folder via the ClickUp API, then set custom statuses.
- *
- * ClickUp's Create List endpoint ignores the `statuses` field, so we create
- * the list first, then immediately update it with custom statuses via PUT.
- */
-async function createListWithStatuses(
+async function createListInFolder(
   client: ClickUpClient,
   folderId: string,
   listPlan: ListPlan
@@ -863,31 +821,16 @@ async function createListWithStatuses(
   const body: Record<string, unknown> = { name: listPlan.name };
   if (listPlan.description) body.content = listPlan.description;
 
-  const list = await client.post<ClickUpList>(`/folder/${folderId}/list`, body);
-
-  // Set custom statuses via PUT (the only way that works)
-  if (listPlan.statuses && listPlan.statuses.length > 0) {
-    try {
-      const updated = await client.put<ClickUpList>(`/list/${list.id}`, {
-        override_statuses: true,
-        statuses: buildStatusesPayload(listPlan.statuses),
-      });
-      return updated;
-    } catch (err) {
-      console.error(`[setup/executor] Failed to set statuses on list "${listPlan.name}":`, err);
-      // Return the list even if status update failed - the list itself was created
-      return list;
-    }
-  }
-
-  return list;
+  return client.post<ClickUpList>(`/folder/${folderId}/list`, body);
 }
 
 /**
- * Create a folderless list directly in a space via the ClickUp API,
- * then set custom statuses.
+ * Create a folderless list directly in a space via the ClickUp API.
+ *
+ * Lists inherit statuses from the parent Space automatically.
+ * Custom statuses must be configured manually in ClickUp.
  */
-async function createFolderlessListWithStatuses(
+async function createFolderlessList(
   client: ClickUpClient,
   spaceId: string,
   listPlan: ListPlan
@@ -895,21 +838,5 @@ async function createFolderlessListWithStatuses(
   const body: Record<string, unknown> = { name: listPlan.name };
   if (listPlan.description) body.content = listPlan.description;
 
-  const list = await client.post<ClickUpList>(`/space/${spaceId}/list`, body);
-
-  // Set custom statuses via PUT (the only way that works)
-  if (listPlan.statuses && listPlan.statuses.length > 0) {
-    try {
-      const updated = await client.put<ClickUpList>(`/list/${list.id}`, {
-        override_statuses: true,
-        statuses: buildStatusesPayload(listPlan.statuses),
-      });
-      return updated;
-    } catch (err) {
-      console.error(`[setup/executor] Failed to set statuses on list "${listPlan.name}":`, err);
-      return list;
-    }
-  }
-
-  return list;
+  return client.post<ClickUpList>(`/space/${spaceId}/list`, body);
 }
