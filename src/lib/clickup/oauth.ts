@@ -234,16 +234,10 @@ export async function getAccessToken(
         return newTokens.access_token;
       } catch (refreshError) {
         console.error("Failed to refresh ClickUp token:", refreshError);
-
-        // Mark workspace as disconnected
-        await supabase
-          .from("workspaces")
-          .update({
-            clickup_connected: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", workspaceId);
-
+        // Return null to signal the token is unavailable, but do NOT mark
+        // workspace as disconnected. The token may still be valid (ClickUp
+        // tokens often don't expire), and setting clickup_connected=false
+        // permanently breaks the connection for all other code paths.
         return null;
       }
     }
@@ -278,5 +272,3 @@ export async function disconnectClickUp(
   }
 }
 
-// Re-export encryption utilities for backwards compatibility
-export { encryptToken, decryptToken } from "@/lib/clickup/encryption";

@@ -131,7 +131,7 @@ export async function moveTask(
     const client = new ClickUpClient(workspaceId);
 
     // ClickUp move task API: POST /list/{list_id}/task/{task_id}
-    const task = await client.post<ClickUpTask>(
+    await client.post<ClickUpTask>(
       `/list/${targetListId}/task/${taskId}`
     );
 
