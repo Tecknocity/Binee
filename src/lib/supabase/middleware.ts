@@ -37,10 +37,14 @@ function buildCookieClearResponse(request: NextRequest): NextResponse {
 
 export async function updateSession(request: NextRequest) {
   // --- Cookie size guard ---
-  // Vercel's 494 fires at ~16KB per header. We bail at 12KB to leave
-  // headroom for other headers the browser sends (User-Agent, etc.).
+  // Vercel's 494 fires at ~16KB per header. We use a HIGH threshold (15KB)
+  // so this is truly a last resort. The client-side AuthProvider proactively
+  // trims user_metadata and refreshes the session, which shrinks cookies
+  // from ~14KB to ~4KB. If we set this threshold too low (e.g. 12KB), we
+  // redirect the user to clear-session BEFORE the client-side trim has a
+  // chance to run, creating a redirect loop.
   const cookieSize = estimateCookieHeaderSize(request);
-  if (cookieSize > 12_000) {
+  if (cookieSize > 15_000) {
     console.warn(
       `[middleware] Cookie header is ${cookieSize} bytes - clearing to prevent 494`,
     );

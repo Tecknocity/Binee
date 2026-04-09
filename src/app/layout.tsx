@@ -29,11 +29,14 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@700;800;900&display=swap" rel="stylesheet" />
         {/* Client-side cookie size guard: runs before React hydration.
-            If cookies are approaching Vercel's 16KB header limit, clear
-            all auth cookies immediately to prevent 494 lockout. */}
+            Only fires at 15.5KB - right before Vercel's 16KB 494 limit.
+            This is a LAST RESORT. The AuthProvider proactively trims metadata
+            and refreshes the session (shrinking cookies from ~14KB to ~4KB).
+            Setting this threshold too low causes a redirect loop because
+            cookies get cleared before the trim has a chance to run. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var c=document.cookie;if(c.length>13000){var all=c.split(";");for(var i=0;i<all.length;i++){var n=all[i].split("=")[0].trim();if(n.startsWith("sb-")){document.cookie=n+"=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";document.cookie=n+"=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain="+location.hostname;document.cookie=n+"=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=."+location.hostname}}try{Object.keys(localStorage).forEach(function(k){if(k.startsWith("sb-")||k.includes("supabase"))localStorage.removeItem(k)});Object.keys(sessionStorage).forEach(function(k){if(k.startsWith("sb-")||k.includes("supabase"))sessionStorage.removeItem(k)})}catch(e){}if(location.pathname!=="/login"){location.href="/login"}}}catch(e){}})();`,
+            __html: `(function(){try{var c=document.cookie;if(c.length>15500){var all=c.split(";");for(var i=0;i<all.length;i++){var n=all[i].split("=")[0].trim();if(n.startsWith("sb-")){document.cookie=n+"=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";document.cookie=n+"=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain="+location.hostname;document.cookie=n+"=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=."+location.hostname}}try{Object.keys(localStorage).forEach(function(k){if(k.startsWith("sb-")||k.includes("supabase"))localStorage.removeItem(k)});Object.keys(sessionStorage).forEach(function(k){if(k.startsWith("sb-")||k.includes("supabase"))sessionStorage.removeItem(k)})}catch(e){}if(location.pathname!=="/login"){location.href="/login"}}}catch(e){}})();`,
           }}
         />
       </head>
