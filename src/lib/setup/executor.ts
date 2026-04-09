@@ -513,6 +513,134 @@ export async function executeSetupPlan(
 }
 
 // ---------------------------------------------------------------------------
+// Reconciliation: delete items from previous builds that are no longer in plan
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute items that Binee previously created but are no longer in the new plan.
+ * These are candidates for deletion (with user confirmation).
+ *
+ * Only considers structural items (spaces, folders, lists) - not tags/docs/goals
+ * since those are additive and low-risk.
+ */
+export function computeItemsToDelete(
+  previouslyBuiltItems: ExecutionItem[],
+  newPlan: SetupPlan,
+): ExecutionItem[] {
+  // Build a set of item keys from the new plan for fast lookup
+  const newPlanKeys = new Set<string>();
+
+  for (const space of newPlan.spaces) {
+    newPlanKeys.add(itemKey('space', space.name));
+
+    if (space.lists) {
+      for (const list of space.lists) {
+        newPlanKeys.add(itemKey('list', list.name, space.name));
+      }
+    }
+
+    for (const folder of space.folders) {
+      newPlanKeys.add(itemKey('folder', folder.name, space.name));
+      for (const list of folder.lists) {
+        newPlanKeys.add(itemKey('list', list.name, folder.name));
+      }
+    }
+  }
+
+  // Find items that Binee created but are not in the new plan
+  const toDelete: ExecutionItem[] = [];
+  for (const item of previouslyBuiltItems) {
+    // Only consider structural items with clickup IDs
+    if (!item.clickupId) continue;
+    if (!['space', 'folder', 'list'].includes(item.type)) continue;
+
+    const key = itemKey(item.type, item.name, item.parentName);
+    if (!newPlanKeys.has(key)) {
+      toDelete.push(item);
+    }
+  }
+
+  return toDelete;
+}
+
+/** Create a case-insensitive lookup key for plan items */
+function itemKey(type: string, name: string, parentName?: string): string {
+  const n = name.toLowerCase().trim();
+  const p = parentName ? parentName.toLowerCase().trim() : '';
+  return `${type}:${p}/${n}`;
+}
+
+/**
+ * Delete items from ClickUp that were created by Binee in a previous build
+ * but are no longer in the current plan. Deletes in reverse dependency order:
+ * lists first, then folders, then spaces.
+ *
+ * Returns execution items with the result of each deletion.
+ */
+export async function deleteRemovedItems(
+  itemsToDelete: ExecutionItem[],
+  workspaceId: string,
+  onProgress?: ExecutionProgressCallback,
+): Promise<ExecutionItem[]> {
+  if (itemsToDelete.length === 0) return [];
+
+  const client = new ClickUpClient(workspaceId);
+  const results: ExecutionItem[] = [];
+  let completed = 0;
+  const total = itemsToDelete.length;
+
+  // Sort: lists first, then folders, then spaces (reverse dependency order)
+  const typeOrder: Record<string, number> = { list: 0, folder: 1, space: 2 };
+  const sorted = [...itemsToDelete].sort(
+    (a, b) => (typeOrder[a.type] ?? 3) - (typeOrder[b.type] ?? 3)
+  );
+
+  for (const item of sorted) {
+    const resultItem: ExecutionItem = {
+      type: item.type,
+      name: item.name,
+      parentName: item.parentName,
+      status: 'pending',
+      clickupId: item.clickupId,
+    };
+
+    try {
+      if (!item.clickupId) {
+        resultItem.status = 'skipped';
+        resultItem.error = 'No ClickUp ID available';
+      } else {
+        switch (item.type) {
+          case 'list':
+            await withRetry(() => client.deleteList(item.clickupId!));
+            break;
+          case 'folder':
+            await withRetry(() => client.deleteFolder(item.clickupId!));
+            break;
+          case 'space':
+            await withRetry(() => client.deleteSpace(item.clickupId!));
+            break;
+        }
+        resultItem.status = 'success';
+      }
+    } catch (err) {
+      resultItem.status = 'error';
+      if (err instanceof ClickUpApiError && err.statusCode === 404) {
+        // Already deleted - treat as success
+        resultItem.status = 'success';
+      } else {
+        resultItem.error = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    results.push(resultItem);
+    completed++;
+    onProgress?.(resultItem, { completed, total });
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -611,9 +739,16 @@ function markSuccess(item: ExecutionItem, clickupId: string): void {
 function markError(item: ExecutionItem, err: unknown, planTier?: string): void {
   item.status = "error";
   if (err instanceof ClickUpApiError) {
+    // Pass the actual ClickUp response body for accurate error classification,
+    // not the generic "ClickUp API error: 403 Forbidden" message
+    const errorBody = typeof err.response === 'string'
+      ? err.response
+      : err.response
+        ? JSON.stringify(err.response)
+        : err.message;
     const classified = classifyClickUpError(
       err.statusCode,
-      err.message,
+      errorBody,
       item.type,
       planTier,
     );
@@ -734,6 +869,7 @@ async function createListWithStatuses(
   if (listPlan.statuses && listPlan.statuses.length > 0) {
     try {
       const updated = await client.put<ClickUpList>(`/list/${list.id}`, {
+        override_statuses: true,
         statuses: buildStatusesPayload(listPlan.statuses),
       });
       return updated;
@@ -765,6 +901,7 @@ async function createFolderlessListWithStatuses(
   if (listPlan.statuses && listPlan.statuses.length > 0) {
     try {
       const updated = await client.put<ClickUpList>(`/list/${list.id}`, {
+        override_statuses: true,
         statuses: buildStatusesPayload(listPlan.statuses),
       });
       return updated;

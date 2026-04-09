@@ -197,6 +197,8 @@ export function classifyClickUpError(
   itemType?: string,
   planTier?: string,
 ): ClassifiedError {
+  const bodyLower = (errorBody || '').toLowerCase();
+
   // 401 - Authentication expired
   if (statusCode === 401) {
     return {
@@ -209,6 +211,21 @@ export function classifyClickUpError(
 
   // 403 - Permission or plan limitation
   if (statusCode === 403) {
+    // Check the error body for specific limit/plan-related messages from ClickUp
+    if (bodyLower.includes('limit') || bodyLower.includes('maximum') || bodyLower.includes('upgrade') || bodyLower.includes('plan')) {
+      const caps = planTier ? getPlanCapabilities(planTier) : null;
+      const planLabel = caps?.label || 'current';
+      const itemLabel = itemType
+        ? itemType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') + 's'
+        : 'items';
+      return {
+        type: 'plan_limitation',
+        message: `${itemLabel} limit reached on ${planLabel} plan`,
+        detail: `You've reached the maximum number of ${itemLabel.toLowerCase()} allowed on your ${planLabel} ClickUp plan. Upgrade your plan at clickup.com/pricing or remove existing ${itemLabel.toLowerCase()} to free up space.`,
+        userResolvable: true,
+      };
+    }
+
     // Check if this is a plan limitation vs a permission issue
     if (itemType && planTier && !isItemTypeSupported(itemType, planTier)) {
       const caps = getPlanCapabilities(planTier);
@@ -223,6 +240,17 @@ export function classifyClickUpError(
         userResolvable: true,
       };
     }
+
+    // Check for specific ClickUp permission messages in error body
+    if (bodyLower.includes('guest') || bodyLower.includes('admin') || bodyLower.includes('owner')) {
+      return {
+        type: 'permission',
+        message: 'Insufficient ClickUp role',
+        detail: 'This action requires admin or owner permissions in your ClickUp workspace. Ask your workspace owner to grant you the necessary role.',
+        userResolvable: true,
+      };
+    }
+
     return {
       type: 'permission',
       message: 'ClickUp permission denied',
@@ -262,7 +290,6 @@ export function classifyClickUpError(
   }
 
   // Check error body for common messages
-  const bodyLower = (errorBody || '').toLowerCase();
   if (bodyLower.includes('oauth') || bodyLower.includes('token')) {
     return {
       type: 'auth_expired',
