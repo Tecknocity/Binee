@@ -176,13 +176,21 @@ const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string 
 
 /**
  * Build a context-aware fallback message when the AI API call fails.
+ * If a plan has already been generated, acknowledge the user's feedback.
  * If the profile form already has data (industry, services, team size, etc.),
  * acknowledge that context instead of re-asking about it.
  */
 function buildContextAwareFallback(
   msgIdx: number,
   profileData: ProfileFormData | null | undefined,
+  hasPlan?: boolean,
 ): string {
+  // If a plan has already been generated, the user is likely giving feedback
+  // about the structure - don't ask discovery questions
+  if (hasPlan) {
+    return "I understand you'd like to make changes to the workspace structure. You can describe what you'd like to adjust, or click **\"Generate Structure\"** to regenerate the plan with your feedback included.";
+  }
+
   const hasProfile = profileData && (profileData.industry || profileData.services || profileData.teamSize || profileData.workStyle);
 
   if (hasProfile) {
@@ -347,7 +355,8 @@ export function useSetup(): UseSetupReturn {
   const profileFormData = storeState?.profileFormData ?? null;
   const storedMessages = storeState?.chatMessages ?? [];
   const businessDescription = storeState?.businessDescription ?? '';
-  const messageCount = storeState?.messageCount ?? 0;
+  // messageCount from store is no longer used directly — sendMessage derives
+  // the fallback index from actual chatMessages to avoid count drift.
   const proposedPlan = storeState?.proposedPlan ?? null;
   const existingStructure = storeState?.existingStructure ?? null;
   const manualSteps = storeState?.manualSteps ?? [];
@@ -752,15 +761,15 @@ export function useSetup(): UseSetupReturn {
       if (!msg.trim() || isSending) return;
 
       addMessage('user', msg);
-      store?.getState().setBusinessDescription(businessDescription ? `${businessDescription}\n${msg}` : msg);
       setIsSending(true);
 
-      const idx = messageCount;
-      store?.getState().incrementMessageCount();
-
-      // Include proposed plan and profile data so the AI retains full context
-      const currentPlan = store?.getState().proposedPlan;
-      const currentProfile = store?.getState().profileFormData;
+      // Read ALL live values from the store to avoid stale closures
+      const state = store?.getState();
+      const liveConversationId = state?.conversationId ?? conversationId;
+      const currentPlan = state?.proposedPlan;
+      const currentProfile = state?.profileFormData;
+      // Derive message index from actual stored messages (not an independent counter)
+      const userMsgCount = (state?.chatMessages ?? []).filter(m => m.role === 'user').length;
 
       try {
         const response = await fetchWithTimeout('/api/setup/chat', {
@@ -768,7 +777,7 @@ export function useSetup(): UseSetupReturn {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workspace_id,
-            conversation_id: conversationId,
+            conversation_id: liveConversationId,
             message: msg,
             workspace_analysis: fullAnalysisContext,
             proposed_plan: currentPlan ?? undefined,
@@ -784,18 +793,23 @@ export function useSetup(): UseSetupReturn {
             setIsSending(false);
             return;
           }
+          console.error('[setup/sendMessage] API returned ok but empty content');
+        } else {
+          console.error('[setup/sendMessage] API returned status', response.status);
         }
-      } catch {
-        // Fall through to guided fallback
+      } catch (err) {
+        console.error('[setup/sendMessage] API call failed:', err);
       }
 
-      // Build context-aware fallback: skip questions about data already in the profile form
-      const fallbackQuestion = buildContextAwareFallback(idx, currentProfile);
+      // Build context-aware fallback: account for plan state and profile data
+      const hasPlan = !!(currentPlan?.spaces?.length);
+      const fallbackIdx = Math.max(0, userMsgCount - 1);
+      const fallbackQuestion = buildContextAwareFallback(fallbackIdx, currentProfile, hasPlan);
       await new Promise((r) => setTimeout(r, 800 + Math.random() * 600));
       addMessage('assistant', fallbackQuestion);
       setIsSending(false);
     },
-    [addMessage, isSending, messageCount, workspace_id, conversationId, businessDescription, fullAnalysisContext, store]
+    [addMessage, isSending, workspace_id, conversationId, fullAnalysisContext, store]
   );
 
   const generateStructure = useCallback(async () => {
@@ -1169,9 +1183,15 @@ export function useSetup(): UseSetupReturn {
       addMessage('user', feedback);
       setIsSending(true);
 
+      // Read live values from store to avoid stale closures
+      const state = store?.getState();
+      const liveConversationId = state?.conversationId ?? conversationId;
+      const livePlan = state?.proposedPlan ?? proposedPlan;
+      const liveProfile = state?.profileFormData ?? profileFormData;
+
       // Build rich context so the AI doesn't start fresh
-      const previousPlanSummary = proposedPlan
-        ? `\n\nPREVIOUS WORKSPACE STRUCTURE (what was generated):\n${proposedPlan.spaces.map(s =>
+      const previousPlanSummary = livePlan
+        ? `\n\nPREVIOUS WORKSPACE STRUCTURE (what was generated):\n${livePlan.spaces.map(s =>
             `Space: ${s.name}\n${s.folders.map(f =>
               `  Folder: ${f.name}\n${f.lists.map(l =>
                 `    List: ${l.name} (statuses: ${l.statuses.map(st => st.name).join(', ')})`
@@ -1180,8 +1200,8 @@ export function useSetup(): UseSetupReturn {
           ).join('\n')}\n\nThe user has already reviewed this structure and wants to make changes. Do NOT ask them to describe their business again. Ask specifically what they want to change about the structure above.`
         : '';
 
-      const profileContext = profileFormData
-        ? `\n\nUSER PROFILE (already collected, do NOT re-ask):\n- Industry: ${profileFormData.industry}\n- Work style: ${profileFormData.workStyle}\n- Services: ${profileFormData.services}\n- Team size: ${profileFormData.teamSize}`
+      const profileContext = liveProfile
+        ? `\n\nUSER PROFILE (already collected, do NOT re-ask):\n- Industry: ${liveProfile.industry}\n- Work style: ${liveProfile.workStyle}\n- Services: ${liveProfile.services}\n- Team size: ${liveProfile.teamSize}`
         : '';
 
       try {
@@ -1190,25 +1210,30 @@ export function useSetup(): UseSetupReturn {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workspace_id,
-            conversation_id: conversationId,
+            conversation_id: liveConversationId,
             message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}${previousPlanSummary}${profileContext}`,
             workspace_analysis: fullAnalysisContext,
+            proposed_plan: livePlan ?? undefined,
+            profile_data: liveProfile ?? undefined,
           }),
         });
 
         if (response.ok) {
           const data = await response.json();
           if (data.content) { addMessage('assistant', data.content); setIsSending(false); return; }
+          console.error('[setup/requestChanges] API returned ok but empty content');
+        } else {
+          console.error('[setup/requestChanges] API returned status', response.status);
         }
-      } catch {
-        // Fall through to fallback
+      } catch (err) {
+        console.error('[setup/requestChanges] API call failed:', err);
       }
 
       await new Promise((r) => setTimeout(r, 800));
       addMessage('assistant', "I have your previous structure in mind. What specific changes would you like to make? You can ask me to add, remove, or rename spaces, folders, lists, or statuses.\n\nClick **\"Generate Structure\"** when you're ready to see the updated plan.");
       setIsSending(false);
     },
-    [addMessage, workspace_id, conversationId, fullAnalysisContext, setCurrentStep, proposedPlan, profileFormData]
+    [addMessage, workspace_id, conversationId, fullAnalysisContext, setCurrentStep, proposedPlan, profileFormData, store]
   );
 
   const markStepComplete = useCallback(async (stepIndex: number) => {
