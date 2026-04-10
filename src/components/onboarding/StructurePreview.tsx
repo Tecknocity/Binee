@@ -25,7 +25,7 @@ import {
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
 import type { ExecutionItem } from '@/lib/setup/executor';
-import { getUnsupportedFeatures, getPlanCapabilities } from '@/lib/clickup/plan-capabilities';
+import { getUnsupportedFeatures, getPlanCapabilities, getPlanLimits } from '@/lib/clickup/plan-capabilities';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -43,6 +43,8 @@ interface StructurePreviewProps {
   planTier?: string;
   /** Items from previous builds that will be removed (not in current plan) */
   itemsToDelete?: ExecutionItem[];
+  /** Existing workspace items NOT in the plan (user can choose to delete) */
+  existingItemsNotInPlan?: ExecutionItem[];
   /** Approve with user-selected deletions. Receives the checked items. */
   onApproveWithDeletions?: (selectedItems: ExecutionItem[]) => void;
   /** Approve but skip deletions (keep old items) */
@@ -53,18 +55,21 @@ interface StructurePreviewProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, onApproveWithDeletions, onApproveSkipDeletions }: StructurePreviewProps) {
+export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, existingItemsNotInPlan, onApproveWithDeletions, onApproveSkipDeletions }: StructurePreviewProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const hasDeletions = itemsToDelete && itemsToDelete.length > 0;
+  const hasBineeDeletions = itemsToDelete && itemsToDelete.length > 0;
+  const hasExistingExtras = existingItemsNotInPlan && existingItemsNotInPlan.length > 0;
 
-  // Track which items the user has UNCHECKED (all are checked by default).
-  // When the user opens the dialog, everything is selected. They uncheck
-  // items they want to keep.
+  // Track which items the user has UNCHECKED (all Binee items checked by
+  // default, all existing extras UNchecked by default - safe default).
   const [uncheckedItems, setUncheckedItems] = useState<Set<string>>(new Set());
+  // Existing workspace items the user explicitly CHECKED for deletion
+  const [checkedExistingItems, setCheckedExistingItems] = useState<Set<string>>(new Set());
 
-  // Reset unchecked state whenever the dialog opens
+  // Reset selection state whenever the dialog opens
   const handleShowDeleteConfirm = () => {
     setUncheckedItems(new Set());
+    setCheckedExistingItems(new Set());
     setShowDeleteConfirm(true);
   };
 
@@ -81,20 +86,52 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
     });
   };
 
-  const isItemChecked = (item: ExecutionItem) => {
+  const toggleExistingItem = (item: ExecutionItem) => {
+    const key = item.clickupId ?? `${item.type}:${item.name}`;
+    setCheckedExistingItems(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const isBineeItemChecked = (item: ExecutionItem) => {
     const key = item.clickupId ?? `${item.type}:${item.name}`;
     return !uncheckedItems.has(key);
   };
 
+  const isExistingItemChecked = (item: ExecutionItem) => {
+    const key = item.clickupId ?? `${item.type}:${item.name}`;
+    return checkedExistingItems.has(key);
+  };
+
+  // Combine all items selected for deletion (Binee-built + user-selected existing)
   const selectedDeletionItems = useMemo(() => {
-    if (!itemsToDelete) return [];
-    return itemsToDelete.filter(i => isItemChecked(i));
+    const bineeSelected = (itemsToDelete ?? []).filter(i => isBineeItemChecked(i));
+    const existingSelected = (existingItemsNotInPlan ?? []).filter(i => isExistingItemChecked(i));
+    return [...bineeSelected, ...existingSelected];
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsToDelete, uncheckedItems]);
+  }, [itemsToDelete, existingItemsNotInPlan, uncheckedItems, checkedExistingItems]);
 
   const totalTasksInSelection = useMemo(() => {
     return selectedDeletionItems.reduce((sum, i) => sum + (i.taskCount ?? 0), 0);
   }, [selectedDeletionItems]);
+
+  // Plan limit analysis
+  const planLimits = planTier ? getPlanLimits(planTier) : null;
+  const existingSpaceCount = existingStructure?.spaces?.length ?? 0;
+  const newSpaceCount = plan.spaces.filter(s => {
+    const sName = s.name.toLowerCase();
+    return !existingStructure?.spaces?.some(es => es.name.toLowerCase() === sName);
+  }).length;
+  const totalSpacesAfterBuild = existingSpaceCount + newSpaceCount;
+  const spaceLimitExceeded = planLimits?.maxSpaces != null && totalSpacesAfterBuild > planLimits.maxSpaces;
+  const spaceSlotsNeeded = spaceLimitExceeded ? totalSpacesAfterBuild - (planLimits?.maxSpaces ?? 0) : 0;
+  const hasDeletions = hasBineeDeletions || hasExistingExtras;
   // Count totals for summary
   let totalFolders = 0;
   let totalLists = 0;
@@ -353,6 +390,42 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
           )}
         </p>
       </div>
+
+      {/* Space limit warning */}
+      {spaceLimitExceeded && (
+        <div className="mb-3 shrink-0 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-red-400">
+              Your {planCaps?.label ?? 'Free'} plan allows {planLimits?.maxSpaces} spaces
+            </p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              Your workspace has {existingSpaceCount} space{existingSpaceCount !== 1 ? 's' : ''} and
+              this plan needs {newSpaceCount} new one{newSpaceCount !== 1 ? 's' : ''}.
+              You will need to remove at least {spaceSlotsNeeded} existing space{spaceSlotsNeeded !== 1 ? 's' : ''} before building.
+              Click &quot;Approve &amp; Build&quot; to manage your existing items.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Existing items notice (no space limit exceeded, but items exist outside the plan) */}
+      {!spaceLimitExceeded && hasExistingExtras && (
+        <div className="mb-3 shrink-0 bg-accent/5 border border-accent/15 rounded-xl p-3 flex items-start gap-2.5">
+          <FolderOpen className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-accent">
+              Your workspace has existing items
+            </p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {existingItemsNotInPlan!.filter(i => i.type === 'space').length > 0
+                ? `${existingItemsNotInPlan!.filter(i => i.type === 'space').length} space${existingItemsNotInPlan!.filter(i => i.type === 'space').length !== 1 ? 's' : ''} in your workspace are not part of this plan. `
+                : ''}
+              Click &quot;Approve &amp; Build&quot; to review and choose which items to keep or remove.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Status manual setup info */}
       {totalStatuses > 0 && (
@@ -675,55 +748,132 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
         )}
       </div>
 
-      {/* Deletion confirmation dialog */}
-      {showDeleteConfirm && hasDeletions && (
-        <div className="bg-warning/5 border border-warning/20 rounded-xl p-4 mt-2">
-          <div className="flex items-start gap-2.5 mb-3">
-            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-warning mb-1">Items to remove from ClickUp</p>
-              <p className="text-xs text-text-secondary mb-2">
-                These items were created by Binee in a previous build but are no longer in the updated structure.
-                Uncheck any items you want to keep.
-              </p>
+      {/* Reconciliation / deletion confirmation dialog */}
+      {showDeleteConfirm && (hasDeletions || spaceLimitExceeded) && (
+        <div className="bg-surface-elevated border border-border rounded-xl p-4 mt-2 space-y-4">
+          {/* Plan limit warning */}
+          {spaceLimitExceeded && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-400">
+                    Space limit will be exceeded
+                  </p>
+                  <p className="text-xs text-red-400/80 mt-1">
+                    Your workspace has {existingSpaceCount} space{existingSpaceCount !== 1 ? 's' : ''} and
+                    the plan wants to create {newSpaceCount} new one{newSpaceCount !== 1 ? 's' : ''}.
+                    Your {planCaps?.label ?? 'Free'} plan allows {planLimits?.maxSpaces} spaces.
+                    Delete at least {spaceSlotsNeeded} existing space{spaceSlotsNeeded !== 1 ? 's' : ''} below to make room,
+                    or edit the plan to use fewer spaces.
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Per-item checkboxes */}
-          <div className="space-y-1.5 mb-3 ml-7">
-            {itemsToDelete.map((item, i) => {
-              const isChecked = isItemChecked(item);
-              const hasTasksInside = (item.taskCount ?? 0) > 0;
-              return (
-                <label key={i} className="flex items-start gap-2.5 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => toggleDeletionItem(item)}
-                    className="mt-0.5 w-4 h-4 rounded border-border accent-warning cursor-pointer"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className={isChecked ? 'text-text-primary' : 'text-text-muted line-through'}>
-                        {item.parentName ? `${item.parentName} / ` : ''}{item.name}
-                      </span>
-                      <span className="text-[11px] font-medium text-text-muted uppercase">{item.type}</span>
-                    </div>
-                    {hasTasksInside && (
-                      <p className="text-[11px] text-red-400 mt-0.5 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                        Contains {item.taskCount} task{item.taskCount !== 1 ? 's' : ''} that will be permanently deleted
-                      </p>
-                    )}
-                  </div>
-                </label>
-              );
-            })}
-          </div>
+          {/* Section: Existing workspace items NOT in the plan */}
+          {hasExistingExtras && (
+            <div>
+              <div className="flex items-start gap-2.5 mb-2">
+                <FolderOpen className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-text-primary">Existing items not in the new plan</p>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    These items already exist in your workspace but are not part of the proposed structure.
+                    Check items you want to remove to free up space. Unchecked items will be kept.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-1.5 ml-7">
+                {existingItemsNotInPlan!.map((item, i) => {
+                  const isChecked = isExistingItemChecked(item);
+                  const hasTasksInside = (item.taskCount ?? 0) > 0;
+                  return (
+                    <label key={`existing-${i}`} className="flex items-start gap-2.5 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleExistingItem(item)}
+                        className="mt-0.5 w-4 h-4 rounded border-border accent-red-400 cursor-pointer"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className={isChecked ? 'text-red-400' : 'text-text-primary'}>
+                            {item.parentName ? `${item.parentName} / ` : ''}{item.name}
+                          </span>
+                          <span className="text-[11px] font-medium text-text-muted uppercase">{item.type}</span>
+                          {!isChecked && (
+                            <span className="text-[10px] font-medium text-success/70 uppercase">keep</span>
+                          )}
+                          {isChecked && (
+                            <span className="text-[10px] font-medium text-red-400/70 uppercase">delete</span>
+                          )}
+                        </div>
+                        {hasTasksInside && (
+                          <p className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                            Contains {item.taskCount} task{item.taskCount !== 1 ? 's' : ''}
+                            {isChecked && <span className="text-red-400"> - will be permanently deleted</span>}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Section: Binee-created items from previous builds */}
+          {hasBineeDeletions && (
+            <div>
+              <div className="flex items-start gap-2.5 mb-2">
+                <AlertTriangle className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-warning">Items from previous build no longer needed</p>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    These items were created by Binee in a previous build but are no longer in the updated structure.
+                    Uncheck any items you want to keep.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-1.5 ml-7">
+                {itemsToDelete!.map((item, i) => {
+                  const isChecked = isBineeItemChecked(item);
+                  const hasTasksInside = (item.taskCount ?? 0) > 0;
+                  return (
+                    <label key={`binee-${i}`} className="flex items-start gap-2.5 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleDeletionItem(item)}
+                        className="mt-0.5 w-4 h-4 rounded border-border accent-warning cursor-pointer"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className={isChecked ? 'text-text-primary' : 'text-text-muted line-through'}>
+                            {item.parentName ? `${item.parentName} / ` : ''}{item.name}
+                          </span>
+                          <span className="text-[11px] font-medium text-text-muted uppercase">{item.type}</span>
+                        </div>
+                        {hasTasksInside && (
+                          <p className="text-[11px] text-red-400 mt-0.5 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                            Contains {item.taskCount} task{item.taskCount !== 1 ? 's' : ''} that will be permanently deleted
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Warning banner when selected items contain tasks */}
           {totalTasksInSelection > 0 && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3 ml-7">
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 ml-7">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
                 <div>
@@ -739,30 +889,38 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             </div>
           )}
 
+          {/* Action buttons */}
           <div className="flex items-center gap-2 ml-7">
             <button
               onClick={() => {
                 setShowDeleteConfirm(false);
                 onApproveWithDeletions?.(selectedDeletionItems);
               }}
-              disabled={selectedDeletionItems.length === 0}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-warning/90 text-white text-xs font-medium rounded-lg
-                hover:bg-warning transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={selectedDeletionItems.length === 0 && spaceLimitExceeded}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-accent text-white text-xs font-medium rounded-lg
+                hover:bg-accent/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              {selectedDeletionItems.length === 0
-                ? 'Select items to remove'
-                : selectedDeletionItems.length === itemsToDelete.length
-                  ? 'Remove All & Build'
-                  : `Remove ${selectedDeletionItems.length} & Build`}
+              {selectedDeletionItems.length > 0 ? (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Remove {selectedDeletionItems.length} &amp; Build
+                </>
+              ) : (
+                <>
+                  <Rocket className="w-3.5 h-3.5" />
+                  Build
+                </>
+              )}
             </button>
-            <button
-              onClick={() => { setShowDeleteConfirm(false); onApproveSkipDeletions?.(); }}
-              className="px-4 py-1.5 text-xs font-medium text-text-secondary border border-border rounded-lg
-                hover:bg-surface-hover transition-colors"
-            >
-              Keep All &amp; Build
-            </button>
+            {!spaceLimitExceeded && (
+              <button
+                onClick={() => { setShowDeleteConfirm(false); onApproveSkipDeletions?.(); }}
+                className="px-4 py-1.5 text-xs font-medium text-text-secondary border border-border rounded-lg
+                  hover:bg-surface-hover transition-colors"
+              >
+                Keep All &amp; Build
+              </button>
+            )}
             <button
               onClick={() => setShowDeleteConfirm(false)}
               className="px-3 py-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
@@ -785,7 +943,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
         </button>
         <button
           onClick={() => {
-            if (hasDeletions) {
+            if (hasDeletions || spaceLimitExceeded) {
               handleShowDeleteConfirm();
             } else {
               onApprove();
