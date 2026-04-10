@@ -120,7 +120,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
       return `[${label}]: ${(c.summary as string).slice(0, 200)}`;
     });
 
-  let systemPrompt = buildSetupperPrompt(workspaceAnalysis, input.templates, input.planTier);
+  let systemPrompt = buildSetupperPrompt(workspaceAnalysis, input.templates, input.planTier, input.profileData);
   if (userMemories) systemPrompt += `\n\n${userMemories}`;
   if (crossChatLines.length > 0) {
     systemPrompt += `\n\nCONTEXT FROM OTHER CONVERSATIONS:\nThe user has had other recent interactions. Use for continuity, but do not reference unless relevant:\n${crossChatLines.join('\n')}`;
@@ -143,19 +143,8 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     systemPrompt += `\n\nPREVIOUSLY GENERATED WORKSPACE PLAN (the user has already seen this structure):\n${planSummary}${input.proposedPlan.reasoning ? `\nReasoning: ${input.proposedPlan.reasoning}` : ''}${input.proposedPlan.clickApps?.length ? `\nRecommended ClickApps: ${input.proposedPlan.clickApps.join(', ')}` : ''}\n\nIMPORTANT: The user is coming back from reviewing this plan. Reference THIS specific structure when they ask about changes. Do NOT generate a new structure from scratch or claim you don't know what was proposed.`;
   }
 
-  // Include profile data so the AI doesn't re-ask for already collected info
-  if (input.profileData) {
-    const { industry, workStyle, services, teamSize } = input.profileData;
-    const parts = [
-      industry && `Industry: ${industry}`,
-      workStyle && `Work style: ${workStyle}`,
-      services && `Services/Products: ${services}`,
-      teamSize && `Team size: ${teamSize}`,
-    ].filter(Boolean);
-    if (parts.length > 0) {
-      systemPrompt += `\n\nUSER PROFILE (already collected, do NOT re-ask for this information):\n${parts.join('\n')}`;
-    }
-  }
+  // Profile data is now injected at the TOP of the system prompt via buildSetupperPrompt()
+  // to ensure the AI anchors its recommendations to the user's business identity.
 
   // Step 3: Get read-only tools for the Setupper to gather workspace context.
   // Write operations (create spaces/folders/lists) are handled by the separate

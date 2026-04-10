@@ -35,6 +35,8 @@ interface PlanContext {
   conversationContext?: string;
   previousPlan?: Record<string, unknown>;
   planHistorySummary?: string;
+  /** Template content from the ai_knowledge_base for reference */
+  templates?: string;
 }
 
 /**
@@ -136,6 +138,19 @@ These are all previously generated plans. The user may reference them by version
 ${planContext.planHistorySummary}`);
   }
 
+  // Inject template knowledge base so the planner can reference proven structures
+  if (planContext?.templates) {
+    parts.push(`## TEMPLATE KNOWLEDGE BASE (reference, not rigid blueprints)
+Search through these templates for structures that match the user's industry and team size. Use them as a starting point, then adapt:
+- Find the best-fit templates for their specific business type
+- If multiple templates match, combine the strongest elements from each
+- ALWAYS scale the structure to their team size (a 2-person company needs fewer lists than a 20-person one)
+- If the user described specific workflows, design statuses around THEIR process, not the template's default
+- Never copy a template blindly. Tailor every space, list, status, and tag to this specific business.
+
+${planContext.templates}`);
+  }
+
   parts.push(`## CURRENT WORKSPACE ANALYSIS
 ${workspaceAnalysis || 'No workspace data yet. This may be a fresh workspace.'}
 
@@ -202,8 +217,8 @@ Return a single JSON object with this exact structure:
 - Each list must have at least 2 statuses: minimum one "open" type and one "done" or "closed" type
 - Status colors must be valid hex codes
 - Keep structure reasonable: 2-5 spaces for small businesses, up to 7 for larger ones
-- Use ClickUp naming conventions from the templates database
-- Tailor the structure to the specific business, don't just copy a generic template
+- Reference the TEMPLATE KNOWLEDGE BASE above to find proven structures for similar businesses, then adapt to this specific user's needs, team size, and workflows
+- NEVER copy a template verbatim. Always tailor the structure to the specific business
 - Include statuses that reflect real workflow stages for each list type (these are recommendations for manual setup, not auto-created)
 - PREFER consistent statuses across lists in the same space, since ClickUp space-level statuses cascade to all lists. Only vary statuses per-list when the workflow genuinely differs.
 - Include 5-10 recommended_tags that match the business type (use lowercase kebab-case names)
