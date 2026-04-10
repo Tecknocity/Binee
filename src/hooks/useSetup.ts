@@ -175,22 +175,16 @@ const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string 
 ];
 
 /**
- * Build a context-aware fallback message when the AI API call fails.
- * If a plan has already been generated, acknowledge the user's feedback.
- * If the profile form already has data (industry, services, team size, etc.),
- * acknowledge that context instead of re-asking about it.
+ * Build a guided fallback message for early discovery (BEFORE plan generation)
+ * when the AI API call fails. Only used when no plan exists yet.
+ *
+ * When a plan DOES exist, callers should show an honest error/retry message
+ * instead of faking an AI response.
  */
 function buildContextAwareFallback(
   msgIdx: number,
   profileData: ProfileFormData | null | undefined,
-  hasPlan?: boolean,
 ): string {
-  // If a plan has already been generated, the user is likely giving feedback
-  // about the structure - don't ask discovery questions
-  if (hasPlan) {
-    return "I understand you'd like to make changes to the workspace structure. You can describe what you'd like to adjust, or click **\"Generate Structure\"** to regenerate the plan with your feedback included.";
-  }
-
   const hasProfile = profileData && (profileData.industry || profileData.services || profileData.teamSize || profileData.workStyle);
 
   if (hasProfile) {
@@ -771,42 +765,57 @@ export function useSetup(): UseSetupReturn {
       // Derive message index from actual stored messages (not an independent counter)
       const userMsgCount = (state?.chatMessages ?? []).filter(m => m.role === 'user').length;
 
-      try {
-        const response = await fetchWithTimeout('/api/setup/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workspace_id,
-            conversation_id: liveConversationId,
-            message: msg,
-            workspace_analysis: fullAnalysisContext,
-            proposed_plan: currentPlan ?? undefined,
-            profile_data: currentProfile ?? undefined,
-            ...(fileContext ? { file_context: fileContext } : {}),
-          }),
-        });
+      const payload = {
+        workspace_id,
+        conversation_id: liveConversationId,
+        message: msg,
+        workspace_analysis: fullAnalysisContext,
+        proposed_plan: currentPlan ?? undefined,
+        profile_data: currentProfile ?? undefined,
+        ...(fileContext ? { file_context: fileContext } : {}),
+      };
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.content) {
-            addMessage('assistant', data.content);
-            setIsSending(false);
-            return;
+      // Try the API call with one automatic retry on failure
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetchWithTimeout('/api/setup/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.content) {
+              addMessage('assistant', data.content);
+              setIsSending(false);
+              return;
+            }
+            console.error(`[setup/sendMessage] API returned ok but empty content (attempt ${attempt + 1})`);
+          } else {
+            console.error(`[setup/sendMessage] API returned status ${response.status} (attempt ${attempt + 1})`);
           }
-          console.error('[setup/sendMessage] API returned ok but empty content');
-        } else {
-          console.error('[setup/sendMessage] API returned status', response.status);
+        } catch (err) {
+          console.error(`[setup/sendMessage] API call failed (attempt ${attempt + 1}):`, err);
         }
-      } catch (err) {
-        console.error('[setup/sendMessage] API call failed:', err);
+
+        // Brief pause before retry
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
       }
 
-      // Build context-aware fallback: account for plan state and profile data
+      // Both attempts failed — show appropriate fallback
       const hasPlan = !!(currentPlan?.spaces?.length);
-      const fallbackIdx = Math.max(0, userMsgCount - 1);
-      const fallbackQuestion = buildContextAwareFallback(fallbackIdx, currentProfile, hasPlan);
-      await new Promise((r) => setTimeout(r, 800 + Math.random() * 600));
-      addMessage('assistant', fallbackQuestion);
+      if (hasPlan) {
+        // After a plan exists, don't fake an AI response. Be honest.
+        addMessage('assistant', "I wasn't able to process that message. Please try again, or click **\"Generate Structure\"** to regenerate the plan with your feedback.");
+      } else {
+        // During early discovery (no plan yet), guided fallback is acceptable
+        const fallbackIdx = Math.max(0, userMsgCount - 1);
+        const fallbackQuestion = buildContextAwareFallback(fallbackIdx, currentProfile);
+        addMessage('assistant', fallbackQuestion);
+      }
       setIsSending(false);
     },
     [addMessage, isSending, workspace_id, conversationId, fullAnalysisContext, store]
@@ -1204,33 +1213,41 @@ export function useSetup(): UseSetupReturn {
         ? `\n\nUSER PROFILE (already collected, do NOT re-ask):\n- Industry: ${liveProfile.industry}\n- Work style: ${liveProfile.workStyle}\n- Services: ${liveProfile.services}\n- Team size: ${liveProfile.teamSize}`
         : '';
 
-      try {
-        const response = await fetchWithTimeout('/api/setup/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workspace_id,
-            conversation_id: liveConversationId,
-            message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}${previousPlanSummary}${profileContext}`,
-            workspace_analysis: fullAnalysisContext,
-            proposed_plan: livePlan ?? undefined,
-            profile_data: liveProfile ?? undefined,
-          }),
-        });
+      const payload = {
+        workspace_id,
+        conversation_id: liveConversationId,
+        message: `I want to revise the proposed workspace structure. Here's my feedback: ${feedback}${previousPlanSummary}${profileContext}`,
+        workspace_analysis: fullAnalysisContext,
+        proposed_plan: livePlan ?? undefined,
+        profile_data: liveProfile ?? undefined,
+      };
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.content) { addMessage('assistant', data.content); setIsSending(false); return; }
-          console.error('[setup/requestChanges] API returned ok but empty content');
-        } else {
-          console.error('[setup/requestChanges] API returned status', response.status);
+      // Try with one automatic retry
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetchWithTimeout('/api/setup/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.content) { addMessage('assistant', data.content); setIsSending(false); return; }
+            console.error(`[setup/requestChanges] API returned ok but empty content (attempt ${attempt + 1})`);
+          } else {
+            console.error(`[setup/requestChanges] API returned status ${response.status} (attempt ${attempt + 1})`);
+          }
+        } catch (err) {
+          console.error(`[setup/requestChanges] API call failed (attempt ${attempt + 1}):`, err);
         }
-      } catch (err) {
-        console.error('[setup/requestChanges] API call failed:', err);
+
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
       }
 
-      await new Promise((r) => setTimeout(r, 800));
-      addMessage('assistant', "I have your previous structure in mind. What specific changes would you like to make? You can ask me to add, remove, or rename spaces, folders, lists, or statuses.\n\nClick **\"Generate Structure\"** when you're ready to see the updated plan.");
+      addMessage('assistant', "I wasn't able to process your feedback right now. Please try sending your message again, or click **\"Generate Structure\"** to regenerate the plan.");
       setIsSending(false);
     },
     [addMessage, workspace_id, conversationId, fullAnalysisContext, setCurrentStep, proposedPlan, profileFormData, store]
