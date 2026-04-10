@@ -13,7 +13,6 @@ interface SetupperInput {
   userId: string;
   conversationId: string;
   conversationHistory: Anthropic.MessageParam[];
-  templates: string;
   /** Pre-computed analysis from the analyzer step — avoids redundant sub-agent call */
   precomputedAnalysis?: string;
   /** ClickUp plan tier for the workspace (e.g. 'free', 'business') */
@@ -95,7 +94,10 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   // Step 2: Build system prompt with all context
   const userMemories = await loadUserMemories(input.userId, input.workspaceId);
 
-  let systemPrompt = buildSetupperPrompt(workspaceAnalysis, input.templates, input.planTier, input.profileData);
+  // Templates are NOT loaded for chat - they're only used during plan generation
+  // (generate-plan route). The system prompt already has COMMON INDUSTRY PATTERNS
+  // for the discovery conversation. This keeps the prompt lean and fast.
+  let systemPrompt = buildSetupperPrompt(workspaceAnalysis, '', input.planTier, input.profileData);
   if (userMemories) systemPrompt += `\n\n${userMemories}`;
 
   // Include the proposed plan so the AI knows exactly what structure was generated

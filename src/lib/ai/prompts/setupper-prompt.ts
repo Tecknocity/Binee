@@ -62,7 +62,7 @@ CURRENT WORKSPACE ANALYSIS:
 ${workspaceAnalysis}` : `CURRENT WORKSPACE:
 ${workspaceAnalysis || 'This appears to be a fresh/empty workspace, perfect for building from scratch.'}`}
 
-TEMPLATE KNOWLEDGE BASE (reference material, NOT rigid blueprints):
+${templates ? `TEMPLATE KNOWLEDGE BASE (reference material, NOT rigid blueprints):
 The following templates show proven structures for different business types. Use them as a REFERENCE to understand what works for similar companies, then ADAPT to this specific user's needs.
 - Search through these templates for ones matching the user's industry and team size.
 - If multiple templates match, combine the best ideas from each.
@@ -71,11 +71,10 @@ The following templates show proven structures for different business types. Use
 - Never copy-paste a template. Always tailor spaces, lists, statuses, and tags to what the user actually described.
 
 ${templates}
-
-SETUP FLOW:
+` : ''}SETUP FLOW:
 1. UNDERSTAND: Ask about their business type, team size, workflows, and pain points. Keep questions focused, max 2-3 per message.
-2. RECOMMEND: Search the templates above for the best matches for their industry, team size, and work style. If you find relevant templates, use them as a starting point but adapt the structure to their specific needs. Explain WHY your recommendation fits their business.
-3. CUSTOMIZE: Adjust based on their feedback. If the user describes specific workflows or processes, design statuses and lists around THEIR process, not the template's.
+2. RECOMMEND: Based on the industry patterns and your expertise, suggest workspace structures tailored to their specific needs. Explain WHY your recommendation fits their business.
+3. CUSTOMIZE: Adjust based on their feedback. If the user describes specific workflows or processes, design statuses and lists around THEIR process.
 ${hasExistingWorkspace ? '4. PRESERVE: Identify what to keep from the existing workspace and what to add/improve.' : ''}
 
 RULES:

@@ -61,12 +61,8 @@ export async function POST(request: NextRequest) {
       credits_used: 0,
     });
 
-    // Load all context in parallel (not sequentially)
-    const [templatesResult, workspaceResult, historyResult, conversationResult] = await Promise.all([
-      adminClient
-        .from('ai_knowledge_base')
-        .select('content')
-        .like('module_key', 'clickup-templates-database%'),
+    // Load context in parallel
+    const [workspaceResult, historyResult, conversationResult] = await Promise.all([
       adminClient
         .from('workspaces')
         .select('clickup_plan_tier')
@@ -87,7 +83,6 @@ export async function POST(request: NextRequest) {
         .single(),
     ]);
 
-    const templates = templatesResult.data?.map(m => m.content).join('\n\n') || '';
     const planTier = workspaceResult.data?.clickup_plan_tier || 'free';
 
     // Build conversation history: summary + recent messages
@@ -163,7 +158,6 @@ export async function POST(request: NextRequest) {
       userId: authUser.id,
       conversationId: conversation_id,
       conversationHistory,
-      templates,
       precomputedAnalysis: workspace_analysis || undefined,
       planTier,
       proposedPlan: proposed_plan || undefined,
