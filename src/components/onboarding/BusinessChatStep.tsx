@@ -4,11 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Send,
   Sparkles,
-  Building2,
-  Rocket,
-  ShoppingCart,
   Briefcase,
-  Code2,
   Loader2,
   CheckCircle2,
   Circle,
@@ -35,21 +31,10 @@ interface BusinessChatStepProps {
   messageCount: number;
   profileFormData: ProfileFormData | null;
   onSendMessage: (msg: string, fileContext?: string) => void;
-  onSelectTemplate: (template: string) => void;
   onEditProfile: () => void;
 }
 
-// ---------------------------------------------------------------------------
-// Templates
-// ---------------------------------------------------------------------------
-
-const TEMPLATES = [
-  { key: 'agency', label: 'Agency', icon: Building2, description: 'Marketing, design, or creative agency' },
-  { key: 'startup', label: 'Startup', icon: Rocket, description: 'Early-stage product company' },
-  { key: 'ecommerce', label: 'E-commerce', icon: ShoppingCart, description: 'Online store or retail' },
-  { key: 'consulting', label: 'Consulting', icon: Briefcase, description: 'Professional services firm' },
-  { key: 'saas', label: 'SaaS', icon: Code2, description: 'Software-as-a-service company' },
-] as const;
+// (Templates removed - profile form now collects business info directly)
 
 // ---------------------------------------------------------------------------
 // Profile progress items
@@ -58,7 +43,7 @@ const TEMPLATES = [
 const PROFILE_FORM_FIELDS: Array<{
   key: keyof ProfileFormData;
   label: string;
-  icon: typeof Building2;
+  icon: typeof Briefcase;
   hint: string;
 }> = [
   {
@@ -104,7 +89,6 @@ export function BusinessChatStep({
   messageCount,
   profileFormData,
   onSendMessage,
-  onSelectTemplate,
   onEditProfile,
 }: BusinessChatStepProps) {
   const [input, setInput] = useState('');
@@ -332,33 +316,6 @@ export function BusinessChatStep({
           <div ref={messagesEndRef} />
           </div>
         </div>
-
-        {/* Quick-start templates - shown only before first message */}
-        {messageCount === 0 && (
-          <div className="py-3 shrink-0">
-            <p className="text-xs text-text-muted mb-2.5 text-center">
-              Quick start - pick a template or describe your business below
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {TEMPLATES.map((t) => {
-                const Icon = t.icon;
-                return (
-                  <button
-                    key={t.key}
-                    onClick={() => onSelectTemplate(t.key)}
-                    disabled={isSending}
-                    className="group flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface border border-border text-text-secondary text-sm
-                      hover:border-accent/40 hover:text-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={t.description}
-                  >
-                    <Icon className="w-4 h-4 group-hover:text-accent transition-colors" />
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Input container - Claude Code style unified card */}
         <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">

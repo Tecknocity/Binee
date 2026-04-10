@@ -81,7 +81,6 @@ export interface UseSetupReturn {
   isRefreshingClickUp: boolean;
   continueFromConnect: () => void;
   sendMessage: (msg: string, fileContext?: string) => void;
-  selectTemplate: (template: string) => void;
   submitProfileForm: (data: ProfileFormData) => void;
   updatePlan: (plan: SetupPlan) => void;
   approvePlan: () => void;
@@ -119,13 +118,34 @@ const EMPTY_PROFILE: BusinessProfile = {
   painPoints: null,
 };
 
-const WELCOME_MESSAGE: SetupChatMessage = {
-  id: 'welcome',
-  role: 'assistant',
-  content:
-    "Welcome! I'm here to help you set up your ClickUp workspace.\n\nTell me about your business: what do you do, what services or products do you offer, and how does your team work? The more detail you share, the better I can tailor your workspace.\n\nOr pick a **quick-start template** below to get started right away.",
-  timestamp: new Date(),
-};
+/**
+ * Build a welcome message that acknowledges profile form data when available.
+ */
+function buildWelcomeMessage(profile: ProfileFormData | null): SetupChatMessage {
+  if (profile && (profile.industry || profile.services || profile.teamSize)) {
+    const parts: string[] = [];
+    if (profile.industry) parts.push(`you're in **${profile.industry}**`);
+    if (profile.services) parts.push(`offering **${profile.services}**`);
+    if (profile.teamSize) parts.push(`with a **${profile.teamSize}** team`);
+
+    const summary = parts.join(', ');
+
+    return {
+      id: 'welcome',
+      role: 'assistant',
+      content: `Great, I can see ${summary}.\n\nI have your business profile ready. Want me to go ahead and **build your workspace structure**? Or tell me more about your workflows, tools, or any specific needs first.`,
+      timestamp: new Date(),
+    };
+  }
+
+  return {
+    id: 'welcome',
+    role: 'assistant',
+    content:
+      "Welcome! I'm here to help you set up your ClickUp workspace.\n\nTell me about your business: what do you do, what services or products do you offer, and how does your team work? The more detail you share, the better I can tailor your workspace.",
+    timestamp: new Date(),
+  };
+}
 
 const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string }> = [
   {
@@ -149,6 +169,43 @@ const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string 
       "Perfect, I have a good picture now. Let me build a workspace structure tailored to your business.\n\nI'll include spaces for your core operations and internal workflows. Click **\"Generate Structure\"** below when you're ready to see the proposed plan.",
   },
 ];
+
+/**
+ * Build a context-aware fallback message when the AI API call fails.
+ * If the profile form already has data (industry, services, team size, etc.),
+ * acknowledge that context instead of re-asking about it.
+ */
+function buildContextAwareFallback(
+  msgIdx: number,
+  profileData: ProfileFormData | null | undefined,
+): string {
+  const hasProfile = profileData && (profileData.industry || profileData.services || profileData.teamSize || profileData.workStyle);
+
+  if (hasProfile) {
+    // Profile data exists - acknowledge it and ask for additional details
+    const parts: string[] = [];
+    if (profileData.industry) parts.push(`**${profileData.industry}**`);
+    if (profileData.services) parts.push(`offering ${profileData.services}`);
+    if (profileData.teamSize) parts.push(`with a ${profileData.teamSize} team`);
+
+    const profileSummary = parts.length > 0
+      ? `I can see you're in ${parts.join(', ')}.`
+      : '';
+
+    if (msgIdx === 0) {
+      return `${profileSummary} I have your business profile ready.\n\nTo build the best workspace structure, could you tell me more about **your typical workflows**? For example, how does a project or client engagement flow from start to finish?\n\nOr click **"Generate Structure"** if you're ready to see a proposed plan based on what I already know.`;
+    }
+    if (msgIdx === 1) {
+      return `Thanks for the extra detail! ${profileSummary}\n\nOne more thing: **what tools do you currently use** for project management or collaboration? (e.g., Trello, Asana, Notion, spreadsheets)\n\nOr click **"Generate Structure"** to see the proposed workspace plan.`;
+    }
+    // For msg index 2+, prompt to generate
+    return "I have a good picture of your business now. Click **\"Generate Structure\"** below when you're ready to see the proposed workspace plan.";
+  }
+
+  // No profile data at all - use the original discovery questions
+  const fallbackIdx = Math.min(msgIdx, DISCOVERY_QUESTIONS.length - 1);
+  return DISCOVERY_QUESTIONS[fallbackIdx].question;
+}
 
 // ---------------------------------------------------------------------------
 // Timeout-wrapped fetch helper
@@ -306,10 +363,10 @@ export function useSetup(): UseSetupReturn {
   // Convert stored messages to UI format (with Date objects)
   const chatMessages = useMemo(() => {
     const msgs = storedMessages.map(toUiMessage);
-    // Prepend welcome message if no messages
-    if (msgs.length === 0) return [WELCOME_MESSAGE];
+    // Prepend welcome message if no messages — uses profile data for context-aware greeting
+    if (msgs.length === 0) return [buildWelcomeMessage(profileFormData)];
     return msgs;
-  }, [storedMessages]);
+  }, [storedMessages, profileFormData]);
 
   // Execution state — synced from persisted store after hydration
   const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null);
@@ -635,60 +692,13 @@ export function useSetup(): UseSetupReturn {
         // Fall through to guided fallback
       }
 
-      const fallbackIdx = Math.min(idx, DISCOVERY_QUESTIONS.length - 1);
+      // Build context-aware fallback: skip questions about data already in the profile form
+      const fallbackQuestion = buildContextAwareFallback(idx, currentProfile);
       await new Promise((r) => setTimeout(r, 800 + Math.random() * 600));
-      addMessage('assistant', DISCOVERY_QUESTIONS[fallbackIdx].question);
+      addMessage('assistant', fallbackQuestion);
       setIsSending(false);
     },
     [addMessage, isSending, messageCount, workspace_id, conversationId, businessDescription, fullAnalysisContext, store]
-  );
-
-  const selectTemplate = useCallback(
-    async (template: string) => {
-      const templateDescriptions: Record<string, string> = {
-        agency: 'I run a digital marketing agency. We handle social media, content creation, and paid ads for multiple clients.',
-        startup: "We're a tech startup building a SaaS product. Small team focused on rapid development and growth.",
-        ecommerce: 'I run an e-commerce business selling products online. We manage inventory, orders, and marketing campaigns.',
-        consulting: 'I run a consulting firm. We take on client engagements for strategy and process improvement.',
-        saas: "We're a SaaS company with engineering, customer success, and growth teams.",
-      };
-
-      const description = templateDescriptions[template] || templateDescriptions.agency;
-      addMessage('user', description);
-      store?.getState().setBusinessDescription(description);
-      store?.getState().incrementMessageCount();
-      setIsSending(true);
-
-      try {
-        const response = await fetchWithTimeout('/api/setup/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workspace_id,
-            conversation_id: conversationId,
-            message: `Here is my business profile: ${description}\n\nBased on my current workspace analysis and this profile, please summarize what you'd build for a ${template} business and ask if I want to make any changes before generating the workspace structure.`,
-            workspace_analysis: fullAnalysisContext,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.content) {
-            addMessage('assistant', data.content);
-            setIsSending(false);
-            return;
-          }
-        }
-      } catch {
-        // Fall through to fallback
-      }
-
-      // Fallback if API fails
-      await new Promise((r) => setTimeout(r, 800));
-      addMessage('assistant', `Great choice! I'll design a workspace structure tailored for a **${template}** business.\n\nWould you like to share any more details about your team, workflows, or specific needs? Or click **"Generate Structure"** when you're ready to see the proposed plan.`);
-      setIsSending(false);
-    },
-    [addMessage, workspace_id, conversationId, fullAnalysisContext, store]
   );
 
   const generateStructure = useCallback(async () => {
@@ -1284,7 +1294,6 @@ export function useSetup(): UseSetupReturn {
     isRefreshingClickUp,
     continueFromConnect,
     sendMessage: enhancedSendMessage,
-    selectTemplate,
     submitProfileForm,
     updatePlan,
     approvePlan,

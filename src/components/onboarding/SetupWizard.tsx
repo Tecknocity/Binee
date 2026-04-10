@@ -149,7 +149,6 @@ export default function SetupWizard() {
             messageCount={setup.chatMessages.filter((m) => m.role === 'user').length}
             profileFormData={setup.profileFormData}
             onSendMessage={setup.sendMessage}
-            onSelectTemplate={setup.selectTemplate}
             onEditProfile={setup.editProfile}
           />
         )}
