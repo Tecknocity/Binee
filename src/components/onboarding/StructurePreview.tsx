@@ -745,16 +745,17 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
           </div>
         )}
 
-        {/* Status manual setup - next steps callout */}
+        {/* Manual setup next steps callout */}
         {totalStatuses > 0 && (
           <div className="bg-info/5 border border-info/15 rounded-xl p-4 mt-2">
             <div className="flex items-start gap-2.5">
               <Settings2 className="w-5 h-5 text-info flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-semibold text-info mb-1">Next step: Configure statuses in ClickUp</p>
+                <p className="text-sm font-semibold text-info mb-1">Some items will need manual setup</p>
                 <p className="text-sm text-text-secondary leading-relaxed">
-                  The {totalStatuses} recommended statuses above will need to be configured manually in ClickUp after the build.
-                  Set them once per Space and all lists will inherit them.
+                  Certain elements like statuses, automations, views, and custom fields cannot be created
+                  automatically via the API. After the build, you will get a step-by-step checklist to
+                  configure them in ClickUp.
                 </p>
               </div>
             </div>
