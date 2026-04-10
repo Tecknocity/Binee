@@ -5,7 +5,6 @@ import { orchestrate } from '@/lib/ai/orchestrator';
 import { buildSlimContext } from '@/lib/ai/context';
 import { checkSufficientCredits } from './billing';
 import { maybeSummarizeConversation } from '@/lib/ai/conversation-summary';
-import { calculateAnthropicCost } from '@/billing/engine/token-converter';
 import type { ChatRequest, AssistantResponse, ToolCallResult } from '@/types/ai';
 import { createClient } from '@supabase/supabase-js';
 
@@ -138,6 +137,7 @@ export async function handleChat(
       p_message_id: null,
       p_metadata: {
         credit_tier: result.creditClassification.tier,
+        composite_score: result.creditClassification.compositeScore,
         model: result.modelUsed,
         input_tokens: result.totalInputTokens,
         output_tokens: result.totalOutputTokens,

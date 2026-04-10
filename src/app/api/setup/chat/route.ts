@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
           p_description: 'Setup: workspace configuration',
           p_message_id: null,
           p_metadata: {
-            credit_tier: 'complex',
+            credit_tier: 'premium',
             source: 'setup',
             input_tokens: result.totalInputTokens,
             output_tokens: result.totalOutputTokens,

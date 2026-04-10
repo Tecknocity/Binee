@@ -1,9 +1,12 @@
 // ---- Flat Credit Tiers (decoupled from Anthropic tokens) ----
-// Classification happens AFTER message processing based on what sub-agents were called.
+// Classification happens AFTER message processing using composite scoring.
+// Score is calculated from 5 signals: sub-agent depth, tool complexity,
+// images, file attachments, and write operations. Score range: 0-8.
 export const MESSAGE_CREDIT_TIERS = {
-  simple: 0.55,   // Master answers alone, no sub-agents
-  standard: 0.70, // 1 sub-agent called
-  complex: 1.00,  // 2+ sub-agents or Setupper
+  light: 0.55,     // Score 0-1: Quick Q&A, Brain answers alone, no attachments
+  standard: 0.85,  // Score 2-3: 1 sub-agent OR moderate tools + file
+  heavy: 1.30,     // Score 4-5: 1-2 agents + images/files + several tool calls
+  premium: 2.00,   // Score 6-8: 2 agents + images + writes + heavy tools (also: Setupper)
 } as const;
 
 export type MessageTier = keyof typeof MESSAGE_CREDIT_TIERS;

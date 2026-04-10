@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { routeMessage, type RouteDecision } from '@/lib/ai/slim-router';
 import { executeSubAgents, type SubAgentResult } from '@/lib/ai/sub-agents/executor';
 import { generateBrainResponse } from '@/lib/ai/brain';
-import { classifyMessageCost, type MessageClassification } from '@/billing/engine/flat-credit-classifier';
+import { classifyMessageCost, hasWriteOperations, type MessageClassification } from '@/billing/engine/flat-credit-classifier';
 import { calculateAnthropicCost, type TokenCostResult } from '@/billing/engine/token-converter';
 import { loadUserMemories } from '@/lib/ai/user-memory';
 import type { ImageAttachmentPayload } from '@/types/ai';
@@ -95,11 +95,16 @@ export async function orchestrate(input: OrchestrationInput): Promise<Orchestrat
     imageAttachments: input.imageAttachments,
   });
 
-  // ---- Step 4: Classify credit tier ----
-  const creditClassification = classifyMessageCost(
-    subAgentResults.length,
-    false, // isSetup — regular chat is never setup. Setup has its own brain.
-  );
+  // ---- Step 4: Classify credit tier (composite scoring) ----
+  const allToolCalls = subAgentResults.flatMap(r => r.toolCalls);
+  const creditClassification = classifyMessageCost({
+    subAgentCalls: subAgentResults.length,
+    toolCallCount: allToolCalls.length,
+    imageCount: input.imageAttachments?.length ?? 0,
+    fileCount: input.userMessage.includes('--- ATTACHED FILE CONTENT ---') ? 1 : 0,
+    hasWriteOps: hasWriteOperations(allToolCalls),
+    isSetup: false,
+  });
 
   // ---- Step 5: Calculate total token usage (for analytics) ----
   const totalInputTokens =
