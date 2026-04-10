@@ -164,6 +164,7 @@ export default function SetupWizard() {
             planTier={workspace?.clickup_plan_tier ?? undefined}
             itemsToDelete={setup.itemsToDelete}
             existingItemsNotInPlan={setup.existingItemsNotInPlan}
+            isLoadingRecommendations={setup.isLoadingRecommendations}
             onApproveWithDeletions={setup.confirmDeletionsAndBuild}
             onApproveSkipDeletions={setup.skipDeletionsAndBuild}
           />

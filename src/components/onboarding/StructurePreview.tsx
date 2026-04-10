@@ -45,6 +45,8 @@ interface StructurePreviewProps {
   itemsToDelete?: ExecutionItem[];
   /** Existing workspace items NOT in the plan (user can choose to delete) */
   existingItemsNotInPlan?: ExecutionItem[];
+  /** Whether AI recommendations are still loading */
+  isLoadingRecommendations?: boolean;
   /** Approve with user-selected deletions. Receives the checked items. */
   onApproveWithDeletions?: (selectedItems: ExecutionItem[]) => void;
   /** Approve but skip deletions (keep old items) */
@@ -55,7 +57,7 @@ interface StructurePreviewProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, existingItemsNotInPlan, onApproveWithDeletions, onApproveSkipDeletions }: StructurePreviewProps) {
+export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, existingItemsNotInPlan, isLoadingRecommendations, onApproveWithDeletions, onApproveSkipDeletions }: StructurePreviewProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const hasBineeDeletions = itemsToDelete && itemsToDelete.length > 0;
   const hasExistingExtras = existingItemsNotInPlan && existingItemsNotInPlan.length > 0;
@@ -63,13 +65,25 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
   // Track which items the user has UNCHECKED (all Binee items checked by
   // default, all existing extras UNchecked by default - safe default).
   const [uncheckedItems, setUncheckedItems] = useState<Set<string>>(new Set());
-  // Existing workspace items the user explicitly CHECKED for deletion
+  // Existing workspace items the user explicitly CHECKED for deletion.
+  // Pre-populated from AI recommendations when available.
   const [checkedExistingItems, setCheckedExistingItems] = useState<Set<string>>(new Set());
 
-  // Reset selection state whenever the dialog opens
+  // When the dialog opens, reset Binee unchecks and pre-select existing items
+  // based on AI recommendations (items with recommendation === 'delete').
   const handleShowDeleteConfirm = () => {
     setUncheckedItems(new Set());
-    setCheckedExistingItems(new Set());
+    // Pre-check items that AI recommends to delete
+    const preChecked = new Set<string>();
+    if (existingItemsNotInPlan) {
+      for (const item of existingItemsNotInPlan) {
+        if (item.recommendation === 'delete') {
+          const key = item.clickupId ?? `${item.type}:${item.name}`;
+          preChecked.add(key);
+        }
+      }
+    }
+    setCheckedExistingItems(preChecked);
     setShowDeleteConfirm(true);
   };
 
@@ -779,15 +793,26 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                 <div>
                   <p className="text-sm font-semibold text-text-primary">Existing items not in the new plan</p>
                   <p className="text-xs text-text-secondary mt-0.5">
-                    These items already exist in your workspace but are not part of the proposed structure.
-                    Check items you want to remove to free up space. Unchecked items will be kept.
+                    {isLoadingRecommendations
+                      ? 'Analyzing your workspace to recommend which items to keep or remove...'
+                      : existingItemsNotInPlan!.some(i => i.recommendation)
+                        ? 'We analyzed your workspace and pre-selected items to remove. Review and adjust as needed.'
+                        : 'Check items you want to remove to free up space. Unchecked items will be kept.'}
                   </p>
                 </div>
               </div>
+              {isLoadingRecommendations && (
+                <div className="ml-7 mb-2 flex items-center gap-2 text-xs text-text-muted">
+                  <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                  Generating recommendations...
+                </div>
+              )}
               <div className="space-y-1.5 ml-7">
                 {existingItemsNotInPlan!.map((item, i) => {
                   const isChecked = isExistingItemChecked(item);
                   const hasTasksInside = (item.taskCount ?? 0) > 0;
+                  const hasRec = !!item.recommendation;
+                  const recIsDelete = item.recommendation === 'delete';
                   return (
                     <label key={`existing-${i}`} className="flex items-start gap-2.5 cursor-pointer group">
                       <input
@@ -808,7 +833,18 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                           {isChecked && (
                             <span className="text-[10px] font-medium text-red-400/70 uppercase">delete</span>
                           )}
+                          {hasRec && (
+                            <span className={`text-[10px] font-medium uppercase ${recIsDelete ? 'text-warning/70' : 'text-info/70'}`}>
+                              suggested
+                            </span>
+                          )}
                         </div>
+                        {/* AI recommendation reason */}
+                        {item.recommendationReason && (
+                          <p className="text-[11px] text-text-muted mt-0.5 italic">
+                            {item.recommendationReason}
+                          </p>
+                        )}
                         {hasTasksInside && (
                           <p className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1">
                             <AlertTriangle className="w-3 h-3 flex-shrink-0" />
