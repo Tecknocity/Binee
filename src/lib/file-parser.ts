@@ -29,6 +29,17 @@ export interface FileAttachment {
   columns?: string[];
 }
 
+export interface ImageAttachment {
+  name: string;
+  type: 'image';
+  /** Base64-encoded image data (no data: prefix) */
+  base64: string;
+  /** MIME type */
+  media_type: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  /** File size in bytes */
+  size: number;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -54,8 +65,37 @@ const SUPPORTED_MIME_TYPES = new Set([
   'application/vnd.ms-excel',
 ]);
 
+/** Image extensions and MIME types */
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
+
+const IMAGE_MIME_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
+
+const IMAGE_MIME_MAP: Record<string, ImageAttachment['media_type']> = {
+  'image/png': 'image/png',
+  'image/jpeg': 'image/jpeg',
+  'image/gif': 'image/gif',
+  'image/webp': 'image/webp',
+};
+
+/** Extension to MIME fallback for when File.type is empty */
+const EXT_TO_IMAGE_MIME: Record<string, ImageAttachment['media_type']> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+};
+
 /** Max file size: 5MB */
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+/** Max image size: 5MB (Claude vision limit is 20MB but we keep it reasonable) */
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -66,13 +106,28 @@ export function isFileSupported(file: File): boolean {
   return SUPPORTED_EXTENSIONS.has(ext) || SUPPORTED_MIME_TYPES.has(file.type);
 }
 
+export function isImageFile(file: File): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return IMAGE_EXTENSIONS.has(ext) || IMAGE_MIME_TYPES.has(file.type);
+}
+
+export function isAnySupportedFile(file: File): boolean {
+  return isFileSupported(file) || isImageFile(file);
+}
+
 export function getFileError(file: File): string | null {
+  if (isImageFile(file)) {
+    if (file.size > MAX_IMAGE_SIZE) {
+      return `Image "${file.name}" is too large (max 5MB)`;
+    }
+    return null;
+  }
   if (file.size > MAX_FILE_SIZE) {
     return `File "${file.name}" is too large (max 5MB)`;
   }
   if (!isFileSupported(file)) {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-    return `File type ".${ext}" is not supported. Use CSV, XLSX, TXT, MD, or JSON.`;
+    return `File type ".${ext}" is not supported. Use CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, or WebP.`;
   }
   return null;
 }
@@ -252,6 +307,40 @@ async function parseText(file: File): Promise<ParsedFile> {
     content,
     truncated,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Image parser — returns base64 for Claude vision API
+// ---------------------------------------------------------------------------
+
+export async function parseImage(file: File): Promise<ImageAttachment> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = btoa(binary);
+
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  const media_type = IMAGE_MIME_MAP[file.type] || EXT_TO_IMAGE_MIME[ext] || 'image/png';
+
+  return {
+    name: file.name,
+    type: 'image',
+    base64,
+    media_type,
+    size: file.size,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Create an ImageAttachment from a clipboard blob (paste events)
+// ---------------------------------------------------------------------------
+
+export async function parseImageBlob(blob: Blob, name?: string): Promise<ImageAttachment> {
+  const file = new File([blob], name || `screenshot-${Date.now()}.png`, { type: blob.type });
+  return parseImage(file);
 }
 
 // ---------------------------------------------------------------------------

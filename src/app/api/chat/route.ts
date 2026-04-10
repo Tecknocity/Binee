@@ -86,12 +86,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate image_attachments if provided
+    const image_attachments = parsedBody.image_attachments;
+    if (image_attachments) {
+      if (!Array.isArray(image_attachments) || image_attachments.length > 3) {
+        return NextResponse.json(
+          { error: 'image_attachments must be an array of 3 or fewer images' },
+          { status: 400 },
+        );
+      }
+      const validMediaTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+      for (const img of image_attachments) {
+        if (!img.base64 || typeof img.base64 !== 'string') {
+          return NextResponse.json({ error: 'Each image must have a base64 string' }, { status: 400 });
+        }
+        if (!validMediaTypes.has(img.media_type)) {
+          return NextResponse.json({ error: `Unsupported image type: ${img.media_type}` }, { status: 400 });
+        }
+        // Rough size check: base64 is ~4/3 of original, cap at ~7MB encoded (~5MB original)
+        if (img.base64.length > 7_000_000) {
+          return NextResponse.json({ error: 'Image too large (max 5MB)' }, { status: 400 });
+        }
+      }
+    }
+
     const chatRequest: ChatRequest = {
       workspace_id,
       user_id,
       conversation_id,
       message: message.trim(),
       ...(file_context ? { file_context } : {}),
+      ...(image_attachments && image_attachments.length > 0 ? { image_attachments } : {}),
     };
 
     const response = await handleChat(chatRequest);

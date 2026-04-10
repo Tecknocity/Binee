@@ -378,7 +378,7 @@ export function useChat(conversationId: string | null) {
   // -------------------------------------------------------------------------
 
   const sendMessage = useCallback(
-    async (content: string, overrideConversationId?: string, fileContext?: string) => {
+    async (content: string, overrideConversationId?: string, fileContext?: string, imageAttachments?: Array<{ base64: string; media_type: string; name: string }>) => {
       const effectiveId = overrideConversationId || conversationId;
       if (!effectiveId || !content.trim()) return;
 
@@ -409,6 +409,7 @@ export function useChat(conversationId: string | null) {
             conversation_id: effectiveId,
             message: content.trim(),
             ...(fileContext ? { file_context: fileContext } : {}),
+            ...(imageAttachments && imageAttachments.length > 0 ? { image_attachments: imageAttachments } : {}),
           }),
           signal: controller.signal,
         });

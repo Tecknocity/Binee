@@ -5,6 +5,7 @@ import { generateBrainResponse } from '@/lib/ai/brain';
 import { classifyMessageCost, type MessageClassification } from '@/billing/engine/flat-credit-classifier';
 import { calculateAnthropicCost, type TokenCostResult } from '@/billing/engine/token-converter';
 import { loadUserMemories } from '@/lib/ai/user-memory';
+import type { ImageAttachmentPayload } from '@/types/ai';
 
 export interface OrchestrationInput {
   userMessage: string;
@@ -18,6 +19,7 @@ export interface OrchestrationInput {
   conversationHistory: string;  // Last 2 messages formatted
   recentMessages: string;       // Last 2 messages for router context
   crossChatContext: string;     // Summaries from other conversations in workspace
+  imageAttachments?: ImageAttachmentPayload[];
 }
 
 export interface OrchestrationResult {
@@ -90,6 +92,7 @@ export async function orchestrate(input: OrchestrationInput): Promise<Orchestrat
       summary: r.summary,
     })),
     userMemories: userMemories || undefined,
+    imageAttachments: input.imageAttachments,
   });
 
   // ---- Step 4: Classify credit tier ----

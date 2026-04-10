@@ -128,6 +128,15 @@ export interface BusinessState {
   };
 }
 
+export interface ImageAttachmentPayload {
+  /** Base64-encoded image data (without the data:... prefix) */
+  base64: string;
+  /** MIME type: image/png, image/jpeg, image/gif, image/webp */
+  media_type: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  /** Original file name */
+  name: string;
+}
+
 export interface ChatRequest {
   workspace_id: string;
   user_id: string;
@@ -135,6 +144,8 @@ export interface ChatRequest {
   message: string;
   /** Parsed file content attached by the user (CSV, XLSX, TXT, etc.) */
   file_context?: string;
+  /** Base64-encoded images for Claude vision */
+  image_attachments?: ImageAttachmentPayload[];
 }
 
 export interface ClassificationResult {

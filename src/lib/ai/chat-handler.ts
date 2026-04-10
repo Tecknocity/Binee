@@ -43,7 +43,7 @@ const ORCHESTRATOR_MODEL = 'claude-sonnet-4-20250514';
 export async function handleChat(
   request: ChatRequest,
 ): Promise<ChatHandlerResponse> {
-  const { workspace_id, user_id, conversation_id, message, file_context } = request;
+  const { workspace_id, user_id, conversation_id, message, file_context, image_attachments } = request;
 
   let supabase: ReturnType<typeof getSupabaseAdmin>;
   try {
@@ -122,6 +122,7 @@ export async function handleChat(
     conversationHistory: context.conversationHistory,
     recentMessages: context.recentMessages,
     crossChatContext: context.crossChatContext,
+    imageAttachments: image_attachments,
   });
 
   // 5. Flat credit billing — charge based on what happened, not tokens
