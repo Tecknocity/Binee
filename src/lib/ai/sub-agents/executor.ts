@@ -5,8 +5,8 @@ import { TASK_MANAGER_PROMPT, TASK_MANAGER_TOOLS_NAMES } from '@/lib/ai/prompts/
 import { WORKSPACE_ANALYST_PROMPT, WORKSPACE_ANALYST_TOOLS_NAMES } from '@/lib/ai/prompts/workspace-analyst-prompt';
 
 const HAIKU_MODEL_ID = 'claude-haiku-4-5-20251001';
-const MAX_SUB_AGENT_ROUNDS = 3; // Safety limit for tool loops
-const MAX_SUMMARY_TOKENS = 500; // Hard cap on sub-agent output
+const MAX_SUB_AGENT_ROUNDS = 8; // Allow enough rounds for comprehensive tool coverage
+const MAX_SUMMARY_TOKENS = 1500; // Allow thorough summaries with full data points
 
 type SubAgentName = 'task_manager' | 'workspace_analyst';
 
