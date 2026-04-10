@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Load all context in parallel (not sequentially)
-    const [templatesResult, workspaceResult, historyResult] = await Promise.all([
+    const [templatesResult, workspaceResult, historyResult, conversationResult] = await Promise.all([
       adminClient
         .from('ai_knowledge_base')
         .select('content')
@@ -72,21 +72,45 @@ export async function POST(request: NextRequest) {
         .select('clickup_plan_tier')
         .eq('id', workspace_id)
         .single(),
+      // Last 10 messages (recent context) - older context comes from summary
       adminClient
         .from('messages')
         .select('role, content')
         .eq('conversation_id', conversation_id)
-        .order('created_at', { ascending: true })
-        .limit(20),
+        .order('created_at', { ascending: false })
+        .limit(10),
+      // Conversation summary (compressed context from older messages)
+      adminClient
+        .from('conversations')
+        .select('summary')
+        .eq('id', conversation_id)
+        .single(),
     ]);
 
     const templates = templatesResult.data?.map(m => m.content).join('\n\n') || '';
     const planTier = workspaceResult.data?.clickup_plan_tier || 'free';
-    // History now includes the user message we just saved
-    const conversationHistory = (historyResult.data || []).map(m => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-    }));
+
+    // Build conversation history: summary + recent messages
+    // This follows the same pattern as the general chat (context.ts:580-629)
+    // so older context is preserved via summary, not lost when messages exceed the limit.
+    const recentMessages = (historyResult.data || []).reverse();
+    const summary = conversationResult.data?.summary;
+
+    const conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+    if (summary && recentMessages.length > 0) {
+      conversationHistory.push(
+        { role: 'user', content: `[Previous conversation summary: ${summary}]` },
+        { role: 'assistant', content: 'Understood, I have the context from our earlier discussion.' },
+      );
+    }
+
+    for (const m of recentMessages) {
+      conversationHistory.push({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      });
+    }
 
     // Save profile data as persistent user memories (fire-and-forget)
     if (profile_data) {
