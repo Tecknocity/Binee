@@ -441,22 +441,6 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
         </div>
       )}
 
-      {/* Status manual setup info */}
-      {totalStatuses > 0 && (
-        <div className="mb-3 shrink-0 bg-info/10 border border-info/20 rounded-xl p-3 flex items-start gap-2.5">
-          <Settings2 className="w-4 h-4 text-info flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-info">
-              Statuses require manual setup in ClickUp
-            </p>
-            <p className="text-xs text-text-secondary mt-0.5">
-              Spaces, folders, and lists will be created automatically. The {totalStatuses} recommended statuses below will need to be configured in ClickUp after the build.
-              {' '}Set them once per Space and all lists will inherit them.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Plan limitation warning */}
       {showGoalWarning && planCaps && (
         <div className="mb-3 shrink-0 bg-warning/10 border border-warning/20 rounded-xl p-3 flex items-start gap-2.5">
@@ -636,6 +620,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             label="Recommended ClickApps"
             badge={`${plan.recommended_clickapps.length}`}
             badgeColor="bg-success/15 text-success"
+            defaultOpen
           >
             <div className="flex flex-wrap gap-1.5 py-1 pl-2">
               {plan.recommended_clickapps.map((app, i) => (
@@ -657,6 +642,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             label="Recommended Tags"
             badge={`${plan.recommended_tags?.length || 0}`}
             badgeColor="bg-warning/15 text-warning"
+            defaultOpen
           >
             <div className="flex flex-wrap gap-1.5 py-1 pl-2">
               {plan.recommended_tags?.map((tag, i) => (
@@ -689,6 +675,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             label="Recommended Docs"
             badge={`${plan.recommended_docs?.length || 0}`}
             badgeColor="bg-info/15 text-info"
+            defaultOpen
           >
             <div className="space-y-1 py-1 pl-2">
               {plan.recommended_docs?.map((doc, i) => (
@@ -720,6 +707,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             label={goalsUnsupported ? `Recommended Goals (requires upgrade)` : 'Recommended Goals'}
             badge={`${plan.recommended_goals?.length || 0}`}
             badgeColor={goalsUnsupported ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success'}
+            defaultOpen
           >
             <div className="space-y-1 py-1 pl-2">
               {plan.recommended_goals?.map((goal, i) => (
@@ -746,13 +734,31 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
 
         {/* AI Reasoning */}
         {plan.reasoning && (
-          <TreeNode
-            icon={<Lightbulb className="w-4 h-4 text-accent" />}
-            label="Why this structure?"
-            badgeColor="bg-accent/15 text-accent"
-          >
-            <p className="text-sm text-text-secondary leading-relaxed py-1 pl-2">{plan.reasoning}</p>
-          </TreeNode>
+          <div className="bg-accent/5 border border-accent/15 rounded-xl p-4 mt-2">
+            <div className="flex items-start gap-2.5">
+              <Lightbulb className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-accent mb-1">Why this structure?</p>
+                <p className="text-sm text-text-secondary leading-relaxed">{plan.reasoning}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Status manual setup - next steps callout */}
+        {totalStatuses > 0 && (
+          <div className="bg-info/5 border border-info/15 rounded-xl p-4 mt-2">
+            <div className="flex items-start gap-2.5">
+              <Settings2 className="w-5 h-5 text-info flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-info mb-1">Next step: Configure statuses in ClickUp</p>
+                <p className="text-sm text-text-secondary leading-relaxed">
+                  The {totalStatuses} recommended statuses above will need to be configured manually in ClickUp after the build.
+                  Set them once per Space and all lists will inherit them.
+                </p>
+              </div>
+            </div>
+          </div>
         )}
 
       </div>
