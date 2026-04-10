@@ -32,6 +32,10 @@ export interface ExecutionItem {
   clickupId?: string;
   /** Number of tasks in this item (for deletion warnings). Only set on deletion candidates. */
   taskCount?: number;
+  /** AI recommendation for this item: 'keep' or 'delete' */
+  recommendation?: 'keep' | 'delete';
+  /** AI reasoning for the recommendation */
+  recommendationReason?: string;
 }
 
 export interface ExecutionResult {

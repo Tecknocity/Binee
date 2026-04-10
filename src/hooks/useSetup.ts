@@ -97,6 +97,8 @@ export interface UseSetupReturn {
   itemsToDelete: ExecutionItem[];
   /** Existing workspace items not in the proposed plan (candidates for user-initiated deletion) */
   existingItemsNotInPlan: ExecutionItem[];
+  /** Whether AI recommendations are loading */
+  isLoadingRecommendations: boolean;
   /** Whether deletion is pending user confirmation */
   hasPendingDeletions: boolean;
   /** Confirm and execute deletion of selected old items, then build new plan */
@@ -327,7 +329,7 @@ function toStoreMessage(msg: SetupChatMessage): StoreChatMessage {
 
 export function useSetup(): UseSetupReturn {
   const clickUp = useClickUpStatus();
-  const { workspace_id } = useWorkspace();
+  const { workspace_id, workspace } = useWorkspace();
 
   // Get the zustand store for this workspace — auto-persists to localStorage
   const store = workspace_id ? getSetupStore(workspace_id) : null;
@@ -434,10 +436,95 @@ export function useSetup(): UseSetupReturn {
   // Existing workspace items NOT in the proposed plan and NOT already tracked
   // as Binee-built items. These are user-created items occupying plan slots
   // that the user may want to delete to make room for new items.
-  const existingItemsNotInPlan = useMemo(() => {
+  const rawExistingItemsNotInPlan = useMemo(() => {
     if (!proposedPlan || !existingStructure?.spaces) return [];
     return computeExistingItemsNotInPlan(existingStructure, proposedPlan, previouslyBuiltItems);
   }, [proposedPlan, existingStructure, previouslyBuiltItems]);
+
+  // AI recommendations for existing items (keep/delete with reasoning)
+  const [recommendations, setRecommendations] = useState<
+    Map<string, { action: 'keep' | 'delete'; reason: string }>
+  >(new Map());
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const recommendationsLoadedRef = useRef(false);
+
+  // Fetch AI recommendations when existing items are available at the review step
+  useEffect(() => {
+    if (
+      currentStep !== 3 ||
+      rawExistingItemsNotInPlan.length === 0 ||
+      recommendationsLoadedRef.current ||
+      !proposedPlan ||
+      !workspace_id
+    ) return;
+    recommendationsLoadedRef.current = true;
+    setIsLoadingRecommendations(true);
+
+    const planTier = workspace?.clickup_plan_tier ?? undefined;
+
+    // Count new spaces (not in existing structure)
+    const existingSpaceNames = new Set(
+      (existingStructure?.spaces ?? []).map(s => s.name.toLowerCase())
+    );
+    const newSpaceCount = proposedPlan.spaces.filter(
+      s => !existingSpaceNames.has(s.name.toLowerCase())
+    ).length;
+
+    (async () => {
+      try {
+        const res = await fetchWithTimeout('/api/setup/reconciliation-recommendations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            existingItems: rawExistingItemsNotInPlan,
+            proposedPlan,
+            businessDescription: businessDescription || undefined,
+            planTier,
+            maxSpaces: planTier === 'free' ? 5 : null,
+            existingSpaceCount: existingStructure?.spaces?.length ?? 0,
+            newSpaceCount,
+          }),
+        }, 25_000);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.recommendations)) {
+            const map = new Map<string, { action: 'keep' | 'delete'; reason: string }>();
+            for (const rec of data.recommendations) {
+              if (rec.key) {
+                map.set(rec.key, { action: rec.action, reason: rec.reason });
+              }
+            }
+            setRecommendations(map);
+          }
+        }
+      } catch (err) {
+        console.error('[useSetup] Failed to fetch reconciliation recommendations:', err);
+      } finally {
+        setIsLoadingRecommendations(false);
+      }
+    })();
+  }, [currentStep, rawExistingItemsNotInPlan, proposedPlan, workspace_id, workspace, existingStructure, businessDescription]);
+
+  // Reset recommendations when navigating away from review step
+  useEffect(() => {
+    if (currentStep !== 3) {
+      recommendationsLoadedRef.current = false;
+      setRecommendations(new Map());
+    }
+  }, [currentStep]);
+
+  // Enrich existing items with AI recommendations
+  const existingItemsNotInPlan = useMemo(() => {
+    return rawExistingItemsNotInPlan.map(item => {
+      const key = item.clickupId ?? `${item.type}:${item.name}`;
+      const rec = recommendations.get(key);
+      if (rec) {
+        return { ...item, recommendation: rec.action, recommendationReason: rec.reason };
+      }
+      return item;
+    });
+  }, [rawExistingItemsNotInPlan, recommendations]);
 
   const hasPendingDeletions = itemsToDelete.length > 0 || existingItemsNotInPlan.length > 0;
 
@@ -1318,6 +1405,7 @@ export function useSetup(): UseSetupReturn {
     goToDashboard,
     itemsToDelete,
     existingItemsNotInPlan,
+    isLoadingRecommendations,
     hasPendingDeletions,
     confirmDeletionsAndBuild,
     skipDeletionsAndBuild,
