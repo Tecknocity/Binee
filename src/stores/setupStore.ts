@@ -148,11 +148,16 @@ const WORK_STYLE_LABELS: Record<string, string> = {
 /** Rebuild a business description from the saved profile form data. */
 export function buildDescriptionFromForm(
   data: { industry: string; industryCustom: string; workStyle: string; services: string; teamSize: string } | null,
+  fileContext?: string,
 ): string {
   if (!data) return '';
   const industry = data.industry === 'Other' ? data.industryCustom : data.industry;
   if (!industry && !data.services) return '';
-  return `We're in the ${industry} industry. Our work style is ${WORK_STYLE_LABELS[data.workStyle] || data.workStyle}. Our services/products include: ${data.services}. Team size: ${data.teamSize}.`;
+  let desc = `We're in the ${industry} industry. Our work style is ${WORK_STYLE_LABELS[data.workStyle] || data.workStyle}. Our services/products include: ${data.services}. Team size: ${data.teamSize}.`;
+  if (fileContext) {
+    desc += `\n\nAdditional context from uploaded files:\n${fileContext}`;
+  }
+  return desc;
 }
 
 // ---------------------------------------------------------------------------

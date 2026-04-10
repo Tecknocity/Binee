@@ -496,7 +496,12 @@ export function useSetup(): UseSetupReturn {
           // Reset analysis so it re-runs with fresh data
           if (isReturningFromOAuth && furthestStep > 0) {
             store?.getState().resetFromStep(1);
+            // resetFromStep(1) cascades through all steps - reset tracking refs
+            existingStructureLoadedRef.current = false;
+            buildRestoredRef.current = false;
+            recommendationsLoadedRef.current = false;
           }
+          analysisStartedRef.current = false;
           setCurrentStep(1);
         }, 800);
         return () => clearTimeout(timer);
@@ -661,8 +666,17 @@ export function useSetup(): UseSetupReturn {
   const continueFromConnect = useCallback(() => {
     // Reset analysis so it re-runs with fresh data, then move to step 1
     store?.getState().resetFromStep(1);
+    // resetFromStep(1) cascades through steps 1-4, clearing analysis, chat,
+    // plan, and execution data. Reset all tracking refs to match.
     analysisStartedRef.current = false;
+    existingStructureLoadedRef.current = false;
+    buildRestoredRef.current = false;
+    recommendationsLoadedRef.current = false;
     setIsAnalyzing(false);
+    setExecutionProgress(null);
+    setExecutionResult(null);
+    setExecutionItems([]);
+    setIsExecuting(false);
     setCurrentStep(1);
   }, [store, setCurrentStep]);
 
@@ -736,22 +750,30 @@ export function useSetup(): UseSetupReturn {
     [addMessage, isSending, workspace_id, conversationId, fullAnalysisContext, store]
   );
 
+  // Shared helper: clear all build/execution state so the user can rebuild.
+  // Called from navigateToStep and generateStructure when returning after a build.
+  const clearBuildState = useCallback(() => {
+    store?.getState().setBuildCompleted(false);
+    store?.getState().setExecutionResult(null);
+    store?.getState().setExecutionItems([]);
+    store?.getState().setExistingStructure(null);
+    store?.getState().setManualSteps([]);
+    existingStructureLoadedRef.current = false;
+    buildRestoredRef.current = false;
+    recommendationsLoadedRef.current = false;
+    setExecutionProgress(null);
+    setExecutionResult(null);
+    setExecutionItems([]);
+    setIsExecuting(false);
+  }, [store]);
+
   const generateStructure = useCallback(async () => {
     setIsGenerating(true);
     setIsSending(true);
 
     // If rebuilding after a previous build, clear stale state
     if (store?.getState().buildCompleted) {
-      store?.getState().setBuildCompleted(false);
-      store?.getState().setExecutionResult(null);
-      store?.getState().setExecutionItems([]);
-      store?.getState().setExistingStructure(null);
-      existingStructureLoadedRef.current = false;
-      buildRestoredRef.current = false;
-      setExecutionProgress(null);
-      setExecutionResult(null);
-      setExecutionItems([]);
-      setIsExecuting(false);
+      clearBuildState();
     }
 
     // Immediately advance to step 3 so the user sees a "building" animation
@@ -832,7 +854,7 @@ export function useSetup(): UseSetupReturn {
     }
     setIsGenerating(false);
     setIsSending(false);
-  }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep]);
+  }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState]);
 
   const enhancedSendMessage = useCallback(
     (msg: string, fileContext?: string) => {
@@ -1215,42 +1237,18 @@ export function useSetup(): UseSetupReturn {
   const navigateToStep = useCallback((step: SetupStep) => {
     const wasBuildCompleted = store?.getState().buildCompleted ?? false;
 
-    // When navigating back to Describe (step 2) after a build, prepare for revision
-    if (step === 2 && wasBuildCompleted) {
-      // Clear build state so user can rebuild
-      store?.getState().setBuildCompleted(false);
-      store?.getState().setExecutionResult(null);
-      store?.getState().setExecutionItems([]);
-      // Clear stale existing structure so it's refetched at step 3
-      store?.getState().setExistingStructure(null);
-      existingStructureLoadedRef.current = false;
-      // Reset execution UI state
-      buildRestoredRef.current = false;
-      setExecutionProgress(null);
-      setExecutionResult(null);
-      setExecutionItems([]);
-      setIsExecuting(false);
+    // When navigating back after a build, clear build state so user can rebuild
+    if ((step === 2 || step === 3) && wasBuildCompleted) {
+      clearBuildState();
 
-      // Add a revision prompt instead of auto-generating
-      addMessage('assistant', "Welcome back! Your workspace structure has already been built.\n\nWhat would you like to change? You can ask me to add, remove, rename, or restructure spaces, folders, lists, or statuses.\n\nOnce you're happy with the changes, click **\"Generate Structure\"** to create the updated plan.");
-    }
-
-    // When navigating back to Review (step 3) after a build, refresh existing structure
-    if (step === 3 && wasBuildCompleted) {
-      store?.getState().setBuildCompleted(false);
-      store?.getState().setExecutionResult(null);
-      store?.getState().setExecutionItems([]);
-      store?.getState().setExistingStructure(null);
-      existingStructureLoadedRef.current = false;
-      buildRestoredRef.current = false;
-      setExecutionProgress(null);
-      setExecutionResult(null);
-      setExecutionItems([]);
-      setIsExecuting(false);
+      if (step === 2) {
+        // Add a revision prompt instead of auto-generating
+        addMessage('assistant', "Welcome back! Your workspace structure has already been built.\n\nWhat would you like to change? You can ask me to add, remove, rename, or restructure spaces, folders, lists, or statuses.\n\nOnce you're happy with the changes, click **\"Generate Structure\"** to create the updated plan.");
+      }
     }
 
     setCurrentStep(step);
-  }, [setCurrentStep, store, addMessage]);
+  }, [setCurrentStep, store, addMessage, clearBuildState]);
 
   const resetStage = useCallback((step: SetupStep) => {
     // Clear data from this step onward and navigate to it
@@ -1269,6 +1267,10 @@ export function useSetup(): UseSetupReturn {
       };
       store?.getState().addMessage(toStoreMessage(welcomeMsg));
     }
+    // Reset all tracking refs so effects re-run with fresh data
+    existingStructureLoadedRef.current = false;
+    buildRestoredRef.current = false;
+    recommendationsLoadedRef.current = false;
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);
@@ -1279,7 +1281,11 @@ export function useSetup(): UseSetupReturn {
   const restartSetup = useCallback(() => {
     const newId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     store?.getState().reset(newId);
+    // Reset all tracking refs so effects re-run with fresh data
     analysisStartedRef.current = false;
+    existingStructureLoadedRef.current = false;
+    buildRestoredRef.current = false;
+    recommendationsLoadedRef.current = false;
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);
@@ -1298,6 +1304,9 @@ export function useSetup(): UseSetupReturn {
 
   const editProfile = useCallback(() => {
     store?.getState().setProfileFormCompleted(false);
+    // Clear businessDescription so stale data from the old profile isn't used
+    // if something triggers generation before the user re-submits the form.
+    store?.getState().setBusinessDescription('');
   }, [store]);
 
   const submitProfileForm = useCallback(
@@ -1305,23 +1314,9 @@ export function useSetup(): UseSetupReturn {
       store?.getState().setProfileFormData(data);
       store?.getState().setProfileFormCompleted(true);
 
-      const workStyleLabel: Record<string, string> = {
-        'client-based': 'client-based work (managing multiple clients)',
-        'product-based': 'product development (building and shipping products)',
-        'project-based': 'project-based work (discrete projects with deadlines)',
-        'operations-based': 'operations management (ongoing processes and workflows)',
-      };
-
-      // Build a business description from the form data and store it
-      // The profile data is passed to the AI via the system prompt (profileData param)
-      // so we don't need to send it as a chat message
-      let desc = `We're in the ${data.industry} industry. Our work style is ${workStyleLabel[data.workStyle] || data.workStyle}. Our services/products include: ${data.services}. Team size: ${data.teamSize}.`;
-
-      // Include uploaded file context if available
-      if (data.fileContext) {
-        desc += `\n\nAdditional context from uploaded files:\n${data.fileContext}`;
-      }
-
+      // Use the shared buildDescriptionFromForm so the description logic
+      // (e.g. resolving "Other" → industryCustom) stays in one place.
+      const desc = buildDescriptionFromForm(data, data.fileContext);
       store?.getState().setBusinessDescription(desc);
     },
     [store],
