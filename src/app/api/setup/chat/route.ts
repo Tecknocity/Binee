@@ -74,14 +74,15 @@ export async function POST(request: NextRequest) {
 
       if (profileFacts.length > 0) {
         // Delete old profile memories and insert fresh ones (handles profile updates)
-        adminClient
-          .from('user_memories')
-          .delete()
-          .eq('user_id', authUser.id)
-          .eq('workspace_id', workspace_id)
-          .eq('category', 'profile')
-          .then(() =>
-            adminClient.from('user_memories').insert(
+        (async () => {
+          try {
+            await adminClient
+              .from('user_memories')
+              .delete()
+              .eq('user_id', authUser.id)
+              .eq('workspace_id', workspace_id)
+              .eq('category', 'profile');
+            await adminClient.from('user_memories').insert(
               profileFacts.map(fact => ({
                 user_id: authUser.id,
                 workspace_id,
@@ -89,9 +90,11 @@ export async function POST(request: NextRequest) {
                 content: fact,
                 source_conversation_id: conversation_id,
               })),
-            ),
-          )
-          .catch(err => console.error('[setup/chat] Profile memory save failed:', err));
+            );
+          } catch (err) {
+            console.error('[setup/chat] Profile memory save failed:', err);
+          }
+        })();
       }
     }
 
