@@ -746,13 +746,12 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             </div>
           </div>
         )}
-      </div>
 
-      {/* Reconciliation / deletion confirmation dialog */}
-      {showDeleteConfirm && (hasDeletions || spaceLimitExceeded) && (
-        <div className="bg-surface-elevated border border-border rounded-xl p-4 mt-2 space-y-4">
-          {/* Plan limit warning */}
-          {spaceLimitExceeded && (
+        {/* Reconciliation / deletion confirmation dialog */}
+        {showDeleteConfirm && (hasDeletions || spaceLimitExceeded) && (
+          <div className="bg-surface-elevated border border-border rounded-xl p-4 mt-2 space-y-4">
+            {/* Plan limit warning */}
+            {spaceLimitExceeded && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
               <div className="flex items-start gap-2.5">
                 <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
@@ -929,7 +928,8 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             </button>
           </div>
         </div>
-      )}
+        )}
+      </div>
 
       {/* Action buttons */}
       <div className="flex items-center justify-end gap-2 pt-3 border-t border-border shrink-0">
