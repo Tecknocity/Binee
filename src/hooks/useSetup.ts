@@ -803,7 +803,8 @@ export function useSetup(): UseSetupReturn {
 
       // Build context-aware fallback: account for plan state and profile data
       const hasPlan = !!(currentPlan?.spaces?.length);
-      const fallbackQuestion = buildContextAwareFallback(userMsgCount - 1, currentProfile, hasPlan);
+      const fallbackIdx = Math.max(0, userMsgCount - 1);
+      const fallbackQuestion = buildContextAwareFallback(fallbackIdx, currentProfile, hasPlan);
       await new Promise((r) => setTimeout(r, 800 + Math.random() * 600));
       addMessage('assistant', fallbackQuestion);
       setIsSending(false);
