@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { maybeSummarizeConversation } from '@/lib/ai/conversation-summary';
 
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 export async function POST(request: NextRequest) {
   try {
