@@ -176,13 +176,21 @@ const DISCOVERY_QUESTIONS: Array<{ key: keyof BusinessProfile; question: string 
 
 /**
  * Build a context-aware fallback message when the AI API call fails.
+ * If a plan has already been generated, acknowledge the user's feedback.
  * If the profile form already has data (industry, services, team size, etc.),
  * acknowledge that context instead of re-asking about it.
  */
 function buildContextAwareFallback(
   msgIdx: number,
   profileData: ProfileFormData | null | undefined,
+  hasPlan?: boolean,
 ): string {
+  // If a plan has already been generated, the user is likely giving feedback
+  // about the structure - don't ask discovery questions
+  if (hasPlan) {
+    return "I understand you'd like to make changes to the workspace structure. You can describe what you'd like to adjust, or click **\"Generate Structure\"** to regenerate the plan with your feedback included.";
+  }
+
   const hasProfile = profileData && (profileData.industry || profileData.services || profileData.teamSize || profileData.workStyle);
 
   if (hasProfile) {
@@ -784,13 +792,17 @@ export function useSetup(): UseSetupReturn {
             setIsSending(false);
             return;
           }
+          console.error('[setup/sendMessage] API returned ok but empty content');
+        } else {
+          console.error('[setup/sendMessage] API returned status', response.status);
         }
-      } catch {
-        // Fall through to guided fallback
+      } catch (err) {
+        console.error('[setup/sendMessage] API call failed:', err);
       }
 
-      // Build context-aware fallback: skip questions about data already in the profile form
-      const fallbackQuestion = buildContextAwareFallback(idx, currentProfile);
+      // Build context-aware fallback: account for plan state and profile data
+      const hasPlan = !!(currentPlan?.spaces?.length);
+      const fallbackQuestion = buildContextAwareFallback(idx, currentProfile, hasPlan);
       await new Promise((r) => setTimeout(r, 800 + Math.random() * 600));
       addMessage('assistant', fallbackQuestion);
       setIsSending(false);
