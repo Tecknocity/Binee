@@ -135,6 +135,27 @@ interface SetupState {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const WORK_STYLE_LABELS: Record<string, string> = {
+  'client-based': 'client-based work (managing multiple clients)',
+  'product-based': 'product development (building and shipping products)',
+  'project-based': 'project-based work (discrete projects with deadlines)',
+  'operations-based': 'operations management (ongoing processes and workflows)',
+};
+
+/** Rebuild a business description from the saved profile form data. */
+export function buildDescriptionFromForm(
+  data: { industry: string; industryCustom: string; workStyle: string; services: string; teamSize: string } | null,
+): string {
+  if (!data) return '';
+  const industry = data.industry === 'Other' ? data.industryCustom : data.industry;
+  if (!industry && !data.services) return '';
+  return `We're in the ${industry} industry. Our work style is ${WORK_STYLE_LABELS[data.workStyle] || data.workStyle}. Our services/products include: ${data.services}. Team size: ${data.teamSize}.`;
+}
+
+// ---------------------------------------------------------------------------
 // Store factory — keyed by workspace ID
 // ---------------------------------------------------------------------------
 
@@ -227,7 +248,9 @@ function createSetupStore(workspaceId: string) {
               // doesn't have to re-fill the profile.
               updates.profileFormCompleted = s.profileFormCompleted; // Keep form data
               updates.profileFormData = s.profileFormData; // Keep form data
-              updates.businessDescription = ''; // Clear description for fresh start
+              // Rebuild description from preserved form data so generateStructure
+              // never sends an empty businessDescription (which causes a 400).
+              updates.businessDescription = buildDescriptionFromForm(s.profileFormData);
               updates.chatMessages = []; // Clear chat messages
               updates.messageCount = 0; // Reset message count
               updates.conversationId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; // New conversation

@@ -14,7 +14,7 @@ import { computeItemsToDelete, computeExistingItemsNotInPlan } from '@/lib/setup
 import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { getSetupStore } from '@/stores/setupStore';
+import { getSetupStore, buildDescriptionFromForm } from '@/stores/setupStore';
 import type { SetupChatMessage as StoreChatMessage, ExistingWorkspaceStructure } from '@/stores/setupStore';
 
 // ---------------------------------------------------------------------------
@@ -757,20 +757,34 @@ export function useSetup(): UseSetupReturn {
     // Immediately advance to step 3 so the user sees a "building" animation
     setCurrentStep(3);
     try {
+      // Read live values from the store to avoid stale closures
+      const state = store?.getState();
+
       // Save current plan to history before generating a new one
-      const currentPlan = store?.getState().proposedPlan;
+      const currentPlan = state?.proposedPlan;
       if (currentPlan) {
         store?.getState().pushPlanToHistory(currentPlan);
       }
 
+      // Resolve businessDescription: prefer store value, fall back to rebuilding
+      // from profileFormData. This prevents 400 errors when resetFromStep or
+      // stale closures leave businessDescription empty while form data is intact.
+      const liveDescription = state?.businessDescription
+        || businessDescription
+        || buildDescriptionFromForm(state?.profileFormData ?? null);
+
+      if (!liveDescription) {
+        throw new Error('No business description available. Please fill in your business profile first.');
+      }
+
       // Build conversation context for the planner
-      const recentMessages = store?.getState().chatMessages
+      const recentMessages = (state?.chatMessages ?? [])
         .slice(-6)
         .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 300)}`)
         .join('\n') || '';
 
       // Build plan history summary so the planner knows what was tried before
-      const history = store?.getState().planHistory || [];
+      const history = state?.planHistory || [];
       const planHistorySummary = history.length > 0
         ? history.map((p, i) => `Plan v${i + 1}: ${p.spaces.map(s => s.name).join(', ')} (${p.reasoning?.slice(0, 100) || 'no reasoning'})`).join('\n')
         : undefined;
@@ -780,7 +794,7 @@ export function useSetup(): UseSetupReturn {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           businessProfile: {
-            businessDescription,
+            businessDescription: liveDescription,
             teamSize: businessProfile.teamSize,
             departments: businessProfile.departments,
             tools: businessProfile.tools,
@@ -793,7 +807,10 @@ export function useSetup(): UseSetupReturn {
           planHistorySummary: planHistorySummary || undefined,
         }),
       });
-      if (!res.ok) throw new Error('Plan generation failed');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Plan generation failed (status ${res.status})`);
+      }
       const { plan } = await res.json();
       store?.getState().setPlan(plan);
       const version = (history.length || 0) + (currentPlan ? 2 : 1);
@@ -806,8 +823,10 @@ export function useSetup(): UseSetupReturn {
         ? `**${plan.spaces.length} spaces**, **${totalLists} lists**, and ${totalFolders} folders`
         : `**${plan.spaces.length} spaces** and **${totalLists} lists**`;
       addMessage('assistant', `I've designed your workspace structure (v${version}) with ${structureDesc}.\n\nTake a look and let me know if you'd like any changes.`);
-    } catch {
-      addMessage('assistant', 'Sorry, I had trouble generating a workspace plan. Please try again.');
+    } catch (err) {
+      console.error('[generateStructure] Failed:', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      addMessage('assistant', `Sorry, I had trouble generating a workspace plan: ${message}. Please try again.`);
       // Go back to Describe step on failure
       setCurrentStep(2);
     }
