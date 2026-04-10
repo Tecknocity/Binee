@@ -27,43 +27,68 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Load templates from knowledge base
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
 
-    const { data: templateModules } = await adminClient
-      .from('ai_knowledge_base')
-      .select('content')
-      .like('module_key', 'clickup-templates-database%');
+    // -----------------------------------------------------------------------
+    // PHASE 1: Persist user message FIRST, then load context in parallel.
+    // This ensures conversation history is always complete even if the AI
+    // call times out or fails — the next retry will see all prior messages.
+    // -----------------------------------------------------------------------
 
-    const templates = templateModules?.map(m => m.content).join('\n\n') || '';
+    // Ensure conversation record exists (must happen before message insert)
+    await adminClient
+      .from('conversations')
+      .upsert(
+        {
+          id: conversation_id,
+          workspace_id,
+          user_id: authUser.id,
+          context_type: 'setup',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' },
+      );
 
-    // Fetch ClickUp plan tier for this workspace
-    const { data: workspaceRow } = await adminClient
-      .from('workspaces')
-      .select('clickup_plan_tier')
-      .eq('id', workspace_id)
-      .single();
-    const planTier = workspaceRow?.clickup_plan_tier || 'free';
+    // Save user message to DB immediately — before the AI call
+    await adminClient.from('messages').insert({
+      workspace_id,
+      conversation_id,
+      role: 'user',
+      content: message.trim(),
+      credits_used: 0,
+    });
 
-    // Load conversation history for this setup session
-    const { data: historyMessages } = await adminClient
-      .from('messages')
-      .select('role, content')
-      .eq('conversation_id', conversation_id)
-      .order('created_at', { ascending: true })
-      .limit(20);
+    // Load all context in parallel (not sequentially)
+    const [templatesResult, workspaceResult, historyResult] = await Promise.all([
+      adminClient
+        .from('ai_knowledge_base')
+        .select('content')
+        .like('module_key', 'clickup-templates-database%'),
+      adminClient
+        .from('workspaces')
+        .select('clickup_plan_tier')
+        .eq('id', workspace_id)
+        .single(),
+      adminClient
+        .from('messages')
+        .select('role, content')
+        .eq('conversation_id', conversation_id)
+        .order('created_at', { ascending: true })
+        .limit(20),
+    ]);
 
-    const conversationHistory = (historyMessages || []).map(m => ({
+    const templates = templatesResult.data?.map(m => m.content).join('\n\n') || '';
+    const planTier = workspaceResult.data?.clickup_plan_tier || 'free';
+    // History now includes the user message we just saved
+    const conversationHistory = (historyResult.data || []).map(m => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
-    // Save profile data as persistent user memories (fire-and-forget, non-blocking).
-    // This ensures the user's company identity is available in ALL future conversations
-    // (both setup and regular chat) without waiting for the summarizer to extract it.
+    // Save profile data as persistent user memories (fire-and-forget)
     if (profile_data) {
       const { industry, workStyle, services, teamSize } = profile_data;
       const profileFacts: string[] = [];
@@ -73,7 +98,6 @@ export async function POST(request: NextRequest) {
       if (teamSize) profileFacts.push(`User's team size is ${teamSize}`);
 
       if (profileFacts.length > 0) {
-        // Delete old profile memories and insert fresh ones (handles profile updates)
         (async () => {
           try {
             await adminClient
@@ -103,7 +127,12 @@ export async function POST(request: NextRequest) {
       ? `${message.trim()}\n\n--- ATTACHED FILE CONTENT ---\n${file_context}\n--- END ATTACHED FILE CONTENT ---`
       : message.trim();
 
-    // Run setupper brain — pass pre-computed analysis if available
+    // -----------------------------------------------------------------------
+    // PHASE 2: Call the AI brain.
+    // Conversation history from DB already includes all messages (including
+    // the one the user just sent), so the AI always has full context.
+    // -----------------------------------------------------------------------
+
     const result = await handleSetupMessage({
       userMessage: enrichedMessage,
       workspaceId: workspace_id,
@@ -117,95 +146,82 @@ export async function POST(request: NextRequest) {
       profileData: profile_data || undefined,
     });
 
-    // Deduct credits
-    const { error: deductError } = await adminClient.rpc('deduct_credits', {
-      p_workspace_id: workspace_id,
-      p_user_id: authUser.id,
-      p_amount: result.creditsToCharge,
-      p_description: 'Setup: workspace configuration',
-      p_message_id: null,
-      p_metadata: {
-        credit_tier: 'complex',
-        source: 'setup',
-        input_tokens: result.totalInputTokens,
-        output_tokens: result.totalOutputTokens,
-        anthropic_cost_cents: result.anthropicCostCents,
-        tool_calls: result.toolCalls,
-      },
-    });
+    // -----------------------------------------------------------------------
+    // PHASE 3: Save AI response immediately, then send response to client.
+    // Credits and summarization happen AFTER the client gets the response.
+    // -----------------------------------------------------------------------
 
-    if (deductError) {
-      console.error('[setup/chat] Credit deduction failed:', deductError);
-    }
-
-    // Log to credit_usage (same source of truth as chat)
-    const { error: usageErr } = await adminClient.from('credit_usage').insert({
-      user_id: authUser.id,
+    // Save assistant message right away (don't wait for billing)
+    await adminClient.from('messages').insert({
       workspace_id,
-      action_type: 'chat',
-      session_id: conversation_id,
-      model_used: 'sonnet',
-      input_tokens: result.totalInputTokens ?? 0,
-      output_tokens: result.totalOutputTokens ?? 0,
-      anthropic_cost_cents: result.anthropicCostCents ?? 0,
-      credits_deducted: result.creditsToCharge,
+      conversation_id,
+      role: 'assistant',
+      content: result.content,
+      credits_used: result.creditsToCharge,
+      metadata: {
+        source: 'setup',
+        tool_calls: result.toolCalls,
+        anthropic_cost_cents: result.anthropicCostCents,
+      },
     });
-    if (usageErr) {
-      console.error('[setup/chat] credit_usage insert failed:', usageErr.message);
-    }
 
-    // Ensure conversation record exists (needed for summarization)
-    await adminClient
-      .from('conversations')
-      .upsert(
-        {
-          id: conversation_id,
-          workspace_id,
-          user_id: authUser.id,
-          context_type: 'setup',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' },
-      );
-
-    // Save messages
-    await adminClient.from('messages').insert([
-      {
-        workspace_id,
-        conversation_id,
-        role: 'user',
-        content: message.trim(),
-        credits_used: 0,
-      },
-      {
-        workspace_id,
-        conversation_id,
-        role: 'assistant',
-        content: result.content,
-        credits_used: result.creditsToCharge,
-        metadata: {
-          source: 'setup',
-          tool_calls: result.toolCalls,
-          anthropic_cost_cents: result.anthropicCostCents,
-        },
-      },
-    ]);
-
-    // Fire-and-forget: summarize conversation every 4 messages (async, non-blocking)
-    maybeSummarizeConversation(conversation_id, workspace_id).catch(err =>
-      console.error('[setup/chat] Background summarization failed:', err),
-    );
-
-    // Update setup session credits_used
-    await adminClient
-      .from('setup_sessions')
-      .update({
-        credits_used: adminClient.rpc('add_setup_credits', {
-          p_conversation_id: conversation_id,
+    // Fire-and-forget: billing, summarization, session updates.
+    // These don't block the response to the client.
+    (async () => {
+      try {
+        await adminClient.rpc('deduct_credits', {
+          p_workspace_id: workspace_id,
+          p_user_id: authUser.id,
           p_amount: result.creditsToCharge,
-        }),
-      })
-      .eq('conversation_id', conversation_id);
+          p_description: 'Setup: workspace configuration',
+          p_message_id: null,
+          p_metadata: {
+            credit_tier: 'complex',
+            source: 'setup',
+            input_tokens: result.totalInputTokens,
+            output_tokens: result.totalOutputTokens,
+            anthropic_cost_cents: result.anthropicCostCents,
+            tool_calls: result.toolCalls,
+          },
+        });
+      } catch (err) {
+        console.error('[setup/chat] Credit deduction failed:', err);
+      }
+
+      try {
+        await adminClient.from('credit_usage').insert({
+          user_id: authUser.id,
+          workspace_id,
+          action_type: 'chat',
+          session_id: conversation_id,
+          model_used: 'sonnet',
+          input_tokens: result.totalInputTokens ?? 0,
+          output_tokens: result.totalOutputTokens ?? 0,
+          anthropic_cost_cents: result.anthropicCostCents ?? 0,
+          credits_deducted: result.creditsToCharge,
+        });
+      } catch (err) {
+        console.error('[setup/chat] credit_usage insert failed:', err);
+      }
+
+      try {
+        await adminClient
+          .from('setup_sessions')
+          .update({
+            credits_used: adminClient.rpc('add_setup_credits', {
+              p_conversation_id: conversation_id,
+              p_amount: result.creditsToCharge,
+            }),
+          })
+          .eq('conversation_id', conversation_id);
+      } catch (err) {
+        console.error('[setup/chat] setup_sessions update failed:', err);
+      }
+
+      maybeSummarizeConversation(conversation_id, workspace_id).catch(err =>
+        console.error('[setup/chat] Background summarization failed:', err),
+      );
+    })();
 
     return NextResponse.json({
       content: result.content,

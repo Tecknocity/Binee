@@ -155,10 +155,16 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   const setupTools = BINEE_TOOLS.filter(t => setupToolNames.includes(t.name));
 
   // Step 4: Call Sonnet with tool loop
-  const messages: Anthropic.MessageParam[] = [
-    ...input.conversationHistory,
-    { role: 'user', content: input.userMessage },
-  ];
+  // conversationHistory from DB already includes the current user message
+  // (saved by the API route before calling this function). Replace the last
+  // user message with the enriched version (which may include file context)
+  // to avoid duplicating it.
+  const messages: Anthropic.MessageParam[] = input.conversationHistory.length > 0
+    ? [
+        ...input.conversationHistory.slice(0, -1),
+        { role: 'user' as const, content: input.userMessage },
+      ]
+    : [{ role: 'user' as const, content: input.userMessage }];
 
   let rounds = 0;
   let finalContent = '';
