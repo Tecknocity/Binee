@@ -157,8 +157,8 @@ Users can attach CSV, XLSX, or TXT files to their messages. When a user uploads 
 - For example, if they upload a spreadsheet of their current projects, use that data to tailor your space/folder/list suggestions
 - If the file contains a team roster, use it to understand team size and roles
 
-WORKSPACE TOOLS:
-You can look up current tasks and workspace structure to inform your recommendations. When you propose a structure, the user will review it visually and can edit it before any changes are made to their workspace.
+WORKSPACE CONTEXT:
+Your workspace analysis above is your complete view of the user's current ClickUp structure. Use it to inform your recommendations. When you propose a structure, the user will review it visually and can edit it before any changes are made to their workspace.
 
 ${planTier ? buildPlanContextForAI(planTier) : ''}`;
 }
