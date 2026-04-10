@@ -308,6 +308,31 @@ export function classifyClickUpError(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Plan resource limits (e.g. max spaces on Free tier)
+// ---------------------------------------------------------------------------
+
+export interface PlanLimits {
+  /** Max number of spaces allowed, or null if unlimited */
+  maxSpaces: number | null;
+}
+
+const PLAN_LIMITS: Record<ClickUpPlanTier, PlanLimits> = {
+  free: { maxSpaces: 5 },
+  unlimited: { maxSpaces: null },
+  business: { maxSpaces: null },
+  business_plus: { maxSpaces: null },
+  enterprise: { maxSpaces: null },
+};
+
+/**
+ * Get resource limits for a given ClickUp plan tier.
+ */
+export function getPlanLimits(planTier: string): PlanLimits {
+  const tier = planTier.toLowerCase().replace(/\s+/g, '_') as ClickUpPlanTier;
+  return PLAN_LIMITS[tier] ?? PLAN_LIMITS.free;
+}
+
 /**
  * Build a concise plan limitations summary for the AI prompt.
  * Tells the AI what NOT to recommend based on the user's plan.

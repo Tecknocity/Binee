@@ -574,6 +574,129 @@ function itemKey(type: string, name: string, parentName?: string): string {
   return `${type}:${p}/${n}`;
 }
 
+// ---------------------------------------------------------------------------
+// Reconciliation: find existing workspace items NOT in the proposed plan
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute existing workspace items (spaces, folders, lists) that are NOT in
+ * the proposed plan. These are "extra" items occupying plan slots that the
+ * user may want to delete to make room for new items.
+ *
+ * Excludes items already tracked in `previouslyBuiltItems` (those are handled
+ * by `computeItemsToDelete` instead).
+ */
+export function computeExistingItemsNotInPlan(
+  existingStructure: ExistingWorkspaceStructure | null | undefined,
+  newPlan: SetupPlan,
+  previouslyBuiltItems: ExecutionItem[],
+): ExecutionItem[] {
+  if (!existingStructure?.spaces || existingStructure.spaces.length === 0) return [];
+
+  // Build set of plan item keys for fast lookup
+  const planKeys = new Set<string>();
+  for (const space of newPlan.spaces) {
+    planKeys.add(itemKey('space', space.name));
+    if (space.lists) {
+      for (const list of space.lists) {
+        planKeys.add(itemKey('list', list.name, space.name));
+      }
+    }
+    for (const folder of space.folders) {
+      planKeys.add(itemKey('folder', folder.name, space.name));
+      for (const list of folder.lists) {
+        planKeys.add(itemKey('list', list.name, folder.name));
+      }
+    }
+  }
+
+  // Build set of previously-built clickup IDs so we don't double-count
+  const builtIds = new Set(
+    previouslyBuiltItems
+      .filter(i => i.clickupId)
+      .map(i => i.clickupId)
+  );
+
+  const extras: ExecutionItem[] = [];
+
+  for (const space of existingStructure.spaces) {
+    const spaceKey = itemKey('space', space.name);
+    const isSpaceInPlan = planKeys.has(spaceKey);
+
+    // Count tasks in this space (for deletion warning)
+    let spaceTaskCount = 0;
+    for (const folder of space.folders) {
+      for (const list of folder.lists) {
+        spaceTaskCount += list.task_count;
+      }
+    }
+    for (const list of space.lists ?? []) {
+      spaceTaskCount += list.task_count;
+    }
+
+    if (!isSpaceInPlan && !builtIds.has(space.clickup_id)) {
+      extras.push({
+        type: 'space',
+        name: space.name,
+        status: 'pending',
+        clickupId: space.clickup_id,
+        taskCount: spaceTaskCount,
+      });
+    }
+
+    // Check folders
+    for (const folder of space.folders) {
+      const folderKey = itemKey('folder', folder.name, space.name);
+      if (!planKeys.has(folderKey) && !builtIds.has(folder.clickup_id)) {
+        let folderTaskCount = 0;
+        for (const list of folder.lists) {
+          folderTaskCount += list.task_count;
+        }
+        extras.push({
+          type: 'folder',
+          name: folder.name,
+          parentName: space.name,
+          status: 'pending',
+          clickupId: folder.clickup_id,
+          taskCount: folderTaskCount,
+        });
+      }
+
+      // Check lists inside folders
+      for (const list of folder.lists) {
+        const listKey = itemKey('list', list.name, folder.name);
+        if (!planKeys.has(listKey) && !builtIds.has(list.clickup_id)) {
+          extras.push({
+            type: 'list',
+            name: list.name,
+            parentName: folder.name,
+            status: 'pending',
+            clickupId: list.clickup_id,
+            taskCount: list.task_count,
+          });
+        }
+      }
+    }
+
+    // Check folderless lists
+    for (const list of space.lists ?? []) {
+      const listKey = itemKey('list', list.name, space.name);
+      if (!planKeys.has(listKey) && !builtIds.has(list.clickup_id)) {
+        extras.push({
+          type: 'list',
+          name: list.name,
+          parentName: space.name,
+          status: 'pending',
+          clickupId: list.clickup_id,
+          taskCount: list.task_count,
+        });
+      }
+    }
+  }
+
+  return extras;
+}
+
 /**
  * Delete items from ClickUp that were created by Binee in a previous build
  * but are no longer in the current plan. Deletes in reverse dependency order:

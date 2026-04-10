@@ -9,7 +9,7 @@ import type {
   ManualStep,
 } from '@/lib/setup/types';
 import type { ExecutionItem, ExecutionResult as ExecutorResult } from '@/lib/setup/executor';
-import { computeItemsToDelete } from '@/lib/setup/executor';
+import { computeItemsToDelete, computeExistingItemsNotInPlan } from '@/lib/setup/executor';
 // generateSetupPlan is called via /api/setup/generate-plan (server-side only)
 import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
@@ -95,6 +95,8 @@ export interface UseSetupReturn {
   goToDashboard: () => void;
   /** Items from previous builds that should be deleted (not in current plan) */
   itemsToDelete: ExecutionItem[];
+  /** Existing workspace items not in the proposed plan (candidates for user-initiated deletion) */
+  existingItemsNotInPlan: ExecutionItem[];
   /** Whether deletion is pending user confirmation */
   hasPendingDeletions: boolean;
   /** Confirm and execute deletion of selected old items, then build new plan */
@@ -429,7 +431,15 @@ export function useSetup(): UseSetupReturn {
     }));
   }, [proposedPlan, previouslyBuiltItems, existingStructure]);
 
-  const hasPendingDeletions = itemsToDelete.length > 0;
+  // Existing workspace items NOT in the proposed plan and NOT already tracked
+  // as Binee-built items. These are user-created items occupying plan slots
+  // that the user may want to delete to make room for new items.
+  const existingItemsNotInPlan = useMemo(() => {
+    if (!proposedPlan || !existingStructure?.spaces) return [];
+    return computeExistingItemsNotInPlan(existingStructure, proposedPlan, previouslyBuiltItems);
+  }, [proposedPlan, existingStructure, previouslyBuiltItems]);
+
+  const hasPendingDeletions = itemsToDelete.length > 0 || existingItemsNotInPlan.length > 0;
 
   const wizardStep = NUMERIC_TO_WIZARD_STEP[currentStep];
 
@@ -1307,6 +1317,7 @@ export function useSetup(): UseSetupReturn {
     restartSetup,
     goToDashboard,
     itemsToDelete,
+    existingItemsNotInPlan,
     hasPendingDeletions,
     confirmDeletionsAndBuild,
     skipDeletionsAndBuild,
