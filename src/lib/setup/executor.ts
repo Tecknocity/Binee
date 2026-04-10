@@ -528,8 +528,7 @@ export async function executeSetupPlan(
  * Compute items that Binee previously created but are no longer in the new plan.
  * These are candidates for deletion (with user confirmation).
  *
- * Only considers structural items (spaces, folders, lists) - not tags/docs/goals
- * since those are additive and low-risk.
+ * Considers all buildable item types: spaces, folders, lists, tags, docs, goals.
  */
 export function computeItemsToDelete(
   previouslyBuiltItems: ExecutionItem[],
@@ -555,12 +554,27 @@ export function computeItemsToDelete(
     }
   }
 
+  // Tags, docs, goals
+  if (newPlan.recommended_tags) {
+    for (const tag of newPlan.recommended_tags) {
+      newPlanKeys.add(itemKey('tag', tag.name));
+    }
+  }
+  if (newPlan.recommended_docs) {
+    for (const doc of newPlan.recommended_docs) {
+      newPlanKeys.add(itemKey('doc', doc.name));
+    }
+  }
+  if (newPlan.recommended_goals) {
+    for (const goal of newPlan.recommended_goals) {
+      newPlanKeys.add(itemKey('goal', goal.name));
+    }
+  }
+
   // Find items that Binee created but are not in the new plan
   const toDelete: ExecutionItem[] = [];
   for (const item of previouslyBuiltItems) {
-    // Only consider structural items with clickup IDs
     if (!item.clickupId) continue;
-    if (!['space', 'folder', 'list'].includes(item.type)) continue;
 
     const key = itemKey(item.type, item.name, item.parentName);
     if (!newPlanKeys.has(key)) {
@@ -704,7 +718,7 @@ export function computeExistingItemsNotInPlan(
 /**
  * Delete items from ClickUp that were created by Binee in a previous build
  * but are no longer in the current plan. Deletes in reverse dependency order:
- * lists first, then folders, then spaces.
+ * tags/docs/goals first (no dependencies), then lists, folders, spaces.
  *
  * Returns execution items with the result of each deletion.
  */
@@ -720,10 +734,10 @@ export async function deleteRemovedItems(
   let completed = 0;
   const total = itemsToDelete.length;
 
-  // Sort: lists first, then folders, then spaces (reverse dependency order)
-  const typeOrder: Record<string, number> = { list: 0, folder: 1, space: 2 };
+  // Sort: independent items first, then structural in reverse dependency order
+  const typeOrder: Record<string, number> = { tag: 0, doc: 1, goal: 2, list: 3, folder: 4, space: 5 };
   const sorted = [...itemsToDelete].sort(
-    (a, b) => (typeOrder[a.type] ?? 3) - (typeOrder[b.type] ?? 3)
+    (a, b) => (typeOrder[a.type] ?? 6) - (typeOrder[b.type] ?? 6)
   );
 
   for (const item of sorted) {
@@ -741,6 +755,16 @@ export async function deleteRemovedItems(
         resultItem.error = 'No ClickUp ID available';
       } else {
         switch (item.type) {
+          case 'tag':
+            // For tags, clickupId stores the spaceId where the tag was created
+            await withRetry(() => client.deleteTag(item.clickupId!, item.name));
+            break;
+          case 'doc':
+            await withRetry(() => client.deleteDoc(item.clickupId!));
+            break;
+          case 'goal':
+            await withRetry(() => client.deleteGoal(item.clickupId!));
+            break;
           case 'list':
             await withRetry(() => client.deleteList(item.clickupId!));
             break;

@@ -452,6 +452,21 @@ export class ClickUpClient {
     await this.request<void>(`/list/${listId}`, { method: "DELETE" });
   }
 
+  async deleteTag(spaceId: string, tagName: string): Promise<void> {
+    await this.request<void>(
+      `/space/${spaceId}/tag/${encodeURIComponent(tagName)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  async deleteDoc(docId: string): Promise<void> {
+    await this.request<void>(`/doc/${docId}`, { method: "DELETE" });
+  }
+
+  async deleteGoal(goalId: string): Promise<void> {
+    await this.request<void>(`/goal/${goalId}`, { method: "DELETE" });
+  }
+
   // ---------------------------------------------------------------------------
   // Docs
   // ---------------------------------------------------------------------------
