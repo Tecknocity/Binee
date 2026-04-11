@@ -800,8 +800,8 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
 
       {/* Reconciliation / deletion confirmation modal overlay */}
       {showDeleteConfirm && (hasDeletions || spaceLimitExceeded) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-surface-elevated border border-border rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+          <div className="bg-navy-dark border border-border rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl">
             {/* Modal header — P2-F: larger title with item count */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
               <div>
@@ -824,7 +824,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 min-h-0">
               {/* Plan limit warning — P2-G: stronger warning */}
               {spaceLimitExceeded && (
-                <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-4">
+                <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                     <div>
@@ -845,7 +845,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
 
               {/* Section: Existing workspace items NOT in the plan — P2-D: card background */}
               {hasExistingExtras && (
-                <div className="bg-accent/5 border border-accent/15 rounded-xl p-4">
+                <div className="bg-accent/10 border border-accent/20 rounded-xl p-4">
                   <div className="flex items-start gap-3 mb-3">
                     <FolderOpen className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
@@ -940,14 +940,14 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                               <span className="ml-auto flex items-center gap-2 flex-shrink-0">
                                 <span className="text-xs font-medium text-text-muted uppercase">{item.type}</span>
                                 {!isChecked && (
-                                  <span className="text-xs font-semibold text-success px-1.5 py-0.5 bg-success/10 rounded">keep</span>
+                                  <span className="text-xs font-semibold text-success px-1.5 py-0.5 bg-success/15 rounded">keep</span>
                                 )}
                                 {isChecked && (
-                                  <span className="text-xs font-semibold text-red-400 px-1.5 py-0.5 bg-red-500/10 rounded">delete</span>
+                                  <span className="text-xs font-semibold text-red-400 px-1.5 py-0.5 bg-red-500/15 rounded">delete</span>
                                 )}
                                 {hasRec && (
                                   <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                                    recIsDelete ? 'text-warning bg-warning/10' : 'text-info bg-info/10'
+                                    recIsDelete ? 'text-warning bg-warning/15' : 'text-info bg-info/15'
                                   }`}>
                                     suggested
                                   </span>
@@ -991,7 +991,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
 
               {/* Section: Binee-created items from previous builds — P2-D: card background */}
               {hasBineeDeletions && (
-                <div className="bg-warning/5 border border-warning/20 rounded-xl p-4">
+                <div className="bg-warning/10 border border-warning/25 rounded-xl p-4">
                   <div className="flex items-start gap-3 mb-3">
                     <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
@@ -1102,7 +1102,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
 
               {/* Warning banner when selected items contain tasks — P2-G: stronger warning */}
               {totalTasksInSelection > 0 && (
-                <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-4">
+                <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                     <div>
