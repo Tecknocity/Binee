@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   FolderOpen,
   Folder,
@@ -8,6 +8,7 @@ import {
   Circle,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   X,
   Plus,
   Pencil,
@@ -21,6 +22,7 @@ import {
   AlertTriangle,
   Trash2,
   Settings2,
+  Check,
 } from 'lucide-react';
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
@@ -68,6 +70,38 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
   // Existing workspace items the user explicitly CHECKED for deletion.
   // Pre-populated from AI recommendations when available.
   const [checkedExistingItems, setCheckedExistingItems] = useState<Set<string>>(new Set());
+
+  // Collapsible section state - expanded by default, collapse when > COLLAPSE_THRESHOLD items
+  const COLLAPSE_THRESHOLD = 5;
+  const [existingExpanded, setExistingExpanded] = useState(true);
+  const [bineeExpanded, setBineeExpanded] = useState(true);
+
+  // Select all / deselect all helpers
+  const selectAllExisting = useCallback(() => {
+    if (!existingItemsNotInPlan) return;
+    const all = new Set<string>();
+    for (const item of existingItemsNotInPlan) {
+      all.add(item.clickupId ?? `${item.type}:${item.name}`);
+    }
+    setCheckedExistingItems(all);
+  }, [existingItemsNotInPlan]);
+
+  const deselectAllExisting = useCallback(() => {
+    setCheckedExistingItems(new Set());
+  }, []);
+
+  const selectAllBinee = useCallback(() => {
+    setUncheckedItems(new Set());
+  }, []);
+
+  const deselectAllBinee = useCallback(() => {
+    if (!itemsToDelete) return;
+    const all = new Set<string>();
+    for (const item of itemsToDelete) {
+      all.add(item.clickupId ?? `${item.type}:${item.name}`);
+    }
+    setUncheckedItems(all);
+  }, [itemsToDelete]);
 
   // When the dialog opens, reset Binee unchecks and pre-select existing items
   // based on AI recommendations (items with recommendation === 'delete').
@@ -768,29 +802,36 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
       {showDeleteConfirm && (hasDeletions || spaceLimitExceeded) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-surface-elevated border border-border rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl">
-            {/* Modal header */}
+            {/* Modal header — P2-F: larger title with item count */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-              <h3 className="text-sm font-semibold text-text-primary">Review before building</h3>
+              <div>
+                <h3 className="text-base font-semibold text-text-primary">Review before building</h3>
+                {selectedDeletionItems.length > 0 && (
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    {selectedDeletionItems.length} item{selectedDeletionItems.length !== 1 ? 's' : ''} selected for removal
+                  </p>
+                )}
+              </div>
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="p-1 text-text-muted hover:text-text-secondary transition-colors rounded-lg hover:bg-surface-hover"
+                className="p-2 text-text-muted hover:text-text-secondary transition-colors rounded-lg hover:bg-surface-hover"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal scrollable body */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
-              {/* Plan limit warning */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 min-h-0">
+              {/* Plan limit warning — P2-G: stronger warning */}
               {spaceLimitExceeded && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                  <div className="flex items-start gap-2.5">
+                <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-red-400">
                         Space limit will be exceeded
                       </p>
-                      <p className="text-xs text-red-400/80 mt-1">
+                      <p className="text-xs text-red-400 mt-1">
                         Your workspace has {existingSpaceCount} space{existingSpaceCount !== 1 ? 's' : ''} and
                         the plan wants to create {newSpaceCount} new one{newSpaceCount !== 1 ? 's' : ''}.
                         Your {planCaps?.label ?? 'Free'} plan allows {planLimits?.maxSpaces} spaces.
@@ -802,12 +843,12 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                 </div>
               )}
 
-              {/* Section: Existing workspace items NOT in the plan */}
+              {/* Section: Existing workspace items NOT in the plan — P2-D: card background */}
               {hasExistingExtras && (
-                <div>
-                  <div className="flex items-start gap-2.5 mb-2">
-                    <FolderOpen className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
-                    <div>
+                <div className="bg-accent/5 border border-accent/15 rounded-xl p-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <FolderOpen className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-text-primary">Existing items not in the new plan</p>
                       <p className="text-xs text-text-secondary mt-0.5">
                         {isLoadingRecommendations
@@ -819,70 +860,141 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                     </div>
                   </div>
                   {isLoadingRecommendations && (
-                    <div className="ml-7 mb-2 flex items-center gap-2 text-xs text-text-muted">
-                      <div className="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                    <div className="ml-8 mb-3 flex items-center gap-2 text-xs text-text-muted">
+                      <div className="w-3.5 h-3.5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
                       Generating recommendations...
                     </div>
                   )}
-                  <div className="space-y-1.5 ml-7">
-                    {existingItemsNotInPlan!.map((item, i) => {
+                  {/* P3-J: Select all / deselect all */}
+                  {!isLoadingRecommendations && existingItemsNotInPlan!.length > 1 && (
+                    <div className="flex items-center justify-between ml-8 mb-2">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={selectAllExisting}
+                          className="text-xs font-medium text-accent hover:text-accent-hover transition-colors"
+                        >
+                          Select all
+                        </button>
+                        <span className="text-border">|</span>
+                        <button
+                          type="button"
+                          onClick={deselectAllExisting}
+                          className="text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                        >
+                          Deselect all
+                        </button>
+                      </div>
+                      {/* P3-I: Collapse toggle when many items */}
+                      {existingItemsNotInPlan!.length > COLLAPSE_THRESHOLD && (
+                        <button
+                          type="button"
+                          onClick={() => setExistingExpanded(v => !v)}
+                          className="flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                        >
+                          {existingExpanded ? (
+                            <><ChevronUp className="w-3.5 h-3.5" />Collapse</>
+                          ) : (
+                            <><ChevronDown className="w-3.5 h-3.5" />Show all {existingItemsNotInPlan!.length}</>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="space-y-1 ml-8">
+                    {(existingExpanded
+                      ? existingItemsNotInPlan!
+                      : existingItemsNotInPlan!.slice(0, COLLAPSE_THRESHOLD)
+                    ).map((item, i) => {
                       const isChecked = isExistingItemChecked(item);
                       const hasTasksInside = (item.taskCount ?? 0) > 0;
                       const hasRec = !!item.recommendation;
                       const recIsDelete = item.recommendation === 'delete';
                       return (
-                        <label key={`existing-${i}`} className="flex items-start gap-2.5 cursor-pointer group">
+                        <label
+                          key={`existing-${i}`}
+                          className="flex items-start gap-3 cursor-pointer group p-2 -mx-2 rounded-lg hover:bg-surface-hover transition-colors"
+                        >
+                          {/* P3-H: Custom styled checkbox */}
+                          <span
+                            className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 flex items-center justify-center border-2 transition-colors ${
+                              isChecked
+                                ? 'bg-red-500 border-red-500'
+                                : 'border-border group-hover:border-text-muted'
+                            }`}
+                          >
+                            {isChecked && <Check className="w-3 h-3 text-white" />}
+                          </span>
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => toggleExistingItem(item)}
-                            className="mt-0.5 w-4 h-4 rounded border-border accent-red-400 cursor-pointer"
+                            className="sr-only"
                           />
+                          {/* P3-K: Improved row layout */}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className={isChecked ? 'text-red-400' : 'text-text-primary'}>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm ${isChecked ? 'text-red-400' : 'text-text-primary'}`}>
                                 {item.parentName ? `${item.parentName} / ` : ''}{item.name}
                               </span>
-                              <span className="text-[11px] font-medium text-text-muted uppercase">{item.type}</span>
-                              {!isChecked && (
-                                <span className="text-[10px] font-medium text-success/70 uppercase">keep</span>
-                              )}
-                              {isChecked && (
-                                <span className="text-[10px] font-medium text-red-400/70 uppercase">delete</span>
-                              )}
-                              {hasRec && (
-                                <span className={`text-[10px] font-medium uppercase ${recIsDelete ? 'text-warning/70' : 'text-info/70'}`}>
-                                  suggested
-                                </span>
-                              )}
+                              <span className="ml-auto flex items-center gap-2 flex-shrink-0">
+                                <span className="text-xs font-medium text-text-muted uppercase">{item.type}</span>
+                                {!isChecked && (
+                                  <span className="text-xs font-semibold text-success px-1.5 py-0.5 bg-success/10 rounded">keep</span>
+                                )}
+                                {isChecked && (
+                                  <span className="text-xs font-semibold text-red-400 px-1.5 py-0.5 bg-red-500/10 rounded">delete</span>
+                                )}
+                                {hasRec && (
+                                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                                    recIsDelete ? 'text-warning bg-warning/10' : 'text-info bg-info/10'
+                                  }`}>
+                                    suggested
+                                  </span>
+                                )}
+                              </span>
                             </div>
-                            {/* AI recommendation reason */}
                             {item.recommendationReason && (
-                              <p className="text-[11px] text-text-muted mt-0.5 italic">
+                              <p className="text-xs text-text-muted mt-1 italic">
                                 {item.recommendationReason}
                               </p>
                             )}
                             {hasTasksInside && (
-                              <p className="text-[11px] text-text-muted mt-0.5 flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                              <p className="text-xs text-text-secondary mt-1 flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                                 Contains {item.taskCount} task{item.taskCount !== 1 ? 's' : ''}
-                                {isChecked && <span className="text-red-400"> - will be permanently deleted</span>}
+                                {isChecked && <span className="text-red-400 font-medium"> - will be permanently deleted</span>}
                               </p>
                             )}
                           </div>
                         </label>
                       );
                     })}
+                    {/* P3-I: Show collapsed count */}
+                    {!existingExpanded && existingItemsNotInPlan!.length > COLLAPSE_THRESHOLD && (
+                      <button
+                        type="button"
+                        onClick={() => setExistingExpanded(true)}
+                        className="w-full text-center py-2 text-xs text-accent hover:text-accent-hover font-medium transition-colors"
+                      >
+                        Show {existingItemsNotInPlan!.length - COLLAPSE_THRESHOLD} more items...
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Section: Binee-created items from previous builds */}
+              {/* P3-L: Section divider between the two sections */}
+              {hasExistingExtras && hasBineeDeletions && (
+                <div className="border-t border-border" />
+              )}
+
+              {/* Section: Binee-created items from previous builds — P2-D: card background */}
               {hasBineeDeletions && (
-                <div>
-                  <div className="flex items-start gap-2.5 mb-2">
-                    <AlertTriangle className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
-                    <div>
+                <div className="bg-warning/5 border border-warning/20 rounded-xl p-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-warning">Items from previous build no longer needed</p>
                       <p className="text-xs text-text-secondary mt-0.5">
                         These items were created by Binee in a previous build but are no longer in the updated structure.
@@ -890,28 +1002,83 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                       </p>
                     </div>
                   </div>
-                  <div className="space-y-1.5 ml-7">
-                    {itemsToDelete!.map((item, i) => {
+                  {/* P3-J: Select all / deselect all */}
+                  {itemsToDelete!.length > 1 && (
+                    <div className="flex items-center justify-between ml-8 mb-2">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={selectAllBinee}
+                          className="text-xs font-medium text-warning hover:text-warning/80 transition-colors"
+                        >
+                          Select all
+                        </button>
+                        <span className="text-border">|</span>
+                        <button
+                          type="button"
+                          onClick={deselectAllBinee}
+                          className="text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                        >
+                          Deselect all
+                        </button>
+                      </div>
+                      {/* P3-I: Collapse toggle when many items */}
+                      {itemsToDelete!.length > COLLAPSE_THRESHOLD && (
+                        <button
+                          type="button"
+                          onClick={() => setBineeExpanded(v => !v)}
+                          className="flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                        >
+                          {bineeExpanded ? (
+                            <><ChevronUp className="w-3.5 h-3.5" />Collapse</>
+                          ) : (
+                            <><ChevronDown className="w-3.5 h-3.5" />Show all {itemsToDelete!.length}</>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="space-y-1 ml-8">
+                    {(bineeExpanded
+                      ? itemsToDelete!
+                      : itemsToDelete!.slice(0, COLLAPSE_THRESHOLD)
+                    ).map((item, i) => {
                       const isChecked = isBineeItemChecked(item);
                       const hasTasksInside = (item.taskCount ?? 0) > 0;
                       return (
-                        <label key={`binee-${i}`} className="flex items-start gap-2.5 cursor-pointer group">
+                        <label
+                          key={`binee-${i}`}
+                          className="flex items-start gap-3 cursor-pointer group p-2 -mx-2 rounded-lg hover:bg-surface-hover transition-colors"
+                        >
+                          {/* P3-H: Custom styled checkbox */}
+                          <span
+                            className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 flex items-center justify-center border-2 transition-colors ${
+                              isChecked
+                                ? 'bg-warning border-warning'
+                                : 'border-border group-hover:border-text-muted'
+                            }`}
+                          >
+                            {isChecked && <Check className="w-3 h-3 text-white" />}
+                          </span>
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => toggleDeletionItem(item)}
-                            className="mt-0.5 w-4 h-4 rounded border-border accent-warning cursor-pointer"
+                            className="sr-only"
                           />
+                          {/* P3-K: Improved row layout */}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className={isChecked ? 'text-text-primary' : 'text-text-muted line-through'}>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm ${isChecked ? 'text-text-primary' : 'text-text-muted line-through'}`}>
                                 {item.parentName ? `${item.parentName} / ` : ''}{item.name}
                               </span>
-                              <span className="text-[11px] font-medium text-text-muted uppercase">{item.type}</span>
+                              <span className="ml-auto flex-shrink-0">
+                                <span className="text-xs font-medium text-text-muted uppercase">{item.type}</span>
+                              </span>
                             </div>
                             {hasTasksInside && (
-                              <p className="text-[11px] text-red-400 mt-0.5 flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                              <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                                 Contains {item.taskCount} task{item.taskCount !== 1 ? 's' : ''} that will be permanently deleted
                               </p>
                             )}
@@ -919,20 +1086,30 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                         </label>
                       );
                     })}
+                    {/* P3-I: Show collapsed count */}
+                    {!bineeExpanded && itemsToDelete!.length > COLLAPSE_THRESHOLD && (
+                      <button
+                        type="button"
+                        onClick={() => setBineeExpanded(true)}
+                        className="w-full text-center py-2 text-xs text-warning hover:text-warning/80 font-medium transition-colors"
+                      >
+                        Show {itemsToDelete!.length - COLLAPSE_THRESHOLD} more items...
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Warning banner when selected items contain tasks */}
+              {/* Warning banner when selected items contain tasks — P2-G: stronger warning */}
               {totalTasksInSelection > 0 && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                <div className="bg-red-500/15 border border-red-500/40 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs font-semibold text-red-400">
+                      <p className="text-sm font-semibold text-red-400">
                         Warning: {totalTasksInSelection} task{totalTasksInSelection !== 1 ? 's' : ''} will be permanently deleted
                       </p>
-                      <p className="text-[11px] text-red-400/80 mt-0.5">
+                      <p className="text-xs text-red-400 mt-1">
                         The selected items contain tasks. Removing these items from ClickUp will delete all tasks inside them.
                         This cannot be undone. Uncheck items you want to keep.
                       </p>
@@ -942,25 +1119,29 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
               )}
             </div>
 
-            {/* Modal footer - always visible */}
-            <div className="flex items-center gap-2 px-5 py-4 border-t border-border shrink-0">
+            {/* Modal footer — P1-B: red destructive button */}
+            <div className="flex items-center gap-2.5 px-5 py-4 border-t border-border shrink-0">
               <button
                 onClick={() => {
                   setShowDeleteConfirm(false);
                   onApproveWithDeletions?.(selectedDeletionItems);
                 }}
                 disabled={selectedDeletionItems.length === 0 && spaceLimitExceeded}
-                className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg
-                  hover:bg-accent/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className={`flex items-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg
+                  transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    selectedDeletionItems.length > 0
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-accent hover:bg-accent/90'
+                  }`}
               >
                 {selectedDeletionItems.length > 0 ? (
                   <>
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-4 h-4" />
                     Remove {selectedDeletionItems.length} &amp; Build
                   </>
                 ) : (
                   <>
-                    <Rocket className="w-3.5 h-3.5" />
+                    <Rocket className="w-4 h-4" />
                     Build
                   </>
                 )}
@@ -968,7 +1149,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
               {!spaceLimitExceeded && (
                 <button
                   onClick={() => { setShowDeleteConfirm(false); onApproveSkipDeletions?.(); }}
-                  className="px-4 py-2 text-sm font-medium text-text-secondary border border-border rounded-lg
+                  className="px-4 py-2.5 text-sm font-medium text-text-secondary border border-border rounded-lg
                     hover:bg-surface-hover transition-colors"
                 >
                   Keep All &amp; Build
@@ -976,7 +1157,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
               )}
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="px-3 py-2 text-sm text-text-muted hover:text-text-secondary transition-colors ml-auto"
+                className="px-3 py-2.5 text-sm text-text-muted hover:text-text-secondary transition-colors ml-auto"
               >
                 Cancel
               </button>
