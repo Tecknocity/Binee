@@ -151,7 +151,14 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     model: 'sonnet',
   });
 
-  const classification = classifyMessageCost(0, true);
+  const classification = classifyMessageCost({
+    subAgentCalls: 0,
+    toolCallCount: 0,
+    imageCount: 0,
+    fileCount: 0,
+    hasWriteOps: false,
+    isSetup: true,
+  });
 
   return {
     content: finalContent || 'I wasn\'t able to generate a response. Please try again.',

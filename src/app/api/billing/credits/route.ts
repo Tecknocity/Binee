@@ -34,18 +34,20 @@ export async function GET(req: NextRequest) {
 
   const { data: workspace } = await supabaseAdmin
     .from('workspaces')
-    .select('credit_balance')
+    .select('credit_balance, subscription_balance, paygo_balance')
     .eq('id', member.workspace_id)
     .single();
 
-  const balance = workspace?.credit_balance ?? 0;
+  const subBalance = workspace?.subscription_balance ?? 0;
+  const paygoBalance = workspace?.paygo_balance ?? 0;
+  const totalBalance = workspace?.credit_balance ?? (subBalance + paygoBalance);
 
   return NextResponse.json(
     {
-      displayBalance: Math.floor(balance),
-      subscription: 0,
+      displayBalance: Math.floor(totalBalance),
+      subscription: Math.floor(subBalance * 100) / 100,
       subscriptionPlanCredits: 0,
-      paygo: 0,
+      paygo: Math.floor(paygoBalance * 100) / 100,
     },
     { headers: { 'Cache-Control': 'private, max-age=30' } },
   );

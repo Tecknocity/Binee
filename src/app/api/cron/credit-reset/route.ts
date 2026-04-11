@@ -16,10 +16,10 @@ export async function GET(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  // Get all workspaces that need credit reset
+  // Get all workspaces that need subscription credit reset
   const { data: workspaces } = await supabase
     .from('workspaces')
-    .select('id, plan, credit_balance, owner_id');
+    .select('id, plan, credit_balance, subscription_balance, paygo_balance, owner_id');
 
   if (!workspaces || workspaces.length === 0) {
     return NextResponse.json({ message: 'No workspaces', reset: 0 });
@@ -32,24 +32,16 @@ export async function GET(request: Request) {
     if (!tierConfig) continue; // Skip workspaces without a subscription tier
     const monthlyCredits = tierConfig.credits;
 
-    // Reset credit balance to plan amount
-    await supabase
-      .from('workspaces')
-      .update({
-        credit_balance: monthlyCredits,
-        credits_reset_at: new Date().toISOString(),
-      })
-      .eq('id', ws.id);
-
-    // Record the reset transaction
-    await supabase.from('credit_transactions').insert({
-      workspace_id: ws.id,
-      user_id: ws.owner_id,
-      amount: monthlyCredits - ws.credit_balance,
-      balance_after: monthlyCredits,
-      type: 'monthly_reset',
-      description: `Monthly credit reset for ${ws.plan} plan`,
-      metadata: { previous_balance: ws.credit_balance },
+    // Reset subscription pool only; paygo pool is untouched
+    await supabase.rpc('reset_subscription_credits', {
+      p_workspace_id: ws.id,
+      p_user_id: ws.owner_id,
+      p_amount: monthlyCredits,
+      p_description: `Monthly credit reset for ${ws.plan} plan`,
+      p_metadata: {
+        plan: ws.plan,
+        previous_subscription_balance: ws.subscription_balance,
+      },
     });
 
     reset++;

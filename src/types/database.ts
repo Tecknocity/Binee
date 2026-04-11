@@ -38,6 +38,8 @@ export interface Workspace {
   owner_id: string;
   plan: 'free' | 'starter' | 'pro';
   credit_balance: number;
+  subscription_balance: number;
+  paygo_balance: number;
   clickup_team_id: string | null;
   clickup_access_token: string | null;
   clickup_refresh_token: string | null;
@@ -293,6 +295,10 @@ export interface DeductCreditsResult {
   balance?: number;
   deducted?: number;
   required?: number;
+  from_subscription?: number;
+  from_paygo?: number;
+  subscription_balance?: number;
+  paygo_balance?: number;
 }
 
 // Helper type for add_credits RPC response
@@ -302,6 +308,19 @@ export interface AddCreditsResult {
   transaction_id?: string;
   balance?: number;
   added?: number;
+  subscription_balance?: number;
+  paygo_balance?: number;
+}
+
+// Helper type for reset_subscription_credits RPC response
+export interface ResetSubscriptionCreditsResult {
+  success: boolean;
+  error?: string;
+  transaction_id?: string;
+  balance?: number;
+  subscription_balance?: number;
+  paygo_balance?: number;
+  previous_subscription_balance?: number;
 }
 
 // Billing types — mirrors user-scoped billing tables (migration 024)

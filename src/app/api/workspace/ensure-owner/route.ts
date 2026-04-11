@@ -340,6 +340,8 @@ export async function POST(request: NextRequest) {
         owner_id: user.id,
         plan: 'free',
         credit_balance: 10,
+        subscription_balance: 0,
+        paygo_balance: 10,
       })
       .select()
       .single();

@@ -44,18 +44,28 @@ export async function GET(req: NextRequest) {
   } else {
     const { data: workspace } = await supabaseAdmin
       .from('workspaces')
-      .select('credit_balance')
+      .select('credit_balance, subscription_balance, paygo_balance, plan')
       .eq('id', memberResult.data.workspace_id)
       .single();
 
-    const balance = workspace?.credit_balance ?? 0;
+    const subBalance = workspace?.subscription_balance ?? 0;
+    const paygoBalance = workspace?.paygo_balance ?? 0;
+    const totalBalance = workspace?.credit_balance ?? (subBalance + paygoBalance);
+
+    // Look up plan credits for display
+    const plan = workspace?.plan;
+    let planCredits = 0;
+    if (plan) {
+      const { PLAN_TIERS } = await import('@/billing/config');
+      const tierConfig = PLAN_TIERS[plan as keyof typeof PLAN_TIERS];
+      if (tierConfig) planCredits = tierConfig.credits;
+    }
+
     credits = {
-      displayBalance: Math.floor(balance),
-      // Workspace-scoped billing: single pool, no subscription/paygo split.
-      // These fields are kept for backward compatibility with frontend components.
-      subscription: 0,
-      subscriptionPlanCredits: 0,
-      paygo: 0,
+      displayBalance: Math.floor(totalBalance),
+      subscription: Math.floor(subBalance * 100) / 100,
+      subscriptionPlanCredits: planCredits,
+      paygo: Math.floor(paygoBalance * 100) / 100,
     };
   }
 

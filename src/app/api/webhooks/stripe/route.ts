@@ -8,10 +8,9 @@ import { PLAN_TIERS, CREDIT_ALLOCATION_INTERVAL_DAYS } from '@/billing/config';
 import type { PlanTier } from '@/billing/types/subscriptions';
 
 // ---------------------------------------------------------------------------
-// Helper: add credits to the workspace owned by a given user
+// Helper: find workspace owned by a given user
 // ---------------------------------------------------------------------------
-async function addCreditsToWorkspace(userId: string, credits: number, description: string) {
-  // Find workspace owned by this user
+async function findWorkspaceForUser(userId: string) {
   const { data: ws } = await supabaseAdmin
     .from('workspaces')
     .select('id')
@@ -21,15 +20,38 @@ async function addCreditsToWorkspace(userId: string, credits: number, descriptio
 
   if (!ws) {
     console.error(`[stripe-webhook] No workspace found for owner ${userId}`);
-    return;
   }
+  return ws;
+}
 
-  // Atomic credit addition via RPC
+// ---------------------------------------------------------------------------
+// Helper: add PAYG credits to workspace (purchases, bonuses, setup)
+// ---------------------------------------------------------------------------
+async function addPaygoCreditsToWorkspace(userId: string, credits: number, description: string, type: 'purchase' | 'bonus' = 'purchase') {
+  const ws = await findWorkspaceForUser(userId);
+  if (!ws) return;
+
   await supabaseAdmin.rpc('add_credits', {
     p_workspace_id: ws.id,
     p_user_id: userId,
     p_amount: credits,
-    p_type: 'subscription',
+    p_type: type,
+    p_description: description,
+    p_metadata: {},
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Helper: reset subscription credits on workspace (monthly renewal)
+// ---------------------------------------------------------------------------
+async function resetSubscriptionCreditsForWorkspace(userId: string, credits: number, description: string) {
+  const ws = await findWorkspaceForUser(userId);
+  if (!ws) return;
+
+  await supabaseAdmin.rpc('reset_subscription_credits', {
+    p_workspace_id: ws.id,
+    p_user_id: userId,
+    p_amount: credits,
     p_description: description,
     p_metadata: {},
   });
@@ -91,10 +113,10 @@ export async function POST(req: NextRequest) {
             })
             .eq('user_id', userId);
 
-          // Grant first month's credits to WORKSPACE pool
+          // Grant first month's subscription credits (reset, not add)
           const tierConfig = PLAN_TIERS[tier as PlanTier];
           if (tierConfig) {
-            await addCreditsToWorkspace(
+            await resetSubscriptionCreditsForWorkspace(
               userId!,
               tierConfig.credits,
               `Subscription activated: ${tierConfig.credits} credits (${tier} plan)`,
@@ -102,18 +124,18 @@ export async function POST(req: NextRequest) {
           }
 
         } else if (type === 'paygo' && credits) {
-          // PAYG one-time purchase — add to workspace pool
+          // PAYG one-time purchase — add to paygo pool
           const creditCount = parseInt(credits);
-          await addCreditsToWorkspace(
+          await addPaygoCreditsToWorkspace(
             userId!,
             creditCount,
             `PAYG purchase: ${creditCount} credits`,
           );
 
         } else if (type === 'setup') {
-          // Setup fee — add setup credits to workspace pool
+          // Setup fee — add setup credits to paygo pool (never expire)
           const { SETUP_CREDITS } = await import('@/billing/config');
-          await addCreditsToWorkspace(
+          await addPaygoCreditsToWorkspace(
             userId!,
             SETUP_CREDITS,
             `Workspace setup purchase: ${SETUP_CREDITS} credits`,
@@ -143,10 +165,10 @@ export async function POST(req: NextRequest) {
         if (!sub) break;
 
         if (sub.billing_period === 'monthly') {
-          // ---- MONTHLY: Grant credits to workspace on every invoice ----
+          // ---- MONTHLY: Reset subscription credits on renewal ----
           const tierConfig = PLAN_TIERS[sub.plan_tier as PlanTier];
           if (tierConfig) {
-            await addCreditsToWorkspace(
+            await resetSubscriptionCreditsForWorkspace(
               sub.user_id,
               tierConfig.credits,
               `Monthly renewal: ${tierConfig.credits} credits (${sub.plan_tier} plan)`,

@@ -228,7 +228,7 @@ If workspace is empty: {"findings":[{"type":"info","text":"Clean slate, perfect 
         p_description: 'Setup: workspace analysis',
         p_message_id: null,
         p_metadata: {
-          credit_tier: 'simple',
+          credit_tier: 'light',
           source: 'setup_analysis',
           input_tokens: result.inputTokens,
           output_tokens: result.outputTokens,
