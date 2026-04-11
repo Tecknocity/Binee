@@ -822,16 +822,16 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
 
             {/* Modal scrollable body */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 min-h-0">
-              {/* Plan limit warning — P2-G: stronger warning */}
+              {/* Plan limit warning */}
               {spaceLimitExceeded && (
-                <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                    <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-semibold text-red-400">
+                      <p className="text-sm font-semibold text-red-500">
                         Space limit will be exceeded
                       </p>
-                      <p className="text-xs text-red-400 mt-1">
+                      <p className="text-xs text-text-primary mt-1">
                         Your workspace has {existingSpaceCount} space{existingSpaceCount !== 1 ? 's' : ''} and
                         the plan wants to create {newSpaceCount} new one{newSpaceCount !== 1 ? 's' : ''}.
                         Your {planCaps?.label ?? 'Free'} plan allows {planLimits?.maxSpaces} spaces.
@@ -989,27 +989,27 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                 <div className="border-t border-border" />
               )}
 
-              {/* Section: Binee-created items from previous builds — P2-D: card background */}
+              {/* Section: Binee-created items from previous builds */}
               {hasBineeDeletions && (
                 <div className="bg-warning/10 border border-warning/25 rounded-xl p-4">
                   <div className="flex items-start gap-3 mb-3">
                     <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-warning">Items from previous build no longer needed</p>
+                      <p className="text-sm font-semibold text-text-primary">Items from previous build no longer needed</p>
                       <p className="text-xs text-text-secondary mt-0.5">
                         These items were created by Binee in a previous build but are no longer in the updated structure.
                         Uncheck any items you want to keep.
                       </p>
                     </div>
                   </div>
-                  {/* P3-J: Select all / deselect all */}
+                  {/* Select all / deselect all */}
                   {itemsToDelete!.length > 1 && (
                     <div className="flex items-center justify-between ml-8 mb-2">
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
                           onClick={selectAllBinee}
-                          className="text-xs font-medium text-warning hover:text-warning/80 transition-colors"
+                          className="text-xs font-medium text-accent hover:text-accent-hover transition-colors"
                         >
                           Select all
                         </button>
@@ -1022,7 +1022,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                           Deselect all
                         </button>
                       </div>
-                      {/* P3-I: Collapse toggle when many items */}
+                      {/* Collapse toggle when many items */}
                       {itemsToDelete!.length > COLLAPSE_THRESHOLD && (
                         <button
                           type="button"
@@ -1050,11 +1050,11 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                           key={`binee-${i}`}
                           className="flex items-start gap-3 cursor-pointer group p-2 -mx-2 rounded-lg hover:bg-surface-hover transition-colors"
                         >
-                          {/* P3-H: Custom styled checkbox */}
+                          {/* Custom styled checkbox - red when checked, same as first section */}
                           <span
                             className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 flex items-center justify-center border-2 transition-colors ${
                               isChecked
-                                ? 'bg-warning border-warning'
+                                ? 'bg-red-500 border-red-500'
                                 : 'border-border group-hover:border-text-muted'
                             }`}
                           >
@@ -1066,32 +1066,38 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                             onChange={() => toggleDeletionItem(item)}
                             className="sr-only"
                           />
-                          {/* P3-K: Improved row layout */}
+                          {/* Row layout - matches first section pattern */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className={`text-sm ${isChecked ? 'text-text-primary' : 'text-text-muted line-through'}`}>
+                              <span className={`text-sm ${isChecked ? 'text-red-400' : 'text-text-primary'}`}>
                                 {item.parentName ? `${item.parentName} / ` : ''}{item.name}
                               </span>
-                              <span className="ml-auto flex-shrink-0">
+                              <span className="ml-auto flex items-center gap-2 flex-shrink-0">
                                 <span className="text-xs font-medium text-text-muted uppercase">{item.type}</span>
+                                {!isChecked && (
+                                  <span className="text-xs font-semibold text-success px-1.5 py-0.5 bg-success/15 rounded">keep</span>
+                                )}
+                                {isChecked && (
+                                  <span className="text-xs font-semibold text-red-400 px-1.5 py-0.5 bg-red-500/15 rounded">delete</span>
+                                )}
                               </span>
                             </div>
-                            {hasTasksInside && (
+                            {hasTasksInside && isChecked && (
                               <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
                                 <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                                Contains {item.taskCount} task{item.taskCount !== 1 ? 's' : ''} that will be permanently deleted
+                                Contains {item.taskCount} task{item.taskCount !== 1 ? 's' : ''} - will be permanently deleted
                               </p>
                             )}
                           </div>
                         </label>
                       );
                     })}
-                    {/* P3-I: Show collapsed count */}
+                    {/* Show collapsed count */}
                     {!bineeExpanded && itemsToDelete!.length > COLLAPSE_THRESHOLD && (
                       <button
                         type="button"
                         onClick={() => setBineeExpanded(true)}
-                        className="w-full text-center py-2 text-xs text-warning hover:text-warning/80 font-medium transition-colors"
+                        className="w-full text-center py-2 text-xs text-accent hover:text-accent-hover font-medium transition-colors"
                       >
                         Show {itemsToDelete!.length - COLLAPSE_THRESHOLD} more items...
                       </button>
@@ -1100,16 +1106,16 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                 </div>
               )}
 
-              {/* Warning banner when selected items contain tasks — P2-G: stronger warning */}
+              {/* Warning banner when selected items contain tasks */}
               {totalTasksInSelection > 0 && (
-                <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                    <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-semibold text-red-400">
+                      <p className="text-sm font-semibold text-red-500">
                         Warning: {totalTasksInSelection} task{totalTasksInSelection !== 1 ? 's' : ''} will be permanently deleted
                       </p>
-                      <p className="text-xs text-red-400 mt-1">
+                      <p className="text-xs text-text-primary mt-1">
                         The selected items contain tasks. Removing these items from ClickUp will delete all tasks inside them.
                         This cannot be undone. Uncheck items you want to keep.
                       </p>
