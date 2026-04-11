@@ -42,8 +42,15 @@ export interface ExistingSpaceInfo {
   }>;
 }
 
+export interface ExistingDocInfo {
+  clickup_id: string;
+  name: string;
+}
+
 export interface ExistingWorkspaceStructure {
   spaces: ExistingSpaceInfo[];
+  /** Docs that exist in the workspace (fetched live from ClickUp) */
+  docs?: ExistingDocInfo[];
   captured_at: string;
 }
 

@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { createClient } from '@supabase/supabase-js';
+import { ClickUpClient } from '@/lib/clickup/client';
 import type { SetupPlan } from '@/lib/setup/types';
 
 interface SnapshotStructure {
@@ -29,6 +30,11 @@ interface SnapshotStructure {
       task_count: number;
       statuses: unknown;
     }>;
+  }>;
+  /** Docs that exist in the workspace */
+  docs?: Array<{
+    clickup_id: string;
+    name: string;
   }>;
   captured_at: string;
 }
@@ -143,6 +149,21 @@ export async function getExistingStructure(workspaceId: string): Promise<Snapsho
     // Collect all folder IDs so we can identify folderless lists
     const folderIds = new Set(folders.map((f) => f.clickup_id));
 
+    // Fetch existing docs from ClickUp (no cached_docs table exists)
+    let existingDocs: Array<{ clickup_id: string; name: string }> = [];
+    try {
+      const clickupClient = new ClickUpClient(workspaceId);
+      const teams = await clickupClient.getTeams();
+      if (teams.length > 0) {
+        const teamId = teams[0].id;
+        const docs = await clickupClient.searchDocs(teamId);
+        existingDocs = docs.map(d => ({ clickup_id: d.id, name: d.name }));
+      }
+    } catch (err) {
+      // Docs fetch is best-effort - don't fail the whole structure fetch
+      console.error('[snapshots] Failed to fetch docs from ClickUp:', err);
+    }
+
     return {
       spaces: spaces.map((space) => {
         // Folderless lists: belong to this space but have no folder_id or a folder_id not in any folder
@@ -176,6 +197,7 @@ export async function getExistingStructure(workspaceId: string): Promise<Snapsho
           ...(folderlessLists.length > 0 ? { lists: folderlessLists } : {}),
         };
       }),
+      ...(existingDocs.length > 0 ? { docs: existingDocs } : {}),
       captured_at: new Date().toISOString(),
     };
   } catch (err) {
