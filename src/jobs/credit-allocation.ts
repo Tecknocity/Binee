@@ -57,7 +57,7 @@ export async function processDailyCreditAllocations() {
         // Still within paid period — give them their credits
       }
 
-      // All checks passed — allocate monthly credits to WORKSPACE pool
+      // All checks passed — reset subscription credits on WORKSPACE pool
       const tierConfig = PLAN_TIERS[sub.plan_tier as PlanTier];
       if (!tierConfig) {
         console.error(`Unknown plan tier ${sub.plan_tier} for user ${sub.user_id}`);
@@ -74,13 +74,12 @@ export async function processDailyCreditAllocations() {
         .single();
 
       if (ws) {
-        await supabaseAdmin.rpc('add_credits', {
+        await supabaseAdmin.rpc('reset_subscription_credits', {
           p_workspace_id: ws.id,
           p_user_id: sub.user_id,
           p_amount: tierConfig.credits,
-          p_type: 'subscription',
           p_description: `Annual plan monthly drip: ${tierConfig.credits} credits`,
-          p_metadata: {},
+          p_metadata: { plan_tier: sub.plan_tier, billing_period: 'annual' },
         });
       }
 

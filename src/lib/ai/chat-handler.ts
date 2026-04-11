@@ -156,6 +156,8 @@ export async function handleChat(
   }
 
   // Log per-user usage for analytics (credit_usage table)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const billingData = billingResult as Record<string, any> | null;
   try {
     const { error: usageErr } = await supabase.from('credit_usage').insert({
       user_id,
@@ -167,6 +169,8 @@ export async function handleChat(
       output_tokens: result.totalOutputTokens,
       anthropic_cost_cents: result.anthropicCost.totalCostCents,
       credits_deducted: creditCost,
+      deducted_from_subscription: billingData?.from_subscription ?? 0,
+      deducted_from_paygo: billingData?.from_paygo ?? 0,
     });
     if (usageErr) {
       console.error('[chat-handler] credit_usage insert failed:', usageErr.message);

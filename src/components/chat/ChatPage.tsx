@@ -106,6 +106,8 @@ function WorkspaceSetupError({ wsError, user }: { wsError: string | null; user: 
           owner_id: user.id,
           plan: 'free',
           credit_balance: 10,
+          subscription_balance: 0,
+          paygo_balance: 10,
         })
         .select()
         .single();

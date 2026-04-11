@@ -7,7 +7,7 @@ export { MESSAGE_CREDIT_TIERS, type MessageTier } from '@/billing/config';
 export { grantSubscriptionCredits } from '@/lib/credits/grants';
 
 import { createBrowserClient } from '@/lib/supabase/client';
-import type { CreditTransaction, DeductCreditsResult, AddCreditsResult } from '@/types/database';
+import type { CreditTransaction, DeductCreditsResult, AddCreditsResult, ResetSubscriptionCreditsResult } from '@/types/database';
 
 export async function deductCredits(
   workspaceId: string,
@@ -59,6 +59,30 @@ export async function addCredits(
   }
 
   return data as AddCreditsResult;
+}
+
+export async function resetSubscriptionCredits(
+  workspaceId: string,
+  userId: string,
+  amount: number,
+  description: string,
+  metadata: Record<string, unknown> = {},
+): Promise<ResetSubscriptionCreditsResult> {
+  const supabase = createBrowserClient();
+
+  const { data, error } = await supabase.rpc('reset_subscription_credits', {
+    p_workspace_id: workspaceId,
+    p_user_id: userId,
+    p_amount: amount,
+    p_description: description,
+    p_metadata: metadata,
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return data as ResetSubscriptionCreditsResult;
 }
 
 export async function getCreditBalance(workspaceId: string): Promise<number> {
