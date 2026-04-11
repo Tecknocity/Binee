@@ -627,6 +627,12 @@ export function computeExistingItemsNotInPlan(
       }
     }
   }
+  // Include recommended docs in plan keys
+  if (newPlan.recommended_docs) {
+    for (const doc of newPlan.recommended_docs) {
+      planKeys.add(itemKey('doc', doc.name));
+    }
+  }
 
   // Build set of previously-built clickup IDs so we don't double-count
   const builtIds = new Set(
@@ -707,6 +713,21 @@ export function computeExistingItemsNotInPlan(
           status: 'pending',
           clickupId: list.clickup_id,
           taskCount: list.task_count,
+        });
+      }
+    }
+  }
+
+  // Check existing docs not in the plan
+  if (existingStructure.docs) {
+    for (const doc of existingStructure.docs) {
+      const docKey = itemKey('doc', doc.name);
+      if (!planKeys.has(docKey) && !builtIds.has(doc.clickup_id)) {
+        extras.push({
+          type: 'doc',
+          name: doc.name,
+          status: 'pending',
+          clickupId: doc.clickup_id,
         });
       }
     }

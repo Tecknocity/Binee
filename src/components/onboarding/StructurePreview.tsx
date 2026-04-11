@@ -466,9 +466,16 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
               Your workspace has existing items
             </p>
             <p className="text-xs text-text-secondary mt-0.5">
-              {existingItemsNotInPlan!.filter(i => i.type === 'space').length > 0
-                ? `${existingItemsNotInPlan!.filter(i => i.type === 'space').length} space${existingItemsNotInPlan!.filter(i => i.type === 'space').length !== 1 ? 's' : ''} in your workspace are not part of this plan. `
-                : ''}
+              {(() => {
+                const spaceCount = existingItemsNotInPlan!.filter(i => i.type === 'space').length;
+                const docCount = existingItemsNotInPlan!.filter(i => i.type === 'doc').length;
+                const otherCount = existingItemsNotInPlan!.length - spaceCount - docCount;
+                const parts: string[] = [];
+                if (spaceCount > 0) parts.push(`${spaceCount} space${spaceCount !== 1 ? 's' : ''}`);
+                if (docCount > 0) parts.push(`${docCount} doc${docCount !== 1 ? 's' : ''}`);
+                if (otherCount > 0) parts.push(`${otherCount} other item${otherCount !== 1 ? 's' : ''}`);
+                return parts.length > 0 ? `${parts.join(', ')} in your workspace ${parts.length === 1 && (spaceCount + docCount + otherCount) === 1 ? 'is' : 'are'} not part of this plan. ` : '';
+              })()}
               Click &quot;Approve &amp; Build&quot; to review and choose which items to keep or remove.
             </p>
           </div>
