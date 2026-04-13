@@ -115,6 +115,25 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
       return `Space: ${s.name}\n${directListsStr}${directListsStr && foldersStr ? '\n' : ''}${foldersStr}`;
     }).join('\n');
     systemPrompt += `\n\nPREVIOUSLY GENERATED WORKSPACE PLAN (the user has already seen this structure):\n${planSummary}${input.proposedPlan.reasoning ? `\nReasoning: ${input.proposedPlan.reasoning}` : ''}${input.proposedPlan.clickApps?.length ? `\nRecommended ClickApps: ${input.proposedPlan.clickApps.join(', ')}` : ''}\n\nIMPORTANT: The user is coming back from reviewing this plan. Reference THIS specific structure when they ask about changes. Do NOT generate a new structure from scratch or claim you don't know what was proposed.`;
+  } else {
+    // No formal plan exists yet, but the AI may have suggested a structure in
+    // chat. Scan the conversation history for assistant messages containing
+    // structure keywords (Space:, List:, Folder:) to build a context snapshot.
+    // This prevents the AI from "forgetting" structures it suggested earlier.
+    const structureMessages = input.conversationHistory
+      .filter(m => m.role === 'assistant' && typeof m.content === 'string')
+      .filter(m => {
+        const text = m.content as string;
+        return (text.includes('Space') || text.includes('SPACE'))
+          && (text.includes('List') || text.includes('LIST'))
+          && text.length > 200; // Must be substantial enough to contain a structure
+      });
+
+    if (structureMessages.length > 0) {
+      // Take the LAST structure message - that's the most recent version
+      const latestStructure = (structureMessages[structureMessages.length - 1].content as string).slice(0, 2000);
+      systemPrompt += `\n\nSTRUCTURE PREVIOUSLY DISCUSSED IN THIS CONVERSATION:\nYou previously suggested the following structure (extracted from your earlier message). This is the CURRENT working version. If the user asks for changes, modify THIS structure rather than creating a new one from scratch.\n\n${latestStructure}\n\nIMPORTANT: This structure was discussed in the conversation. The user may reference it. Do NOT claim you haven't discussed any structure.`;
+    }
   }
 
   // Step 3: Single Sonnet call - no tools, no loop

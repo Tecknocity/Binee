@@ -723,28 +723,38 @@ export function useSetup(): UseSetupReturn {
         ...(fileContext ? { file_context: fileContext } : {}),
       };
 
-      try {
-        const response = await fetchWithTimeout('/api/setup/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }, 90_000);
+      // Try with one automatic retry on failure (handles transient 500s)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetchWithTimeout('/api/setup/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }, 90_000);
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.content) {
-            addMessage('assistant', data.content);
-            setIsSending(false);
-            return;
+          if (response.ok) {
+            const data = await response.json();
+            if (data.content) {
+              addMessage('assistant', data.content);
+              setIsSending(false);
+              return;
+            }
+            console.error(`[setup/sendMessage] API returned ok but empty content (attempt ${attempt + 1})`);
+          } else {
+            console.error(`[setup/sendMessage] API returned status ${response.status} (attempt ${attempt + 1})`);
           }
+        } catch (err) {
+          console.error(`[setup/sendMessage] API call failed (attempt ${attempt + 1}):`, err);
         }
-        console.error(`[setup/sendMessage] API returned status ${response.status}`);
-      } catch (err) {
-        console.error('[setup/sendMessage] API call failed:', err);
+
+        // Wait 1.5s before retrying
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       }
 
-      // API failed — show honest error
-      addMessage('assistant', "Sorry, I wasn't able to process that. Please try sending your message again.");
+      // Both attempts failed — show honest error
+      addMessage('assistant', "Sorry, I wasn't able to process that. Please try sending your message again. Don't worry, our conversation history is saved.");
       setIsSending(false);
     },
     [addMessage, isSending, workspace_id, conversationId, fullAnalysisContext, store]

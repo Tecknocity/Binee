@@ -68,13 +68,13 @@ export async function POST(request: NextRequest) {
         .select('clickup_plan_tier')
         .eq('id', workspace_id)
         .single(),
-      // Last 10 messages (recent context) - older context comes from summary
+      // Last 20 messages (recent context) - older context comes from summary
       adminClient
         .from('messages')
         .select('role, content')
         .eq('conversation_id', conversation_id)
         .order('created_at', { ascending: false })
-        .limit(10),
+        .limit(20),
       // Conversation summary (compressed context from older messages)
       adminClient
         .from('conversations')
