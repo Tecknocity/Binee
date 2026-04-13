@@ -720,6 +720,8 @@ export function useSetup(): UseSetupReturn {
         workspace_analysis: fullAnalysisContext,
         proposed_plan: state?.proposedPlan ?? undefined,
         profile_data: state?.profileFormData ?? undefined,
+        // Send the chat structure snapshot so the AI has full context
+        chat_structure_snapshot: state?.chatStructureSnapshot ?? undefined,
         ...(fileContext ? { file_context: fileContext } : {}),
       };
 
@@ -736,6 +738,10 @@ export function useSetup(): UseSetupReturn {
             const data = await response.json();
             if (data.content) {
               addMessage('assistant', data.content);
+              // Save structure snapshot if the AI returned one
+              if (data.structure_snapshot) {
+                store?.getState().setChatStructureSnapshot(data.structure_snapshot);
+              }
               setIsSending(false);
               return;
             }
@@ -821,6 +827,12 @@ export function useSetup(): UseSetupReturn {
         ? history.map((p, i) => `Plan v${i + 1}: ${p.spaces.map(s => s.name).join(', ')} (${p.reasoning?.slice(0, 100) || 'no reasoning'})`).join('\n')
         : undefined;
 
+      // Use the chat structure snapshot as the starting point when no formal
+      // plan exists yet. This ensures the planner builds on what was discussed
+      // in chat rather than generating from scratch.
+      const chatSnapshot = state?.chatStructureSnapshot;
+      const planForPlanner = currentPlan ?? (chatSnapshot as typeof currentPlan) ?? undefined;
+
       const res = await fetchWithTimeout('/api/setup/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -835,7 +847,7 @@ export function useSetup(): UseSetupReturn {
           },
           workspaceAnalysis: workspaceAnalysis ?? undefined,
           conversationContext: recentMessages || undefined,
-          previousPlan: currentPlan ?? undefined,
+          previousPlan: planForPlanner,
           planHistorySummary: planHistorySummary || undefined,
         }),
       });
@@ -1186,6 +1198,7 @@ export function useSetup(): UseSetupReturn {
         workspace_analysis: fullAnalysisContext,
         proposed_plan: livePlan ?? undefined,
         profile_data: liveProfile ?? undefined,
+        chat_structure_snapshot: state?.chatStructureSnapshot ?? undefined,
       };
 
       // Try with one automatic retry
@@ -1199,7 +1212,14 @@ export function useSetup(): UseSetupReturn {
 
           if (response.ok) {
             const data = await response.json();
-            if (data.content) { addMessage('assistant', data.content); setIsSending(false); return; }
+            if (data.content) {
+              addMessage('assistant', data.content);
+              if (data.structure_snapshot) {
+                store?.getState().setChatStructureSnapshot(data.structure_snapshot);
+              }
+              setIsSending(false);
+              return;
+            }
             console.error(`[setup/requestChanges] API returned ok but empty content (attempt ${attempt + 1})`);
           } else {
             console.error(`[setup/requestChanges] API returned status ${response.status} (attempt ${attempt + 1})`);

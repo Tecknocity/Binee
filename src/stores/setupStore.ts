@@ -101,6 +101,9 @@ interface SetupState {
   businessDescription: string;
   messageCount: number;
 
+  // Step 2-3: Chat structure snapshot (built incrementally during chat)
+  chatStructureSnapshot: Record<string, unknown> | null;
+
   // Step 3: Plan
   proposedPlan: SetupPlan | null;
   planHistory: SetupPlan[]; // All previously generated plans (v1, v2, ...)
@@ -128,6 +131,7 @@ interface SetupState {
   addMessage: (msg: SetupChatMessage) => void;
   setBusinessDescription: (desc: string) => void;
   incrementMessageCount: () => void;
+  setChatStructureSnapshot: (snapshot: Record<string, unknown> | null) => void;
   setPlan: (plan: SetupPlan | null) => void;
   pushPlanToHistory: (plan: SetupPlan) => void;
   setExistingStructure: (structure: ExistingWorkspaceStructure | null) => void;
@@ -192,6 +196,7 @@ function createSetupStore(workspaceId: string) {
         businessDescription: '',
         messageCount: 0,
 
+        chatStructureSnapshot: null,
         proposedPlan: null,
         planHistory: [],
         existingStructure: null,
@@ -222,6 +227,7 @@ function createSetupStore(workspaceId: string) {
         setBusinessDescription: (desc) => set({ businessDescription: desc }),
         incrementMessageCount: () => set((s) => ({ messageCount: s.messageCount + 1 })),
 
+        setChatStructureSnapshot: (snapshot) => set({ chatStructureSnapshot: snapshot }),
         setPlan: (plan) => set({ proposedPlan: plan }),
         pushPlanToHistory: (plan) => set((s) => ({
           planHistory: [...s.planHistory.slice(-4), plan], // Keep last 5 max
@@ -265,6 +271,7 @@ function createSetupStore(workspaceId: string) {
               updates.businessDescription = buildDescriptionFromForm(s.profileFormData);
               updates.chatMessages = []; // Clear chat messages
               updates.messageCount = 0; // Reset message count
+              updates.chatStructureSnapshot = null; // Clear chat snapshot
               updates.conversationId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; // New conversation
             }
             if (step <= 3) {
@@ -298,6 +305,7 @@ function createSetupStore(workspaceId: string) {
             chatMessages: [],
             businessDescription: '',
             messageCount: 0,
+            chatStructureSnapshot: null,
             proposedPlan: null,
             planHistory: [],
             existingStructure: null,
@@ -324,6 +332,7 @@ function createSetupStore(workspaceId: string) {
           chatMessages: state.chatMessages,
           businessDescription: state.businessDescription,
           messageCount: state.messageCount,
+          chatStructureSnapshot: state.chatStructureSnapshot,
           proposedPlan: state.proposedPlan,
           planHistory: state.planHistory,
           existingStructure: state.existingStructure,
