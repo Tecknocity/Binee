@@ -99,14 +99,13 @@ export async function maybeSummarizeConversation(
     // Check if we should summarize (every 4 messages)
     if (newCount % SUMMARIZE_EVERY_N_MESSAGES !== 0) return;
 
-    // Load last 12 messages for context — enough to capture structure proposals
-    // that may span multiple exchanges
+    // Load last 8 messages (4 user + 4 assistant) for context
     const { data: messages } = await supabase
       .from('messages')
       .select('role, content, created_at')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
-      .limit(12);
+      .limit(8);
 
     if (!messages || messages.length < 4) return;
 
