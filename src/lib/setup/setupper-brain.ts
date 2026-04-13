@@ -32,6 +32,8 @@ interface SetupperInput {
     reasoning?: string;
     clickApps?: string[];
   };
+  /** Structure snapshot from previous chat messages (built incrementally) */
+  chatStructureSnapshot?: Record<string, unknown>;
   /** User's profile form data (if already collected) */
   profileData?: {
     industry?: string;
@@ -48,6 +50,8 @@ interface SetupperResult {
   totalOutputTokens: number;
   anthropicCostCents: number;
   toolCalls: string[];
+  /** Extracted structure snapshot from this response (if the AI proposed/updated a structure) */
+  structureSnapshot?: Record<string, unknown>;
 }
 
 let client: Anthropic | null = null;
@@ -92,7 +96,10 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   }
 
   // Step 2: Build system prompt with all context
-  const userMemories = await loadUserMemories(input.userId, input.workspaceId);
+  // Skip 'profile' category memories — the company identity block in the system
+  // prompt already contains all profile data, so loading them again would be
+  // redundant (~200-400 wasted tokens per message).
+  const userMemories = await loadUserMemories(input.userId, input.workspaceId, ['profile']);
 
   // Templates are NOT loaded for chat - they're only used during plan generation
   // (generate-plan route). The system prompt already has COMMON INDUSTRY PATTERNS
@@ -115,6 +122,12 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
       return `Space: ${s.name}\n${directListsStr}${directListsStr && foldersStr ? '\n' : ''}${foldersStr}`;
     }).join('\n');
     systemPrompt += `\n\nPREVIOUSLY GENERATED WORKSPACE PLAN (the user has already seen this structure):\n${planSummary}${input.proposedPlan.reasoning ? `\nReasoning: ${input.proposedPlan.reasoning}` : ''}${input.proposedPlan.clickApps?.length ? `\nRecommended ClickApps: ${input.proposedPlan.clickApps.join(', ')}` : ''}\n\nIMPORTANT: The user is coming back from reviewing this plan. Reference THIS specific structure when they ask about changes. Do NOT generate a new structure from scratch or claim you don't know what was proposed.`;
+  } else if (input.chatStructureSnapshot && typeof input.chatStructureSnapshot === 'object' && Object.keys(input.chatStructureSnapshot).length > 0) {
+    // A structured snapshot from a previous chat message exists — inject it as
+    // compact JSON context. This is far more reliable than scanning message text
+    // and captures all details (spaces, lists, statuses, tags, docs, etc.).
+    const snapshotJson = JSON.stringify(input.chatStructureSnapshot);
+    systemPrompt += `\n\nCURRENT WORKING STRUCTURE (from your earlier suggestion in this conversation):\n${snapshotJson}\n\nIMPORTANT: This is the structure you previously proposed and the user has seen. When they ask for changes, update THIS structure. When you output the updated structure, include the full |||STRUCTURE_SNAPSHOT||| block with the modifications applied. Do NOT generate a completely new structure from scratch.`;
   }
 
   // Step 3: Single Sonnet call - no tools, no loop
@@ -130,7 +143,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
 
   const response = await anthropic.messages.create({
     model: SONNET_MODEL_ID,
-    max_tokens: 2048,
+    max_tokens: 2500,
     system: systemPrompt,
     messages,
   });
@@ -138,11 +151,32 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   totalInputTokens += response.usage.input_tokens;
   totalOutputTokens += response.usage.output_tokens;
 
-  const finalContent = response.content
+  const rawContent = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map(b => b.text)
     .join('')
     .trim();
+
+  // Step 3b: Extract structure snapshot from the AI response (if present).
+  // The AI outputs a JSON block between |||STRUCTURE_SNAPSHOT||| and |||END_STRUCTURE|||
+  // delimiters. We strip it from the visible content and return it separately.
+  let finalContent = rawContent;
+  let structureSnapshot: Record<string, unknown> | undefined;
+
+  const snapshotMatch = rawContent.match(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*([\s\S]*?)\s*\|\|\|END_STRUCTURE\|\|\|/);
+  if (snapshotMatch?.[1]) {
+    try {
+      const parsed = JSON.parse(snapshotMatch[1].trim());
+      if (parsed && typeof parsed === 'object' && parsed.spaces) {
+        structureSnapshot = parsed;
+      }
+    } catch {
+      // JSON parse failed — AI produced invalid JSON. Log and continue without snapshot.
+      console.error('[setupper-brain] Failed to parse structure snapshot JSON');
+    }
+    // Strip the snapshot block from visible content
+    finalContent = rawContent.replace(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*[\s\S]*?\s*\|\|\|END_STRUCTURE\|\|\|/, '').trim();
+  }
 
   // Step 4: Calculate costs
   const anthropicCost = calculateAnthropicCost({
@@ -167,5 +201,6 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     totalOutputTokens,
     anthropicCostCents: anthropicCost.totalCostCents,
     toolCalls: [],
+    structureSnapshot,
   };
 }

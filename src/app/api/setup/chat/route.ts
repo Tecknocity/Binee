@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data, file_context } = body;
+    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data, file_context, chat_structure_snapshot } = body;
 
     if (!workspace_id || !conversation_id || !message?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
         .select('clickup_plan_tier')
         .eq('id', workspace_id)
         .single(),
-      // Last 10 messages (recent context) - older context comes from summary
+      // Last 10 messages (recent context) - older context comes from summary,
+      // and the chat structure snapshot carries key structural decisions
       adminClient
         .from('messages')
         .select('role, content')
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest) {
       precomputedAnalysis: workspace_analysis || undefined,
       planTier,
       proposedPlan: proposed_plan || undefined,
+      chatStructureSnapshot: chat_structure_snapshot || undefined,
       profileData: profile_data || undefined,
     });
 
@@ -245,6 +247,8 @@ export async function POST(request: NextRequest) {
       content: result.content,
       credits_consumed: result.creditsToCharge,
       tool_calls: result.toolCalls,
+      // Return extracted structure snapshot so the client can persist it
+      ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
     });
   } catch (error) {
     console.error('[POST /api/setup/chat] Error:', error);

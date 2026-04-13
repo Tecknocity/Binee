@@ -23,7 +23,7 @@ const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Given a convers
 
 Return ONLY valid JSON matching this format:
 {
-  "summary": "3-5 sentence summary capturing main topics, decisions, actions taken, and pending questions",
+  "summary": "5-8 sentence summary capturing main topics, decisions, actions taken, pending questions, AND any workspace structure that was proposed or agreed upon",
   "facts": ["fact 1", "fact 2"]
 }
 
@@ -31,7 +31,9 @@ Summary rules:
 - CRITICAL: The previous summary contains context from earlier in the conversation. You MUST preserve all key decisions, instructions, and preferences from the previous summary. Only drop greetings or redundant pleasantries.
 - Be factual and specific. Include names, numbers, and key details.
 - Always preserve: user decisions, explicit instructions/rules the user stated, workspace structure preferences, and any action items that are still pending.
+- WORKSPACE STRUCTURE PRESERVATION: If the assistant proposed a workspace structure (spaces, folders, lists, statuses), you MUST include the structure details in the summary. List the space names, list names, and any agreed-upon statuses. This is critical context that must survive across message windows.
 - When incorporating new messages, ADD to the previous summary rather than replacing it. The summary should grow in detail (up to the token limit), not lose earlier context.
+- If the user approved or confirmed a structure, note that it was approved and include its details.
 
 Facts rules:
 - Extract user preferences, decisions, and important context that should be remembered across conversations.
@@ -41,11 +43,13 @@ Facts rules:
   * Services or products they offer
   * Work style (client-based, product-based, project-based)
   * Key business decisions about workspace structure
+  * Approved workspace structure names (e.g., "Approved structure: Client Engagements, Business Operations, Growth spaces")
 - ALSO EXTRACT these as facts:
   * Any explicit instruction or rule the user stated (e.g., "I want only 2 spaces", "No folders, keep it flat")
   * Workflow descriptions (e.g., "Our process is: backlog, in progress, review, done")
   * Preferences about tags, statuses, or custom fields
   * What the user wants to keep or remove from their existing workspace
+  * Specific structure modifications requested (e.g., "rename space 3 to Operations", "delete list 4")
 - Only include facts explicitly stated by the user, not inferred.
 - If no new facts are found, return an empty array.
 - Keep each fact to one concise sentence.

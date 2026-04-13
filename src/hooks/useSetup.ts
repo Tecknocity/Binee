@@ -720,31 +720,47 @@ export function useSetup(): UseSetupReturn {
         workspace_analysis: fullAnalysisContext,
         proposed_plan: state?.proposedPlan ?? undefined,
         profile_data: state?.profileFormData ?? undefined,
+        // Send the chat structure snapshot so the AI has full context
+        chat_structure_snapshot: state?.chatStructureSnapshot ?? undefined,
         ...(fileContext ? { file_context: fileContext } : {}),
       };
 
-      try {
-        const response = await fetchWithTimeout('/api/setup/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }, 90_000);
+      // Try with one automatic retry on failure (handles transient 500s)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetchWithTimeout('/api/setup/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }, 90_000);
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.content) {
-            addMessage('assistant', data.content);
-            setIsSending(false);
-            return;
+          if (response.ok) {
+            const data = await response.json();
+            if (data.content) {
+              addMessage('assistant', data.content);
+              // Save structure snapshot if the AI returned one
+              if (data.structure_snapshot) {
+                store?.getState().setChatStructureSnapshot(data.structure_snapshot);
+              }
+              setIsSending(false);
+              return;
+            }
+            console.error(`[setup/sendMessage] API returned ok but empty content (attempt ${attempt + 1})`);
+          } else {
+            console.error(`[setup/sendMessage] API returned status ${response.status} (attempt ${attempt + 1})`);
           }
+        } catch (err) {
+          console.error(`[setup/sendMessage] API call failed (attempt ${attempt + 1}):`, err);
         }
-        console.error(`[setup/sendMessage] API returned status ${response.status}`);
-      } catch (err) {
-        console.error('[setup/sendMessage] API call failed:', err);
+
+        // Wait 1.5s before retrying
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       }
 
-      // API failed — show honest error
-      addMessage('assistant', "Sorry, I wasn't able to process that. Please try sending your message again.");
+      // Both attempts failed — show honest error
+      addMessage('assistant', "Sorry, I wasn't able to process that. Please try sending your message again. Don't worry, our conversation history is saved.");
       setIsSending(false);
     },
     [addMessage, isSending, workspace_id, conversationId, fullAnalysisContext, store]
@@ -811,6 +827,12 @@ export function useSetup(): UseSetupReturn {
         ? history.map((p, i) => `Plan v${i + 1}: ${p.spaces.map(s => s.name).join(', ')} (${p.reasoning?.slice(0, 100) || 'no reasoning'})`).join('\n')
         : undefined;
 
+      // Use the chat structure snapshot as the starting point when no formal
+      // plan exists yet. This ensures the planner builds on what was discussed
+      // in chat rather than generating from scratch.
+      const chatSnapshot = state?.chatStructureSnapshot;
+      const planForPlanner = currentPlan ?? (chatSnapshot as typeof currentPlan) ?? undefined;
+
       const res = await fetchWithTimeout('/api/setup/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -825,7 +847,7 @@ export function useSetup(): UseSetupReturn {
           },
           workspaceAnalysis: workspaceAnalysis ?? undefined,
           conversationContext: recentMessages || undefined,
-          previousPlan: currentPlan ?? undefined,
+          previousPlan: planForPlanner,
           planHistorySummary: planHistorySummary || undefined,
         }),
       });
@@ -1176,6 +1198,7 @@ export function useSetup(): UseSetupReturn {
         workspace_analysis: fullAnalysisContext,
         proposed_plan: livePlan ?? undefined,
         profile_data: liveProfile ?? undefined,
+        chat_structure_snapshot: state?.chatStructureSnapshot ?? undefined,
       };
 
       // Try with one automatic retry
@@ -1189,7 +1212,14 @@ export function useSetup(): UseSetupReturn {
 
           if (response.ok) {
             const data = await response.json();
-            if (data.content) { addMessage('assistant', data.content); setIsSending(false); return; }
+            if (data.content) {
+              addMessage('assistant', data.content);
+              if (data.structure_snapshot) {
+                store?.getState().setChatStructureSnapshot(data.structure_snapshot);
+              }
+              setIsSending(false);
+              return;
+            }
             console.error(`[setup/requestChanges] API returned ok but empty content (attempt ${attempt + 1})`);
           } else {
             console.error(`[setup/requestChanges] API returned status ${response.status} (attempt ${attempt + 1})`);
