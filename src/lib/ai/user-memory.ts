@@ -18,14 +18,18 @@ function getAdminClient() {
  * Load active user memories for prompt injection.
  * Returns a formatted string block ready to embed in a system prompt.
  * Returns empty string if no memories exist.
+ *
+ * @param excludeCategories - Categories to skip (e.g. ['profile'] during setup
+ *   where the company identity block already contains profile data).
  */
 export async function loadUserMemories(
   userId: string,
   workspaceId: string,
+  excludeCategories?: string[],
 ): Promise<string> {
   try {
     const supabase = getAdminClient();
-    const { data: memories, error } = await supabase
+    let query = supabase
       .from('user_memories')
       .select('content, category')
       .eq('user_id', userId)
@@ -33,6 +37,16 @@ export async function loadUserMemories(
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(MAX_MEMORIES);
+
+    // Filter out redundant categories when the same data is already
+    // injected via another context layer (e.g. company identity block).
+    if (excludeCategories?.length) {
+      for (const cat of excludeCategories) {
+        query = query.neq('category', cat);
+      }
+    }
+
+    const { data: memories, error } = await query;
 
     if (error || !memories || memories.length === 0) return '';
 

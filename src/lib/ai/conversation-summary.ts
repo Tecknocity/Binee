@@ -123,7 +123,7 @@ export async function maybeSummarizeConversation(
     const client = getClient();
     const response = await client.messages.create({
       model: HAIKU_MODEL_ID,
-      max_tokens: 800,
+      max_tokens: 500,
       messages: [{ role: 'user', content: prompt }],
     });
 

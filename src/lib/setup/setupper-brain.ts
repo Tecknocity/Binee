@@ -96,7 +96,10 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   }
 
   // Step 2: Build system prompt with all context
-  const userMemories = await loadUserMemories(input.userId, input.workspaceId);
+  // Skip 'profile' category memories — the company identity block in the system
+  // prompt already contains all profile data, so loading them again would be
+  // redundant (~200-400 wasted tokens per message).
+  const userMemories = await loadUserMemories(input.userId, input.workspaceId, ['profile']);
 
   // Templates are NOT loaded for chat - they're only used during plan generation
   // (generate-plan route). The system prompt already has COMMON INDUSTRY PATTERNS
