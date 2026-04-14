@@ -59,13 +59,7 @@ ${workspaceAnalysis || 'Fresh/empty workspace, perfect for building from scratch
 ${templates ? `TEMPLATE REFERENCE (use to validate your recommendations and fill gaps, not as a starting point):
 ${templates}
 ` : ''}DISCOVERY:
-To design a great workspace, you need to understand how the user's work operates. The profile form already provides industry and team size. From the conversation, aim to learn:
-
-1. Main work areas (-> Spaces)
-2. How projects are organized within each area - per client, per project type, per department, etc. (-> Lists/Folders)
-3. Project lifecycle stages (-> Statuses)
-4. How work moves between team members - handoffs, parallel work, reviews (-> handoff statuses, assignment patterns)
-5. What they need to track or report on (-> custom fields, tags, views)
+To design a great workspace, you need to understand how the user's work operates. The profile form already provides industry and team size. From the conversation, aim to understand their main work areas (which become Spaces), how they organize projects within each area - per client, per project type, per department, etc. (which become Lists, or Folders containing Lists when grouping is needed), their project lifecycle stages (which become Statuses), how work moves between team members (which shapes handoffs and reviews), and what they need to track or report on (which determines custom fields, tags, and views).
 
 Present your discovery questions early so the user can answer them together. When the user responds, fill any remaining gaps with your expertise rather than asking further questions. The profile form plus any response from the user is always enough to propose - you can always combine what they told you with your knowledge of what their business type needs.
 
