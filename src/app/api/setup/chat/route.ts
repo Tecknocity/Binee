@@ -3,7 +3,7 @@ import { handleSetupMessage } from '@/lib/setup/setupper-brain';
 import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
-import { maybeSummarizeConversation } from '@/lib/ai/conversation-summary';
+import { summarizeOlderMessages } from '@/lib/ai/conversation-summary';
 
 // ---------------------------------------------------------------------------
 // Token budget for conversation history.
@@ -278,14 +278,13 @@ export async function POST(request: NextRequest) {
         console.error('[setup/chat] setup_sessions update failed:', err);
       }
 
-      // Summarize only when the conversation has exceeded the token budget.
-      // For most setup conversations (10-30 messages) this never triggers,
-      // meaning full history is always available and no context is lost.
-      const totalHistoryTokens = allMessages.reduce(
-        (sum: number, m: { role: string; content: string }) => sum + estimateTokens(m.content as string), 0
-      );
-      if (totalHistoryTokens > HISTORY_TOKEN_BUDGET) {
-        maybeSummarizeConversation(conversation_id, workspace_id).catch(err =>
+      // Summarize only the messages that fell outside the token budget window.
+      // This passes the EXACT cutoff messages to the summarizer, so it captures
+      // the right content. For most setup conversations (10-30 messages) cutoff
+      // is 0 and this never triggers — full history, zero summarization.
+      if (cutoffIndex > 0) {
+        const olderMessages = allMessages.slice(0, cutoffIndex);
+        summarizeOlderMessages(conversation_id, olderMessages, summary || null).catch(err =>
           console.error('[setup/chat] Background summarization failed:', err),
         );
       }
