@@ -2,6 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 
 const HAIKU_MODEL_ID = 'claude-haiku-4-5-20251001';
+
+// Legacy trigger: summarize every N API calls as a fallback.
+// The primary trigger is now token-budget-based (callers check total tokens
+// and only invoke this function when the budget is exceeded). This constant
+// is kept for the general chat which still uses the old pattern.
 const SUMMARIZE_EVERY_N_MESSAGES = 4;
 
 let anthropicClient: Anthropic | null = null;
@@ -99,13 +104,15 @@ export async function maybeSummarizeConversation(
     // Check if we should summarize (every 4 messages)
     if (newCount % SUMMARIZE_EVERY_N_MESSAGES !== 0) return;
 
-    // Load last 8 messages (4 user + 4 assistant) for context
+    // Load recent messages for summarization. We load up to 20 messages
+    // so the summarizer has enough context to produce a quality summary.
+    // Each message is capped at 500 chars to keep the Haiku input reasonable.
     const { data: messages } = await supabase
       .from('messages')
       .select('role, content, created_at')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
-      .limit(8);
+      .limit(20);
 
     if (!messages || messages.length < 4) return;
 
@@ -123,7 +130,7 @@ export async function maybeSummarizeConversation(
     const client = getClient();
     const response = await client.messages.create({
       model: HAIKU_MODEL_ID,
-      max_tokens: 500,
+      max_tokens: 800,
       messages: [{ role: 'user', content: prompt }],
     });
 

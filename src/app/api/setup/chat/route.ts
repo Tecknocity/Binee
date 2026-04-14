@@ -5,6 +5,20 @@ import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { maybeSummarizeConversation } from '@/lib/ai/conversation-summary';
 
+// ---------------------------------------------------------------------------
+// Token budget for conversation history.
+// Setup is always premium (2.0 credits = $0.24 revenue). At 30K history
+// tokens the Anthropic cost is ~$0.105 per message, keeping margin above 50%.
+// Typical setup conversations (10-30 messages) use ~6K-20K tokens and never
+// hit this limit, so they always get full history with zero summarization.
+// ---------------------------------------------------------------------------
+const HISTORY_TOKEN_BUDGET = 30_000;
+
+/** Rough token estimate: ~4 chars per token (conservative for English text). */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 export const maxDuration = 90;
 
 export async function POST(request: NextRequest) {
@@ -68,15 +82,17 @@ export async function POST(request: NextRequest) {
         .select('clickup_plan_tier')
         .eq('id', workspace_id)
         .single(),
-      // Last 10 messages (recent context) - older context comes from summary,
-      // and the chat structure snapshot carries key structural decisions
+      // Load full conversation history (up to 200 messages safety cap).
+      // We send as many messages as fit within the HISTORY_TOKEN_BUDGET so
+      // the AI always has maximum context. Summarization only kicks in for
+      // very long conversations that exceed the budget.
       adminClient
         .from('messages')
         .select('role, content')
         .eq('conversation_id', conversation_id)
         .order('created_at', { ascending: false })
-        .limit(10),
-      // Conversation summary (compressed context from older messages)
+        .limit(200),
+      // Conversation summary (used only when history exceeds token budget)
       adminClient
         .from('conversations')
         .select('summary')
@@ -86,25 +102,49 @@ export async function POST(request: NextRequest) {
 
     const planTier = workspaceResult.data?.clickup_plan_tier || 'free';
 
-    // Build conversation history: summary + recent messages
-    // This follows the same pattern as the general chat (context.ts:580-629)
-    // so older context is preserved via summary, not lost when messages exceed the limit.
-    const recentMessages = (historyResult.data || []).reverse();
+    // Build conversation history with token-budget approach:
+    // - Send full history when it fits within the budget (most conversations)
+    // - When history exceeds the budget, keep as many recent messages as fit
+    //   and prepend the summary for older context (same as Claude/ChatGPT but
+    //   with a lower ceiling since we pay per token)
+    const allMessages = (historyResult.data || []).reverse();
     const summary = conversationResult.data?.summary;
+
+    // Count tokens from newest to oldest, keeping messages that fit the budget
+    let tokenCount = 0;
+    let cutoffIndex = 0; // Index where we start including messages
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      const msgTokens = estimateTokens(allMessages[i].content as string);
+      if (tokenCount + msgTokens > HISTORY_TOKEN_BUDGET) {
+        cutoffIndex = i + 1;
+        break;
+      }
+      tokenCount += msgTokens;
+    }
+
+    const recentMessages = allMessages.slice(cutoffIndex);
 
     const conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
-    if (summary && recentMessages.length > 0) {
+    // Only prepend summary when some messages were cut off (history exceeded budget)
+    if (cutoffIndex > 0 && summary) {
       conversationHistory.push(
         { role: 'user', content: `[Previous conversation summary: ${summary}]` },
         { role: 'assistant', content: 'Understood, I have the context from our earlier discussion.' },
       );
     }
 
-    for (const m of recentMessages) {
+    // Ensure the first real message has role 'user' for valid API alternation.
+    // If the window starts with an assistant message, skip it (summary covers it).
+    let startIdx = 0;
+    if (recentMessages.length > 0 && recentMessages[0].role === 'assistant') {
+      startIdx = 1;
+    }
+
+    for (let i = startIdx; i < recentMessages.length; i++) {
       conversationHistory.push({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
+        role: recentMessages[i].role as 'user' | 'assistant',
+        content: recentMessages[i].content,
       });
     }
 
@@ -238,9 +278,17 @@ export async function POST(request: NextRequest) {
         console.error('[setup/chat] setup_sessions update failed:', err);
       }
 
-      maybeSummarizeConversation(conversation_id, workspace_id).catch(err =>
-        console.error('[setup/chat] Background summarization failed:', err),
+      // Summarize only when the conversation has exceeded the token budget.
+      // For most setup conversations (10-30 messages) this never triggers,
+      // meaning full history is always available and no context is lost.
+      const totalHistoryTokens = allMessages.reduce(
+        (sum: number, m: { role: string; content: string }) => sum + estimateTokens(m.content as string), 0
       );
+      if (totalHistoryTokens > HISTORY_TOKEN_BUDGET) {
+        maybeSummarizeConversation(conversation_id, workspace_id).catch(err =>
+          console.error('[setup/chat] Background summarization failed:', err),
+        );
+      }
     })();
 
     return NextResponse.json({
