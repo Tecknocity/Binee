@@ -141,12 +141,7 @@ ${planContext.planHistorySummary}`);
   // Inject template knowledge base so the planner can reference proven structures
   if (planContext?.templates) {
     parts.push(`## TEMPLATE KNOWLEDGE BASE (reference, not rigid blueprints)
-Search through these templates for structures that match the user's industry and team size. Use them as a starting point, then adapt:
-- Find the best-fit templates for their specific business type
-- If multiple templates match, combine the strongest elements from each
-- ALWAYS scale the structure to their team size (a 2-person company needs fewer lists than a 20-person one)
-- If the user described specific workflows, design statuses around THEIR process, not the template's default
-- Never copy a template blindly. Tailor every space, list, status, and tag to this specific business.
+Use these templates as reference to inform your structure. Adapt everything to this specific business, team size, and workflows described in the conversation context. The user's described processes take priority over template defaults.
 
 ${planContext.templates}`);
   }
@@ -216,13 +211,12 @@ Return a single JSON object with this exact structure:
 - Each folder must have at least 1 list
 - Each list must have at least 2 statuses: minimum one "open" type and one "done" or "closed" type
 - Status colors must be valid hex codes
-- Keep structure reasonable: 2-5 spaces for small businesses, up to 7 for larger ones
-- Reference the TEMPLATE KNOWLEDGE BASE above to find proven structures for similar businesses, then adapt to this specific user's needs, team size, and workflows
-- NEVER copy a template verbatim. Always tailor the structure to the specific business
+- Scale the structure to the team size and business complexity. Do not over-engineer for small teams or under-build for larger ones.
+- Use templates as reference, but tailor everything to this specific business. Never copy a template verbatim.
 - Include statuses that reflect real workflow stages for each list type (these are recommendations for manual setup, not auto-created)
-- PREFER consistent statuses across lists in the same space, since ClickUp space-level statuses cascade to all lists. Only vary statuses per-list when the workflow genuinely differs.
-- Include 5-10 recommended_tags that match the business type (use lowercase kebab-case names)
-- Include 2-5 recommended_docs with starter templates relevant to their workflows
+- Prefer consistent statuses across lists in the same space, since ClickUp space-level statuses cascade to all lists. Only vary statuses per-list when the workflow genuinely differs.
+- Include recommended_tags that match the business type (use lowercase kebab-case names). Include as many as are genuinely useful, not a fixed number.
+- Include recommended_docs with starter templates relevant to their workflows. Focus on what will actually help the team.
 - Only include recommended_goals if the business context suggests them (e.g. user mentioned targets, deadlines, quarterly plans). Omit the field entirely if goals are not relevant.`);
 
   return parts.join('\n\n---\n\n');
