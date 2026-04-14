@@ -2,6 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 
 const HAIKU_MODEL_ID = 'claude-haiku-4-5-20251001';
+
+// Legacy trigger: summarize every N API calls as a fallback.
+// The primary trigger is now token-budget-based (callers check total tokens
+// and only invoke this function when the budget is exceeded). This constant
+// is kept for the general chat which still uses the old pattern.
 const SUMMARIZE_EVERY_N_MESSAGES = 4;
 
 let anthropicClient: Anthropic | null = null;
@@ -99,13 +104,15 @@ export async function maybeSummarizeConversation(
     // Check if we should summarize (every 4 messages)
     if (newCount % SUMMARIZE_EVERY_N_MESSAGES !== 0) return;
 
-    // Load last 8 messages (4 user + 4 assistant) for context
+    // Load recent messages for summarization. We load up to 20 messages
+    // so the summarizer has enough context to produce a quality summary.
+    // Each message is capped at 500 chars to keep the Haiku input reasonable.
     const { data: messages } = await supabase
       .from('messages')
       .select('role, content, created_at')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
-      .limit(8);
+      .limit(20);
 
     if (!messages || messages.length < 4) return;
 
@@ -123,7 +130,7 @@ export async function maybeSummarizeConversation(
     const client = getClient();
     const response = await client.messages.create({
       model: HAIKU_MODEL_ID,
-      max_tokens: 500,
+      max_tokens: 800,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -188,5 +195,100 @@ export async function maybeSummarizeConversation(
   } catch (error) {
     // Summarization is non-critical — log and continue
     console.error('[conversation-summary] Failed:', error);
+  }
+}
+
+/**
+ * Summarize specific messages that fell outside the token budget window.
+ *
+ * Unlike maybeSummarizeConversation (legacy, runs on a message-count cadence),
+ * this function is called directly by the setup chat route when the token
+ * budget is exceeded. It receives the exact messages that were cut off and
+ * combines them with the existing summary to produce an updated one.
+ *
+ * The summarization prompt instructs Haiku to PRESERVE all key decisions from
+ * the previous summary and ADD new context, so the summary grows in detail
+ * over time rather than replacing earlier information.
+ */
+export async function summarizeOlderMessages(
+  conversationId: string,
+  olderMessages: Array<{ role: string; content: string }>,
+  existingSummary: string | null,
+): Promise<void> {
+  if (olderMessages.length === 0) return;
+
+  const supabase = getAdminClient();
+
+  try {
+    const formattedMessages = olderMessages
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${(m.content as string).slice(0, 500)}`)
+      .join('\n\n');
+
+    const prompt = SUMMARIZATION_PROMPT
+      .replace('{previous_summary}', existingSummary || 'None — this is the first summary.')
+      .replace('{messages}', formattedMessages);
+
+    const client = getClient();
+    const response = await client.messages.create({
+      model: HAIKU_MODEL_ID,
+      max_tokens: 800,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const rawText = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map(b => b.text)
+      .join('')
+      .trim();
+
+    let summary = rawText;
+    let facts: string[] = [];
+
+    try {
+      let jsonStr = rawText;
+      if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.summary) summary = parsed.summary;
+      if (Array.isArray(parsed.facts)) facts = parsed.facts.filter((f: unknown) => typeof f === 'string' && f.length > 0);
+    } catch {
+      // Haiku returned plain text — use as summary, no facts
+    }
+
+    if (summary) {
+      await supabase
+        .from('conversations')
+        .update({ summary })
+        .eq('id', conversationId);
+    }
+
+    if (facts.length > 0) {
+      const { data: conv } = await supabase
+        .from('conversations')
+        .select('user_id, workspace_id')
+        .eq('id', conversationId)
+        .single();
+
+      if (conv?.user_id) {
+        const memoryRows = facts.map(fact => ({
+          user_id: conv.user_id,
+          workspace_id: conv.workspace_id,
+          category: 'auto_extracted',
+          content: fact,
+          source_conversation_id: conversationId,
+        }));
+
+        const { error: memErr } = await supabase
+          .from('user_memories')
+          .insert(memoryRows);
+
+        if (memErr) {
+          console.error('[summarizeOlderMessages] Failed to save facts:', memErr.message);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[summarizeOlderMessages] Failed:', error);
   }
 }
