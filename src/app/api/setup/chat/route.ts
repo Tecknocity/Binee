@@ -211,7 +211,9 @@ export async function POST(request: NextRequest) {
     // Credits and summarization happen AFTER the client gets the response.
     // -----------------------------------------------------------------------
 
-    // Save assistant message right away (don't wait for billing)
+    // Save assistant message right away (don't wait for billing).
+    // Persist the structure_snapshot (when the AI emitted one) so generate-plan
+    // can read the latest agreed structure directly from the DB.
     await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
@@ -222,6 +224,7 @@ export async function POST(request: NextRequest) {
         source: 'setup',
         tool_calls: result.toolCalls,
         anthropic_cost_cents: result.anthropicCostCents,
+        ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
       },
     });
 

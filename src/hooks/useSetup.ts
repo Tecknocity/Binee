@@ -867,40 +867,23 @@ export function useSetup(): UseSetupReturn {
         throw new Error('No business description available. Please fill in your business profile first.');
       }
 
-      // Build conversation context for the planner. Send the FULL chat history
-      // (capped at ~16KB total) so the planner sees everything that was agreed -
-      // names, stages, tags, docs. Previously we sent only the last 6 messages
-      // truncated to 300 chars each, which dropped most of the agreement and
-      // caused the planner to regenerate a completely different structure.
-      const CHAT_CONTEXT_CHAR_BUDGET = 16_000;
-      const allChatMessages = state?.chatMessages ?? [];
-      const conversationLines: string[] = [];
-      let runningChars = 0;
-      for (let i = allChatMessages.length - 1; i >= 0; i--) {
-        const m = allChatMessages[i];
-        const line = `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`;
-        if (runningChars + line.length > CHAT_CONTEXT_CHAR_BUDGET && conversationLines.length > 0) break;
-        conversationLines.unshift(line);
-        runningChars += line.length;
-      }
-      const recentMessages = conversationLines.join('\n\n');
-
       // Build plan history summary so the planner knows what was tried before
       const history = state?.planHistory || [];
       const planHistorySummary = history.length > 0
         ? history.map((p, i) => `Plan v${i + 1}: ${p.spaces.map(s => s.name).join(', ')} (${p.reasoning?.slice(0, 100) || 'no reasoning'})`).join('\n')
         : undefined;
 
-      // The chatStructureSnapshot is the structure the user AGREED TO during the
-      // chat (emitted as JSON by the setupper between |||STRUCTURE_SNAPSHOT|||
-      // delimiters). Pass it as a DISTINCT authoritative input - not overloaded
-      // as `previousPlan`, which has different semantics ("refine this version").
+      // Pass conversation_id so the server loads the full chat history and
+      // latest structure snapshot directly from the DB - same context the
+      // chat AI sees. The client no longer needs to bundle it all up.
+      const liveConversationId = state?.conversationId ?? conversationId;
       const chatSnapshot = state?.chatStructureSnapshot as Record<string, unknown> | null;
 
       const res = await fetchWithTimeout('/api/setup/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversation_id: liveConversationId,
           businessProfile: {
             businessDescription: liveDescription,
             teamSize: businessProfile.teamSize,
@@ -910,7 +893,6 @@ export function useSetup(): UseSetupReturn {
             painPoints: businessProfile.painPoints,
           },
           workspaceAnalysis: workspaceAnalysis ?? undefined,
-          conversationContext: recentMessages || undefined,
           chatStructureSnapshot: chatSnapshot ?? undefined,
           previousPlan: currentPlan ?? undefined,
           planHistorySummary: planHistorySummary || undefined,
@@ -941,7 +923,7 @@ export function useSetup(): UseSetupReturn {
     }
     setIsGenerating(false);
     setIsSending(false);
-  }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState]);
+  }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState, conversationId]);
 
   const enhancedSendMessage = useCallback(
     (msg: string, fileContext?: string) => {
