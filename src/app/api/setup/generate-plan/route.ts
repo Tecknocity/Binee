@@ -26,10 +26,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Too many requests.' }, { status: 429 });
     }
 
-    const { businessProfile, workspaceAnalysis, conversationContext, previousPlan, planHistorySummary } = await request.json() as {
+    const { businessProfile, workspaceAnalysis, conversationContext, chatStructureSnapshot, previousPlan, planHistorySummary } = await request.json() as {
       businessProfile: BusinessProfile;
       workspaceAnalysis?: string;
       conversationContext?: string;
+      chatStructureSnapshot?: Record<string, unknown>;
       previousPlan?: Record<string, unknown>;
       planHistorySummary?: string;
     };
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
 
     const plan = await generateSetupPlan(businessProfile, workspaceAnalysis, {
       conversationContext,
+      chatStructureSnapshot,
       previousPlan,
       planHistorySummary,
       templates,

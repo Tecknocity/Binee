@@ -33,6 +33,14 @@ async function getAnthropicClient(): Promise<Anthropic> {
 
 interface PlanContext {
   conversationContext?: string;
+  /**
+   * The structure the user AGREED TO during the chat, emitted by the setupper
+   * AI as JSON between |||STRUCTURE_SNAPSHOT||| delimiters. When present, this
+   * is the AUTHORITATIVE baseline - names, lists, statuses, tags, and docs
+   * must be preserved exactly. The planner's job is only to fill in missing
+   * implementation details (hex colors, clickapps, etc.).
+   */
+  chatStructureSnapshot?: Record<string, unknown>;
   previousPlan?: Record<string, unknown>;
   planHistorySummary?: string;
   /** Template content from the ai_knowledge_base for reference */
@@ -48,7 +56,7 @@ export async function generateSetupPlan(
   planContext?: PlanContext,
 ): Promise<SetupPlan> {
   const systemPrompt = buildSystemPrompt(workspaceAnalysis, planContext);
-  const userMessage = buildUserMessage(businessProfile);
+  const userMessage = buildUserMessage(businessProfile, !!planContext?.chatStructureSnapshot);
 
   let responseText: string;
   try {
@@ -100,15 +108,50 @@ Your task is to analyze a business profile and generate a structured ClickUp wor
 
 IMPORTANT: Return ONLY valid JSON matching the schema below. No markdown, no explanation outside the JSON.`);
 
-  // Include conversation context so the planner knows what was discussed
+  // The chat structure snapshot is AUTHORITATIVE when present. It represents
+  // the structure the user explicitly agreed to in the chat. The planner must
+  // preserve it exactly and only add missing implementation details.
+  if (planContext?.chatStructureSnapshot) {
+    const snap = planContext.chatStructureSnapshot;
+    const snapJson = JSON.stringify(snap, null, 2);
+    parts.push(`## AGREED STRUCTURE FROM CHAT - AUTHORITATIVE BASELINE
+
+The user had a multi-turn discussion with an assistant and AGREED TO the exact structure below. This is the source of truth for the plan you return.
+
+${snapJson}
+
+STRICT PRESERVATION RULES (non-negotiable):
+1. Preserve every space name exactly as given. Do not rename, merge, split, add, or remove spaces.
+2. Preserve every list name exactly as given. Do not invent new lists or drop agreed ones.
+3. Preserve every folder structure exactly as given.
+4. Preserve every status name and order per list. Do not reorder or rename statuses.
+5. Preserve every tag name exactly. Do not invent new tags or drop agreed ones.
+6. Preserve every doc name exactly. Do not invent new docs or drop agreed ones.
+7. Preserve the reasoning string if present.
+
+YOUR ONLY JOB is to fill in implementation details the chat snapshot doesn't contain:
+- Add valid hex colors for each status (color field) matching the status type.
+- Add valid hex colors for each tag (tag_bg, tag_fg).
+- Add recommended_clickapps relevant to this workspace.
+- Set business_type and matched_template based on the conversation.
+- Optionally add brief doc descriptions if missing, but never change the doc name.
+- Optionally add recommended_goals ONLY if the conversation explicitly mentioned goals, deadlines, or targets.
+
+Any deviation from the agreed structure is a bug. When in doubt, copy the snapshot verbatim.`);
+  }
+
+  // Include conversation context so the planner knows what was discussed.
+  // Secondary to the chat snapshot - used to disambiguate or fill gaps.
   if (planContext?.conversationContext) {
     parts.push(`## CONVERSATION CONTEXT
-The user had the following recent discussion with the AI about their workspace needs. Use this context to tailor the plan to match what was discussed and agreed upon:
+Full conversation between the user and the assistant that led to the agreed structure. Use this to understand intent and fill in details that the structured snapshot doesn't capture. Do NOT use this to override the AGREED STRUCTURE above:
 
 ${planContext.conversationContext}`);
   }
 
-  // Include previous plan so the planner can refine rather than start from scratch
+  // Include previous plan so the planner can refine rather than start from scratch.
+  // When a chatStructureSnapshot is present, it takes precedence - the previous
+  // plan is shown only for reference to see what was already generated.
   if (planContext?.previousPlan) {
     const prev = planContext.previousPlan;
     const spaces = Array.isArray(prev.spaces) ? prev.spaces : [];
@@ -123,8 +166,13 @@ ${planContext.conversationContext}`);
       return `Space: ${s.name}\n${directListsStr}${directListsStr && foldersStr ? '\n' : ''}${foldersStr}`;
     }).join('\n');
 
-    parts.push(`## PREVIOUS PLAN (most recent)
-The user has already reviewed this structure and is asking for a new version. Unless they indicated specific changes, generate a plan that closely follows this structure while incorporating any conversation feedback:
+    const previousPlanHeader = planContext.chatStructureSnapshot
+      ? `## PREVIOUS PLAN (for reference only)
+A plan was previously generated. The AGREED STRUCTURE above supersedes it unless the user explicitly asked to revert. Use this only to see what was tried:`
+      : `## PREVIOUS PLAN (most recent)
+The user has already reviewed this structure and is asking for a new version. Unless they indicated specific changes, generate a plan that closely follows this structure while incorporating any conversation feedback:`;
+
+    parts.push(`${previousPlanHeader}
 
 ${summary}
 Reasoning: ${prev.reasoning || 'none provided'}`);
@@ -222,7 +270,7 @@ Return a single JSON object with this exact structure:
   return parts.join('\n\n---\n\n');
 }
 
-function buildUserMessage(profile: BusinessProfile): string {
+function buildUserMessage(profile: BusinessProfile, hasAgreedStructure: boolean): string {
   const parts: string[] = [
     `## Business Profile`,
     `**Description:** ${profile.businessDescription}`,
@@ -245,7 +293,9 @@ function buildUserMessage(profile: BusinessProfile): string {
   }
 
   parts.push(
-    '\nGenerate a complete ClickUp workspace plan as JSON based on this business profile.',
+    hasAgreedStructure
+      ? '\nReturn the AGREED STRUCTURE FROM CHAT as a complete ClickUp workspace plan JSON. Preserve every name, list, status, tag, and doc exactly. Only fill in the missing implementation details (hex colors, clickapps, meta fields). Do not redesign.'
+      : '\nGenerate a complete ClickUp workspace plan as JSON based on this business profile.',
   );
 
   return parts.join('\n');

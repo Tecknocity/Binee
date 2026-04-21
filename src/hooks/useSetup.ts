@@ -867,11 +867,23 @@ export function useSetup(): UseSetupReturn {
         throw new Error('No business description available. Please fill in your business profile first.');
       }
 
-      // Build conversation context for the planner
-      const recentMessages = (state?.chatMessages ?? [])
-        .slice(-6)
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 300)}`)
-        .join('\n') || '';
+      // Build conversation context for the planner. Send the FULL chat history
+      // (capped at ~16KB total) so the planner sees everything that was agreed -
+      // names, stages, tags, docs. Previously we sent only the last 6 messages
+      // truncated to 300 chars each, which dropped most of the agreement and
+      // caused the planner to regenerate a completely different structure.
+      const CHAT_CONTEXT_CHAR_BUDGET = 16_000;
+      const allChatMessages = state?.chatMessages ?? [];
+      const conversationLines: string[] = [];
+      let runningChars = 0;
+      for (let i = allChatMessages.length - 1; i >= 0; i--) {
+        const m = allChatMessages[i];
+        const line = `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`;
+        if (runningChars + line.length > CHAT_CONTEXT_CHAR_BUDGET && conversationLines.length > 0) break;
+        conversationLines.unshift(line);
+        runningChars += line.length;
+      }
+      const recentMessages = conversationLines.join('\n\n');
 
       // Build plan history summary so the planner knows what was tried before
       const history = state?.planHistory || [];
@@ -879,11 +891,11 @@ export function useSetup(): UseSetupReturn {
         ? history.map((p, i) => `Plan v${i + 1}: ${p.spaces.map(s => s.name).join(', ')} (${p.reasoning?.slice(0, 100) || 'no reasoning'})`).join('\n')
         : undefined;
 
-      // Use the chat structure snapshot as the starting point when no formal
-      // plan exists yet. This ensures the planner builds on what was discussed
-      // in chat rather than generating from scratch.
-      const chatSnapshot = state?.chatStructureSnapshot;
-      const planForPlanner = currentPlan ?? (chatSnapshot as typeof currentPlan) ?? undefined;
+      // The chatStructureSnapshot is the structure the user AGREED TO during the
+      // chat (emitted as JSON by the setupper between |||STRUCTURE_SNAPSHOT|||
+      // delimiters). Pass it as a DISTINCT authoritative input - not overloaded
+      // as `previousPlan`, which has different semantics ("refine this version").
+      const chatSnapshot = state?.chatStructureSnapshot as Record<string, unknown> | null;
 
       const res = await fetchWithTimeout('/api/setup/generate-plan', {
         method: 'POST',
@@ -899,7 +911,8 @@ export function useSetup(): UseSetupReturn {
           },
           workspaceAnalysis: workspaceAnalysis ?? undefined,
           conversationContext: recentMessages || undefined,
-          previousPlan: planForPlanner,
+          chatStructureSnapshot: chatSnapshot ?? undefined,
+          previousPlan: currentPlan ?? undefined,
           planHistorySummary: planHistorySummary || undefined,
         }),
       });
