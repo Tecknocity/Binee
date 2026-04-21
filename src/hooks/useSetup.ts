@@ -1330,15 +1330,8 @@ export function useSetup(): UseSetupReturn {
   }, [store, workspace_id]);
 
   const navigateToStep = useCallback((step: SetupStep) => {
-    // Don't clear build state when simply navigating between steps.
-    // Build state is only cleared when the user actually regenerates
-    // a new plan (handled by generateStructure).
-    if (step === 2 && (store?.getState().buildCompleted ?? false)) {
-      addMessage('assistant', "Welcome back! Your workspace structure has already been built.\n\nWhat would you like to change? You can ask me to add, remove, rename, or restructure spaces, folders, lists, or statuses.\n\nOnce you're happy with the changes, click **\"Generate Structure\"** to create the updated plan.");
-    }
-
     setCurrentStep(step);
-  }, [setCurrentStep, store, addMessage]);
+  }, [setCurrentStep]);
 
   const resetStage = useCallback((step: SetupStep) => {
     // Clear data from this step onward and navigate to it
