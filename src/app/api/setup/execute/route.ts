@@ -25,10 +25,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspace_id, plan, existing_structure } = body as {
+    const { workspace_id, plan, existing_structure, generate_enrichment } = body as {
       workspace_id: string;
       plan: SetupPlan;
       existing_structure?: ExistingWorkspaceStructure | null;
+      generate_enrichment?: boolean;
     };
 
     if (!workspace_id || !plan) {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
         undefined, // no progress callback needed for non-streaming response
         existing_structure,
         planTier,
+        { generateEnrichment: generate_enrichment !== false, userId: authUser.id },
       );
     } catch (execErr) {
       // Log the actual error for debugging

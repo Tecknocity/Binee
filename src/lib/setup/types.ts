@@ -36,6 +36,26 @@ export interface SetupPlan {
   recommended_goals?: RecommendedGoal[];
   /** AI reasoning for why this structure was chosen */
   reasoning: string;
+  /**
+   * Compact workspace context derived from the business profile. Passed to the
+   * enrichment phase (task + doc generation) so Haiku can produce grounded,
+   * domain-aware content. Not shown in the preview UI.
+   */
+  context?: WorkspaceContext;
+}
+
+/**
+ * Compact workspace grounding passed to per-list task generation and per-doc
+ * content generation. Derived from the BusinessProfile at plan time; kept short
+ * so each Haiku call stays cheap.
+ */
+export interface WorkspaceContext {
+  /** Industry or business type, e.g. "B2B SaaS marketing agency" */
+  domain: string;
+  /** The user's headline goal, e.g. "launch paid acquisition for Q3" */
+  primaryGoal: string;
+  /** Optional team shape, e.g. "5 people, 2 content, 1 designer, 2 ads" */
+  teamShape?: string;
 }
 
 export interface RecommendedTag {
@@ -52,8 +72,29 @@ export interface RecommendedDoc {
   name: string;
   /** Brief description of the doc's purpose */
   description: string;
-  /** Optional initial content (markdown) */
+  /** Optional target audience, e.g. "new content writers" */
+  audience?: string;
+  /** Optional section outline that guides post-confirm content generation */
+  outline?: string[];
+  /**
+   * Optional starter content (markdown). Kept for backwards compatibility with
+   * older plans. New plans leave this empty; content is generated in the
+   * enrichment phase after the user confirms the plan.
+   */
   content?: string;
+}
+
+/**
+ * A starter task generated for a list after the user confirms the plan.
+ * Generated in the enrichment phase (not in the preview) via Haiku per list.
+ */
+export interface RecommendedTask {
+  name: string;
+  description?: string;
+  /** ClickUp priority: 1=urgent, 2=high, 3=normal, 4=low */
+  priority?: 1 | 2 | 3 | 4;
+  /** Tag names that must match tags already created in the workspace */
+  tags?: string[];
 }
 
 export interface RecommendedGoal {

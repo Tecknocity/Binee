@@ -23,6 +23,7 @@ import {
   Trash2,
   Settings2,
   Check,
+  Sparkles,
 } from 'lucide-react';
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
@@ -33,9 +34,18 @@ import { getUnsupportedFeatures, getPlanCapabilities, getPlanLimits } from '@/li
 // Props
 // ---------------------------------------------------------------------------
 
+export interface ApproveOptions {
+  /**
+   * When true, after the workspace is created we also generate starter tasks
+   * per list and fill in starter content for each doc, using Haiku. Default
+   * true. Failures are silent - see src/lib/setup/enrichment-phase.ts.
+   */
+  generateEnrichment?: boolean;
+}
+
 interface StructurePreviewProps {
   plan: SetupPlan;
-  onApprove: () => void;
+  onApprove: (opts?: ApproveOptions) => void;
   onEdit: () => void;
   /** Called when the plan is modified in-place (editable mode) */
   onPlanChange?: (plan: SetupPlan) => void;
@@ -50,9 +60,9 @@ interface StructurePreviewProps {
   /** Whether AI recommendations are still loading */
   isLoadingRecommendations?: boolean;
   /** Approve with user-selected deletions. Receives the checked items. */
-  onApproveWithDeletions?: (selectedItems: ExecutionItem[]) => void;
+  onApproveWithDeletions?: (selectedItems: ExecutionItem[], opts?: ApproveOptions) => void;
   /** Approve but skip deletions (keep old items) */
-  onApproveSkipDeletions?: () => void;
+  onApproveSkipDeletions?: (opts?: ApproveOptions) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +71,7 @@ interface StructurePreviewProps {
 
 export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, existingItemsNotInPlan, isLoadingRecommendations, onApproveWithDeletions, onApproveSkipDeletions }: StructurePreviewProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [generateEnrichment, setGenerateEnrichment] = useState(true);
   const hasBineeDeletions = itemsToDelete && itemsToDelete.length > 0;
   const hasExistingExtras = existingItemsNotInPlan && existingItemsNotInPlan.length > 0;
 
@@ -1137,7 +1148,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
               <button
                 onClick={() => {
                   setShowDeleteConfirm(false);
-                  onApproveWithDeletions?.(selectedDeletionItems);
+                  onApproveWithDeletions?.(selectedDeletionItems, { generateEnrichment });
                 }}
                 disabled={selectedDeletionItems.length === 0 && spaceLimitExceeded}
                 className={`flex items-center gap-2 px-4 py-2.5 text-white text-sm font-medium rounded-lg
@@ -1161,7 +1172,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
               </button>
               {!spaceLimitExceeded && (
                 <button
-                  onClick={() => { setShowDeleteConfirm(false); onApproveSkipDeletions?.(); }}
+                  onClick={() => { setShowDeleteConfirm(false); onApproveSkipDeletions?.({ generateEnrichment }); }}
                   className="px-4 py-2.5 text-sm font-medium text-text-secondary border border-border rounded-lg
                     hover:bg-surface-hover transition-colors"
                 >
@@ -1180,7 +1191,20 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
       )}
 
       {/* Action buttons */}
-      <div className="flex items-center justify-end gap-2 pt-3 border-t border-border shrink-0">
+      <div className="flex items-center justify-end gap-3 pt-3 border-t border-border shrink-0">
+        <label
+          className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer select-none mr-auto"
+          title="After your workspace is built, Binee will use AI to add a few starter tasks to each list and fill in your docs with relevant content. Turn off to create an empty workspace."
+        >
+          <input
+            type="checkbox"
+            checked={generateEnrichment}
+            onChange={(e) => setGenerateEnrichment(e.target.checked)}
+            className="w-4 h-4 rounded border-border accent-accent cursor-pointer"
+          />
+          <Sparkles className="w-3.5 h-3.5 text-accent" />
+          <span>Add starter tasks and doc content</span>
+        </label>
         <button
           onClick={onEdit}
           className="flex items-center gap-1.5 px-4 py-2 text-sm text-text-secondary border border-border rounded-lg
@@ -1194,7 +1218,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             if (hasDeletions || spaceLimitExceeded) {
               handleShowDeleteConfirm();
             } else {
-              onApprove();
+              onApprove({ generateEnrichment });
             }
           }}
           className="flex items-center gap-1.5 px-5 py-2 bg-accent text-white text-sm font-medium rounded-lg
