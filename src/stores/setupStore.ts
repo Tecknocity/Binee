@@ -47,10 +47,19 @@ export interface ExistingDocInfo {
   name: string;
 }
 
+export interface ExistingTagInfo {
+  /** Parent space's ClickUp ID (tags in ClickUp are scoped to a space) */
+  space_id: string;
+  /** Tag name (case-sensitive, unique per space) */
+  name: string;
+}
+
 export interface ExistingWorkspaceStructure {
   spaces: ExistingSpaceInfo[];
   /** Docs that exist in the workspace (fetched live from ClickUp) */
   docs?: ExistingDocInfo[];
+  /** Tags that exist in the workspace, scoped per space (fetched live from ClickUp) */
+  tags?: ExistingTagInfo[];
   captured_at: string;
 }
 

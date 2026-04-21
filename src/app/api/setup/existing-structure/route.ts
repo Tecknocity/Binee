@@ -23,7 +23,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing workspace_id' }, { status: 400 });
     }
 
-    const structure = await getExistingStructure(workspace_id);
+    // For this endpoint, treat an empty workspace as an explicit empty
+    // structure (not null) so the client can reconcile its local "previously
+    // built items" against the actual ClickUp state - including the case
+    // where the user manually deleted everything.
+    const structure = await getExistingStructure(workspace_id) ?? {
+      spaces: [],
+      captured_at: new Date().toISOString(),
+    };
     return NextResponse.json({ structure });
   } catch (error) {
     console.error('[POST /api/setup/existing-structure] Error:', error);
