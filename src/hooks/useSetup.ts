@@ -571,6 +571,9 @@ export function useSetup(): UseSetupReturn {
         });
         if (res.ok) {
           const data = await res.json();
+          // Always persist the loaded structure, including empty ones. The
+          // server now returns `{spaces: []}` for empty workspaces (instead
+          // of null) so we can reconcile stale previouslyBuiltItems.
           if (data.structure) {
             store?.getState().setExistingStructure(data.structure);
           }
@@ -580,6 +583,55 @@ export function useSetup(): UseSetupReturn {
       }
     })();
   }, [currentStep, existingStructure, workspace_id, store]);
+
+  // Reconcile previouslyBuiltItems against the live ClickUp state.
+  //
+  // previouslyBuiltItems is persisted in localStorage and preserved across
+  // resetFromStep(1) calls (including ClickUp reconnects) so we can offer to
+  // clean up items from prior builds. But if the user deleted those items
+  // manually in ClickUp, they no longer exist and shouldn't appear in the
+  // "items to remove" list. Prune any entry whose clickupId is absent from
+  // the freshly-loaded existingStructure.
+  useEffect(() => {
+    if (!existingStructure || previouslyBuiltItems.length === 0) return;
+
+    const existingSpaceIds = new Set<string>();
+    const existingFolderIds = new Set<string>();
+    const existingListIds = new Set<string>();
+    for (const space of existingStructure.spaces) {
+      existingSpaceIds.add(space.clickup_id);
+      for (const folder of space.folders) {
+        existingFolderIds.add(folder.clickup_id);
+        for (const list of folder.lists) existingListIds.add(list.clickup_id);
+      }
+      for (const list of space.lists ?? []) existingListIds.add(list.clickup_id);
+    }
+    const existingDocIds = new Set((existingStructure.docs ?? []).map(d => d.clickup_id));
+    // Tags are identified by (space_id, name) - ClickUp tags are space-scoped
+    const existingTagKeys = new Set(
+      (existingStructure.tags ?? []).map(t => `${t.space_id}:${t.name.toLowerCase().trim()}`)
+    );
+
+    const reconciled = previouslyBuiltItems.filter(item => {
+      if (!item.clickupId) return true; // Keep items that were never successfully created (no ID)
+      switch (item.type) {
+        case 'space':  return existingSpaceIds.has(item.clickupId);
+        case 'folder': return existingFolderIds.has(item.clickupId);
+        case 'list':   return existingListIds.has(item.clickupId);
+        case 'doc':    return existingDocIds.has(item.clickupId);
+        case 'tag':    return existingTagKeys.has(`${item.clickupId}:${item.name.toLowerCase().trim()}`);
+        // Goals are not fetched in existingStructure yet - keep them to avoid
+        // false pruning. If orphaned, the delete call will 404 and be treated
+        // as success by deleteRemovedItems.
+        case 'goal':   return true;
+        default:       return true;
+      }
+    });
+
+    if (reconciled.length !== previouslyBuiltItems.length) {
+      store?.getState().setPreviouslyBuiltItems(reconciled);
+    }
+  }, [existingStructure, previouslyBuiltItems, store]);
 
   // Load saved manual step completions from DB when arriving at step 5
   useEffect(() => {
@@ -815,28 +867,23 @@ export function useSetup(): UseSetupReturn {
         throw new Error('No business description available. Please fill in your business profile first.');
       }
 
-      // Build conversation context for the planner
-      const recentMessages = (state?.chatMessages ?? [])
-        .slice(-6)
-        .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 300)}`)
-        .join('\n') || '';
-
       // Build plan history summary so the planner knows what was tried before
       const history = state?.planHistory || [];
       const planHistorySummary = history.length > 0
         ? history.map((p, i) => `Plan v${i + 1}: ${p.spaces.map(s => s.name).join(', ')} (${p.reasoning?.slice(0, 100) || 'no reasoning'})`).join('\n')
         : undefined;
 
-      // Use the chat structure snapshot as the starting point when no formal
-      // plan exists yet. This ensures the planner builds on what was discussed
-      // in chat rather than generating from scratch.
-      const chatSnapshot = state?.chatStructureSnapshot;
-      const planForPlanner = currentPlan ?? (chatSnapshot as typeof currentPlan) ?? undefined;
+      // Pass conversation_id so the server loads the full chat history and
+      // latest structure snapshot directly from the DB - same context the
+      // chat AI sees. The client no longer needs to bundle it all up.
+      const liveConversationId = state?.conversationId ?? conversationId;
+      const chatSnapshot = state?.chatStructureSnapshot as Record<string, unknown> | null;
 
       const res = await fetchWithTimeout('/api/setup/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversation_id: liveConversationId,
           businessProfile: {
             businessDescription: liveDescription,
             teamSize: businessProfile.teamSize,
@@ -846,8 +893,8 @@ export function useSetup(): UseSetupReturn {
             painPoints: businessProfile.painPoints,
           },
           workspaceAnalysis: workspaceAnalysis ?? undefined,
-          conversationContext: recentMessages || undefined,
-          previousPlan: planForPlanner,
+          chatStructureSnapshot: chatSnapshot ?? undefined,
+          previousPlan: currentPlan ?? undefined,
           planHistorySummary: planHistorySummary || undefined,
         }),
       });
@@ -876,7 +923,7 @@ export function useSetup(): UseSetupReturn {
     }
     setIsGenerating(false);
     setIsSending(false);
-  }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState]);
+  }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState, conversationId]);
 
   const enhancedSendMessage = useCallback(
     (msg: string, fileContext?: string) => {
@@ -1265,15 +1312,8 @@ export function useSetup(): UseSetupReturn {
   }, [store, workspace_id]);
 
   const navigateToStep = useCallback((step: SetupStep) => {
-    // Don't clear build state when simply navigating between steps.
-    // Build state is only cleared when the user actually regenerates
-    // a new plan (handled by generateStructure).
-    if (step === 2 && (store?.getState().buildCompleted ?? false)) {
-      addMessage('assistant', "Welcome back! Your workspace structure has already been built.\n\nWhat would you like to change? You can ask me to add, remove, rename, or restructure spaces, folders, lists, or statuses.\n\nOnce you're happy with the changes, click **\"Generate Structure\"** to create the updated plan.");
-    }
-
     setCurrentStep(step);
-  }, [setCurrentStep, store, addMessage]);
+  }, [setCurrentStep]);
 
   const resetStage = useCallback((step: SetupStep) => {
     // Clear data from this step onward and navigate to it

@@ -36,6 +36,11 @@ interface SnapshotStructure {
     clickup_id: string;
     name: string;
   }>;
+  /** Tags that exist per space (tags in ClickUp are space-scoped) */
+  tags?: Array<{
+    space_id: string;
+    name: string;
+  }>;
   captured_at: string;
 }
 
@@ -151,17 +156,36 @@ export async function getExistingStructure(workspaceId: string): Promise<Snapsho
 
     // Fetch existing docs from ClickUp (no cached_docs table exists)
     let existingDocs: Array<{ clickup_id: string; name: string }> = [];
+    // Fetch tags per space so we can reconcile Binee-built tags against reality
+    let existingTags: Array<{ space_id: string; name: string }> = [];
     try {
       const clickupClient = new ClickUpClient(workspaceId);
       const teams = await clickupClient.getTeams();
       if (teams.length > 0) {
         const teamId = teams[0].id;
-        const docs = await clickupClient.searchDocs(teamId);
+        const [docs, tagsPerSpace] = await Promise.all([
+          clickupClient.searchDocs(teamId).catch((err) => {
+            console.error('[snapshots] Failed to fetch docs from ClickUp:', err);
+            return [];
+          }),
+          Promise.all(
+            spaces.map(async (s) => {
+              try {
+                const tags = await clickupClient.getSpaceTags(s.clickup_id);
+                return tags.map((t) => ({ space_id: s.clickup_id, name: t.name }));
+              } catch (err) {
+                console.error(`[snapshots] Failed to fetch tags for space ${s.clickup_id}:`, err);
+                return [] as Array<{ space_id: string; name: string }>;
+              }
+            })
+          ),
+        ]);
         existingDocs = docs.map(d => ({ clickup_id: d.id, name: d.name }));
+        existingTags = tagsPerSpace.flat();
       }
     } catch (err) {
-      // Docs fetch is best-effort - don't fail the whole structure fetch
-      console.error('[snapshots] Failed to fetch docs from ClickUp:', err);
+      // Best-effort - don't fail the whole structure fetch
+      console.error('[snapshots] Failed to fetch live ClickUp data:', err);
     }
 
     return {
@@ -198,6 +222,7 @@ export async function getExistingStructure(workspaceId: string): Promise<Snapsho
         };
       }),
       ...(existingDocs.length > 0 ? { docs: existingDocs } : {}),
+      ...(existingTags.length > 0 ? { tags: existingTags } : {}),
       captured_at: new Date().toISOString(),
     };
   } catch (err) {
