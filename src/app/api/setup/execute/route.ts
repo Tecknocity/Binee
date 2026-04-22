@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { executeSetupPlan } from '@/lib/setup/executor';
+import { syncWorkspaceStructure } from '@/lib/clickup/sync';
+import { getExistingStructure } from '@/lib/setup/snapshots';
 import type { SetupPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
 
@@ -60,6 +62,22 @@ export async function POST(request: NextRequest) {
       .single();
     const planTier = workspaceRow?.clickup_plan_tier || 'free';
 
+    // Defense-in-depth: refresh ClickUp cache and rebuild existing_structure
+    // server-side so the executor operates on current reality, not whatever
+    // the client shipped in the request body. Covers the window between
+    // Review modal and Build click. Falls back to client-supplied structure
+    // if the sync fails.
+    let resolvedStructure: ExistingWorkspaceStructure | null | undefined = existing_structure;
+    try {
+      await syncWorkspaceStructure(workspace_id);
+      const fresh = await getExistingStructure(workspace_id);
+      if (fresh) {
+        resolvedStructure = fresh as ExistingWorkspaceStructure;
+      }
+    } catch (syncErr) {
+      console.error('[setup/execute] Pre-build sync failed, using client-supplied structure:', syncErr);
+    }
+
     let result;
     try {
       result = await executeSetupPlan(
@@ -67,7 +85,7 @@ export async function POST(request: NextRequest) {
         workspace_id,
         '', // accessToken param is unused - ClickUpClient fetches its own token server-side
         undefined, // no progress callback needed for non-streaming response
-        existing_structure,
+        resolvedStructure,
         planTier,
         { generateEnrichment: generate_enrichment !== false, userId: authUser.id },
       );
