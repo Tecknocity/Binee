@@ -9,6 +9,8 @@
 import { ClickUpClient, ClickUpApiError } from "@/lib/clickup/client";
 import { upsertCachedSpaces, upsertCachedFolders, upsertCachedLists } from "@/lib/clickup/sync";
 import { isItemTypeSupported, classifyClickUpError, getPlanCapabilities } from "@/lib/clickup/plan-capabilities";
+import { runEnrichmentPhase } from "@/lib/setup/enrichment-phase";
+import { logError, errorToMessage } from "@/lib/errors/log";
 import type { ClickUpList } from "@/types/clickup";
 import type { SetupPlan, ListPlan } from "@/lib/setup/types";
 import type { ExistingWorkspaceStructure } from "@/stores/setupStore";
@@ -88,6 +90,7 @@ export async function executeSetupPlan(
   onProgress?: ExecutionProgressCallback,
   existingStructure?: ExistingWorkspaceStructure | null,
   planTier?: string,
+  options?: { generateEnrichment?: boolean; userId?: string },
 ): Promise<ExecutionResult> {
   const client = new ClickUpClient(workspaceId);
 
@@ -508,7 +511,7 @@ export async function executeSetupPlan(
   const successCount = items.filter((i) => i.status === "success").length;
   const errorCount = items.filter((i) => i.status === "error").length;
 
-  return {
+  const result: ExecutionResult = {
     success: errorCount === 0,
     totalItems,
     successCount,
@@ -518,6 +521,34 @@ export async function executeSetupPlan(
     createdFolderIds,
     createdListIds,
   };
+
+  // -------------------------------------------------------------------------
+  // Phase 7: post-confirm enrichment (starter tasks + doc content via Haiku)
+  // Intentionally silent - failures never affect the user-visible result.
+  // -------------------------------------------------------------------------
+  if (options?.generateEnrichment) {
+    try {
+      await runEnrichmentPhase({
+        plan,
+        executionResult: result,
+        client,
+        workspaceId,
+        userId: options.userId,
+      });
+    } catch (enrichErr) {
+      // Should never happen - enrichment swallows its own errors - but belt
+      // and suspenders so no user flow is disrupted.
+      await logError({
+        source: 'setup.enrichment',
+        errorCode: 'phase_crashed',
+        message: errorToMessage(enrichErr),
+        workspaceId,
+        userId: options.userId,
+      });
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

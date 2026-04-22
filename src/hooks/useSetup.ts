@@ -83,7 +83,7 @@ export interface UseSetupReturn {
   sendMessage: (msg: string, fileContext?: string) => void;
   submitProfileForm: (data: ProfileFormData) => void;
   updatePlan: (plan: SetupPlan) => void;
-  approvePlan: () => void;
+  approvePlan: (opts?: { generateEnrichment?: boolean }) => void;
   requestChanges: (feedback: string) => void;
   editProfile: () => void;
   markStepComplete: (stepIndex: number) => void;
@@ -934,7 +934,10 @@ export function useSetup(): UseSetupReturn {
   );
 
   // Shared execution runner for approvePlan and retryFailedItems
-  const runExecution = useCallback(async (structure: ExistingWorkspaceStructure | null) => {
+  const runExecution = useCallback(async (
+    structure: ExistingWorkspaceStructure | null,
+    runOptions?: { generateEnrichment?: boolean },
+  ) => {
     if (!proposedPlan) return;
 
     try {
@@ -946,6 +949,7 @@ export function useSetup(): UseSetupReturn {
           workspace_id,
           plan: proposedPlan,
           existing_structure: structure,
+          generate_enrichment: runOptions?.generateEnrichment !== false,
         }),
       }, 120_000);
 
@@ -1045,6 +1049,7 @@ export function useSetup(): UseSetupReturn {
     skipDeletions?: boolean;
     selectedItems?: ExecutionItem[];
     isRetry?: boolean;
+    generateEnrichment?: boolean;
   }) => {
     if (!proposedPlan || isExecuting) return;
     setCurrentStep(4);
@@ -1182,14 +1187,14 @@ export function useSetup(): UseSetupReturn {
     // Phase 3: CREATE — Execute the plan. The executor skips items that
     // already exist and creates everything else.
     // ------------------------------------------------------------------
-    await runExecution(freshStructure);
+    await runExecution(freshStructure, { generateEnrichment: options?.generateEnrichment });
   }, [proposedPlan, isExecuting, workspace_id, setCurrentStep, itemsToDelete, previouslyBuiltItems, existingStructure, store, runExecution]);
 
   // Public API — thin wrappers over the unified build lifecycle
 
   /** Standard build: delete old → fetch → create new */
-  const approvePlan = useCallback(async () => {
-    await executeBuild();
+  const approvePlan = useCallback(async (opts?: { generateEnrichment?: boolean }) => {
+    await executeBuild({ generateEnrichment: opts?.generateEnrichment });
   }, [executeBuild]);
 
   /**
@@ -1197,13 +1202,16 @@ export function useSetup(): UseSetupReturn {
    * contains only the items the user checked in the deletion dialog.
    * Items the user unchecked are kept in ClickUp.
    */
-  const confirmDeletionsAndBuild = useCallback(async (selectedItems?: ExecutionItem[]) => {
-    await executeBuild({ selectedItems });
+  const confirmDeletionsAndBuild = useCallback(async (
+    selectedItems?: ExecutionItem[],
+    opts?: { generateEnrichment?: boolean },
+  ) => {
+    await executeBuild({ selectedItems, generateEnrichment: opts?.generateEnrichment });
   }, [executeBuild]);
 
   /** User explicitly chose to keep old items — skip the delete phase */
-  const skipDeletionsAndBuild = useCallback(async () => {
-    await executeBuild({ skipDeletions: true });
+  const skipDeletionsAndBuild = useCallback(async (opts?: { generateEnrichment?: boolean }) => {
+    await executeBuild({ skipDeletions: true, generateEnrichment: opts?.generateEnrichment });
   }, [executeBuild]);
 
   /** Retry a failed build — resets UI state, then runs the full lifecycle */

@@ -6,6 +6,7 @@ import type {
   RecommendedTag,
   RecommendedDoc,
   RecommendedGoal,
+  WorkspaceContext,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -92,7 +93,38 @@ export async function generateSetupPlan(
     console.warn('[planner] Plan validation issues:', validation.errors);
   }
 
+  // Attach compact workspace context for the post-confirm enrichment phase.
+  // Derived deterministically from the profile so it stays cheap and reliable
+  // regardless of what the planner returned.
+  plan.context = deriveWorkspaceContext(businessProfile);
+
   return plan;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace context derivation (for enrichment phase)
+// ---------------------------------------------------------------------------
+
+export function deriveWorkspaceContext(profile: BusinessProfile): WorkspaceContext {
+  const domain = (profile.businessDescription || 'general business').trim().slice(0, 300);
+
+  const goalParts: string[] = [];
+  if (profile.painPoints?.length) {
+    goalParts.push(`resolve: ${profile.painPoints.slice(0, 3).join('; ')}`);
+  }
+  if (profile.workflows?.length) {
+    goalParts.push(`run: ${profile.workflows.slice(0, 3).join('; ')}`);
+  }
+  const primaryGoal = goalParts.length
+    ? goalParts.join(' | ').slice(0, 400)
+    : 'establish an organized workspace for day-to-day operations';
+
+  const shapeParts: string[] = [];
+  if (profile.teamSize) shapeParts.push(profile.teamSize);
+  if (profile.departments?.length) shapeParts.push(profile.departments.join(', '));
+  const teamShape = shapeParts.length ? shapeParts.join(' - ').slice(0, 200) : undefined;
+
+  return { domain, primaryGoal, ...(teamShape ? { teamShape } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +276,7 @@ Return a single JSON object with this exact structure:
     { "name": "tag-name", "tag_bg": "#hex", "tag_fg": "#FFFFFF" }
   ],
   "recommended_docs": [
-    { "name": "Doc Title", "description": "What this doc is for", "content": "Optional markdown content" }
+    { "name": "Doc Title", "description": "What this doc is for", "audience": "optional - who reads this", "outline": ["Section 1", "Section 2"] }
   ],
   "recommended_goals": [
     { "name": "Goal Name", "due_date": "2026-06-30", "description": "What this goal tracks", "color": "#hex" }
@@ -264,7 +296,7 @@ Return a single JSON object with this exact structure:
 - Include statuses that reflect real workflow stages for each list type (these are recommendations for manual setup, not auto-created)
 - Prefer consistent statuses across lists in the same space, since ClickUp space-level statuses cascade to all lists. Only vary statuses per-list when the workflow genuinely differs.
 - Include recommended_tags that match the business type (use lowercase kebab-case names). Include as many as are genuinely useful, not a fixed number.
-- Include recommended_docs with starter templates relevant to their workflows. Focus on what will actually help the team.
+- Include recommended_docs with starter templates relevant to their workflows. Focus on what will actually help the team. Provide a short "outline" array of section names (3-6 sections) and optionally an "audience" field. DO NOT include a "content" field - doc bodies are generated separately after the user confirms the plan.
 - Only include recommended_goals if the business context suggests them (e.g. user mentioned targets, deadlines, quarterly plans). Omit the field entirely if goals are not relevant.`);
 
   return parts.join('\n\n---\n\n');
@@ -461,9 +493,14 @@ function normalizeTag(tag: Record<string, unknown>): RecommendedTag {
 }
 
 function normalizeDoc(doc: Record<string, unknown>): RecommendedDoc {
+  const outline = Array.isArray(doc.outline)
+    ? doc.outline.map(String).filter((s) => s.trim().length > 0).slice(0, 12)
+    : undefined;
   return {
     name: String(doc.name ?? 'Untitled Doc'),
     description: String(doc.description ?? ''),
+    ...(doc.audience ? { audience: String(doc.audience) } : {}),
+    ...(outline && outline.length > 0 ? { outline } : {}),
     ...(doc.content ? { content: String(doc.content) } : {}),
   };
 }
