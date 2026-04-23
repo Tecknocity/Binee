@@ -521,8 +521,31 @@ export class ClickUpClient {
   async createDocPage(
     docId: string,
     name: string,
-    content?: string
+    content?: string,
+    workspaceId?: string,
   ): Promise<ClickUpDocPage> {
+    // v3 is the current Docs API. Try it first when a workspaceId is available
+    // because docs created via POST /v3/workspaces/{wid}/docs cannot always be
+    // written to via the legacy v2 /doc/{docId}/page endpoint. Fall back to v2
+    // if v3 fails (e.g. plan without v3 Docs access).
+    const wid = workspaceId || this.workspaceId;
+    if (wid) {
+      try {
+        const body: Record<string, unknown> = { name };
+        if (content) {
+          body.content = content;
+          body.content_format = "text/md";
+        }
+        return await this.request<ClickUpDocPage>(
+          `/workspaces/${wid}/docs/${docId}/pages`,
+          { method: "POST", body },
+          BASE_URL_V3,
+        );
+      } catch {
+        // Fall through to v2
+      }
+    }
+
     const body: Record<string, unknown> = { name };
     if (content) {
       body.content = content;

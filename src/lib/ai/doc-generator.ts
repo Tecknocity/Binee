@@ -2,6 +2,12 @@
 // phase (see src/lib/setup/enrichment-phase.ts). Uses Haiku 4.5 to produce
 // rich, domain-aware markdown bodies so docs don't feel empty after setup.
 //
+// Priority of inputs (highest first):
+//   1. purpose + outline from the planner (derived from the chat).
+//   2. workspace context (domain, goal, team).
+//   3. referenceSnippet: a topical excerpt from the knowledge base. Inspiration
+//      for structure and voice only; never to override chat-derived context.
+//
 // Failures in this module must NEVER surface to the user. Callers are expected
 // to catch, log silently via src/lib/errors/log.ts, and skip the doc.
 
@@ -27,16 +33,26 @@ export interface DocGenerationInput {
   purpose: string;
   audience?: string;
   outline?: string[];
+  /**
+   * Optional topical snippet from ai_knowledge_base. Inspiration for structure
+   * and voice only. The chat-derived purpose and outline always win.
+   */
+  referenceSnippet?: string;
 }
 
 const SYSTEM_PROMPT = `You write starter documentation for a newly-created ClickUp doc.
 
 Your output is the raw markdown body of the doc. It must feel like real, useful documentation - not placeholder boilerplate.
 
+SOURCE OF TRUTH ORDER:
+1. The doc purpose and outline. These describe what the user actually wants documented.
+2. The workspace context (domain, goal, team).
+3. The reference snippet. Inspiration for section shape and voice only. If it suggests headings or content that do not fit this specific doc's purpose, discard them. Never copy the snippet verbatim.
+
 OUTPUT CONTRACT:
 - Return ONLY the markdown content. No JSON, no code fences wrapping the whole output, no meta commentary.
 - Open with a short italicized lead-in sentence that states what the doc is for.
-- Follow with H2 sections (## Heading) that match the provided outline when one is given.
+- Follow with H2 sections (## Heading) that match the provided outline when one is given. If no outline is given, pick 3-6 sections that fit the doc's purpose.
 - Use bullet lists, numbered lists, short paragraphs. Bold key terms sparingly.
 - Include at least one concrete worked example grounded in the user's domain. Reference the domain by name when natural. Do NOT use "[Company Name]" style placeholders - write real examples as if you know the business.
 - Length: 400-1000 words. Dense and useful beats long and fluffy.
@@ -46,7 +62,8 @@ FORBIDDEN:
 - No em dashes (-) or en dashes. Use hyphens, commas, or rephrase.
 - No "Lorem ipsum", "TBD", "[Insert X here]", or placeholder brackets.
 - No meta phrases like "As an AI" or "Here is your document".
-- No generic boilerplate that would apply to any business.`;
+- No generic boilerplate that would apply to any business.
+- Never invent specifics (client names, numbers, dates, vendors) that do not appear in the purpose, outline, or workspace context. If a placeholder is needed, phrase generically.`;
 
 function buildUserMessage(input: DocGenerationInput): string {
   const ctx = input.context;
@@ -67,6 +84,11 @@ function buildUserMessage(input: DocGenerationInput): string {
     for (const section of input.outline) {
       lines.push(`- ${section}`);
     }
+  }
+
+  if (input.referenceSnippet && input.referenceSnippet.trim().length > 0) {
+    lines.push('', '## Reference snippet (inspiration only, NEVER override the purpose/outline above)');
+    lines.push(input.referenceSnippet.trim());
   }
 
   lines.push('', 'Write the markdown body now. Ground all examples in the domain above.');
