@@ -969,6 +969,23 @@ export async function syncWorkspaceStructure(workspaceId: string): Promise<{
       folders: allFolders.map(f => f.id),
       lists: allLists.map(l => l.id),
     });
+
+    // Tasks belong to lists, so any cached_task whose list_id is no longer
+    // present must be stale. This also handles the "user emptied the
+    // workspace in ClickUp" case: with zero lists, all cached_tasks are
+    // dropped. Without this, the /api/setup/analyze count query and the
+    // workspace_analyst sub-agent would continue reporting the previous
+    // build's tasks even after the workspace was cleared.
+    const supabase = getSupabaseAdmin();
+    const listIds = allLists.map(l => l.id);
+    if (listIds.length > 0) {
+      await supabase.from("cached_tasks").delete()
+        .eq("workspace_id", workspaceId)
+        .not("list_id", "in", `(${listIds.join(",")})`);
+    } else {
+      await supabase.from("cached_tasks").delete()
+        .eq("workspace_id", workspaceId);
+    }
   } catch (cleanupErr) {
     console.error("[ClickUp Sync] Structure cleanup error (non-fatal):", cleanupErr);
   }
