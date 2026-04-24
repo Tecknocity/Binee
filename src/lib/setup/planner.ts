@@ -168,6 +168,8 @@ YOUR ONLY JOB is to fill in implementation details the chat snapshot doesn't con
 - Set business_type and matched_template based on the conversation.
 - Optionally add brief doc descriptions if missing, but never change the doc name.
 - Optionally add recommended_goals ONLY if the conversation explicitly mentioned goals, deadlines, or targets.
+- POPULATE each space's "purpose" and each list's "purpose" from what the user said in the conversation. Use their own words. Omit if they did not say anything specific about that item.
+- POPULATE each list's "taskExamples" array with concrete tasks the user mentioned for that list, verbatim or near-verbatim. Omit the field entirely if the user did not give examples for a list. Never invent clients, numbers, dates, or specifics not in the chat.
 
 Any deviation from the agreed structure is a bug. When in doubt, copy the snapshot verbatim.`);
   }
@@ -246,10 +248,13 @@ Return a single JSON object with this exact structure:
   "spaces": [
     {
       "name": "Space Name",
+      "purpose": "1 sentence in the user's own words from the chat about what this space is for. Omit if the user did not say anything specific.",
       "lists": [
         {
           "name": "List Name (directly in space, no folder)",
-          "description": "optional description",
+          "description": "optional one-line description",
+          "purpose": "1-2 sentences in the user's own words about what this list is for, pulled from the conversation. Use the user's vocabulary, not generic restatements. Omit if the user did not give specifics.",
+          "taskExamples": ["Concrete example tasks the user mentioned for this list, verbatim or near-verbatim. Omit the field entirely if the user did not give examples for this list. Do not invent."],
           "statuses": [
             { "name": "Status Name", "color": "#hex", "type": "open|active|done|closed" }
           ]
@@ -262,6 +267,8 @@ Return a single JSON object with this exact structure:
             {
               "name": "List Name",
               "description": "optional description",
+              "purpose": "1-2 sentences in the user's own words. Omit if not given.",
+              "taskExamples": ["Verbatim example tasks from the user. Omit if none."],
               "statuses": [
                 { "name": "Status Name", "color": "#hex", "type": "open|active|done|closed" }
               ]
@@ -297,7 +304,9 @@ Return a single JSON object with this exact structure:
 - Prefer consistent statuses across lists in the same space, since ClickUp space-level statuses cascade to all lists. Only vary statuses per-list when the workflow genuinely differs.
 - Include recommended_tags that match the business type (use lowercase kebab-case names). Include as many as are genuinely useful, not a fixed number.
 - Include recommended_docs with starter templates relevant to their workflows. Focus on what will actually help the team. Provide a short "outline" array of section names (3-6 sections) and optionally an "audience" field. DO NOT include a "content" field - doc bodies are generated separately after the user confirms the plan.
-- Only include recommended_goals if the business context suggests them (e.g. user mentioned targets, deadlines, quarterly plans). Omit the field entirely if goals are not relevant.`);
+- Only include recommended_goals if the business context suggests them (e.g. user mentioned targets, deadlines, quarterly plans). Omit the field entirely if goals are not relevant.
+- FILL purpose and taskExamples from the conversation, not from templates. Use the user's own words. If the user did not say anything specific about a list, omit the fields. Never invent client names, project names, numbers, or dates that did not appear in the chat.
+- LIST ORGANIZATION PATTERNS: when the user describes work that revolves around a few distinct long-lived entities (e.g. 1-2 retainer clients, 2-3 flagship products, recurring campaigns), consider list-per-entity with the lifecycle stage as a custom field, instead of one shared list with stages as statuses. Shared-list + stages-as-statuses fits when entities are many, short-lived, or interchangeable. Only propose the list-per-entity shape when the conversation clearly supports it; never default to it.`);
 
   return parts.join('\n\n---\n\n');
 }
@@ -393,24 +402,33 @@ function normalizeSetupPlan(parsed: Record<string, unknown>): SetupPlan {
 
 function normalizeSpace(space: Record<string, unknown>): {
   name: string;
+  purpose?: string;
   folders: Array<{
     name: string;
     lists: Array<{
       name: string;
       statuses: Array<{ name: string; color: string; type: 'open' | 'active' | 'done' | 'closed' }>;
       description?: string;
+      purpose?: string;
+      taskExamples?: string[];
     }>;
   }>;
   lists?: Array<{
     name: string;
     statuses: Array<{ name: string; color: string; type: 'open' | 'active' | 'done' | 'closed' }>;
     description?: string;
+    purpose?: string;
+    taskExamples?: string[];
   }>;
 } {
   const folders = Array.isArray(space.folders) ? space.folders : [];
   const directLists = Array.isArray(space.lists) ? space.lists : [];
+  const purpose = typeof space.purpose === 'string' && space.purpose.trim().length > 0
+    ? space.purpose.trim().slice(0, 400)
+    : undefined;
   return {
     name: String(space.name ?? 'Unnamed Space'),
+    ...(purpose ? { purpose } : {}),
     folders: folders.map(normalizeFolder),
     ...(directLists.length > 0 ? { lists: directLists.map(normalizeList) } : {}),
   };
@@ -422,6 +440,8 @@ function normalizeFolder(folder: Record<string, unknown>): {
     name: string;
     statuses: Array<{ name: string; color: string; type: 'open' | 'active' | 'done' | 'closed' }>;
     description?: string;
+    purpose?: string;
+    taskExamples?: string[];
   }>;
 } {
   const lists = Array.isArray(folder.lists) ? folder.lists : [];
@@ -435,6 +455,8 @@ function normalizeList(list: Record<string, unknown>): {
   name: string;
   statuses: Array<{ name: string; color: string; type: 'open' | 'active' | 'done' | 'closed' }>;
   description?: string;
+  purpose?: string;
+  taskExamples?: string[];
 } {
   const statuses = Array.isArray(list.statuses) ? list.statuses : [];
   const normalizedStatuses = statuses.map(normalizeStatus);
@@ -449,10 +471,22 @@ function normalizeList(list: Record<string, unknown>): {
     normalizedStatuses.push({ name: 'Complete', color: '#6bc950', type: 'done' });
   }
 
+  const purpose = typeof list.purpose === 'string' && list.purpose.trim().length > 0
+    ? list.purpose.trim().slice(0, 600)
+    : undefined;
+
+  const rawExamples = Array.isArray(list.taskExamples) ? list.taskExamples : [];
+  const taskExamples = rawExamples
+    .map((t) => (typeof t === 'string' ? t.trim() : ''))
+    .filter((t) => t.length > 0 && t.length <= 300)
+    .slice(0, 8);
+
   return {
     name: String(list.name ?? 'Unnamed List'),
     statuses: normalizedStatuses,
     ...(list.description ? { description: String(list.description) } : {}),
+    ...(purpose ? { purpose } : {}),
+    ...(taskExamples.length > 0 ? { taskExamples } : {}),
   };
 }
 

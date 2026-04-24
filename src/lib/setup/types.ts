@@ -110,6 +110,13 @@ export interface RecommendedGoal {
 
 export interface SpacePlan {
   name: string;
+  /**
+   * Short statement of what this space is for, in the user's own words from
+   * the chat (e.g. "personal stuff like shopping and errands"). Populated by
+   * the planner from the conversation. Passed to enrichment so generated
+   * tasks/docs reflect the user's actual intent for the space.
+   */
+  purpose?: string;
   /** Folders containing lists (3rd layer, optional) */
   folders: FolderPlan[];
   /** Lists directly in the space without a folder (preferred flat structure) */
@@ -124,7 +131,19 @@ export interface FolderPlan {
 export interface ListPlan {
   name: string;
   statuses: StatusPlan[];
+  /** Short description of the list's purpose (legacy field, still used). */
   description?: string;
+  /**
+   * 1-2 sentence purpose pulled from the chat in the user's own words. When
+   * present, takes priority over `description` for downstream task generation.
+   */
+  purpose?: string;
+  /**
+   * Concrete example tasks the user mentioned in chat for this list. Used as
+   * grounding by the task generator so starter tasks reflect the user's real
+   * work, not generic templates. Empty when the user did not provide any.
+   */
+  taskExamples?: string[];
 }
 
 export interface StatusPlan {

@@ -13,9 +13,11 @@
 import { ClickUpClient } from '@/lib/clickup/client';
 import { generateTasksForList } from '@/lib/ai/task-generator';
 import { generateDocContent } from '@/lib/ai/doc-generator';
+import { findReferenceSnippet } from '@/lib/setup/knowledge-base-context';
 import { logError, errorToMessage } from '@/lib/errors/log';
 import type {
   SetupPlan,
+  SpacePlan,
   ListPlan,
   RecommendedDoc,
   RecommendedTask,
@@ -80,12 +82,25 @@ export async function runEnrichmentPhase(
 
   const listOutcomes = await runPool(listJobs, AI_CONCURRENCY, async (job) => {
     try {
+      // Best-effort reference snippet from the knowledge base. Never blocks
+      // generation - an empty string just means the generator falls back to
+      // chat context alone.
+      const referenceSnippet = await findReferenceSnippet(
+        [job.spaceName, job.listPlan.name, job.listPlan.purpose ?? '', job.listPlan.description ?? '']
+          .filter((s) => s.length > 0)
+          .join(' '),
+      ).catch(() => '');
+
       const tasks = await generateTasksForList({
         context: plan.context!,
         spaceName: job.spaceName,
+        spacePurpose: job.spacePurpose,
         listName: job.listPlan.name,
         listDescription: job.listPlan.description,
+        listPurpose: job.listPlan.purpose,
+        taskExamples: job.listPlan.taskExamples,
         availableTags,
+        referenceSnippet,
       });
       return { job, tasks };
     } catch (err) {
@@ -155,12 +170,19 @@ export async function runEnrichmentPhase(
 
   const docOutcomes = await runPool(docJobs, AI_CONCURRENCY, async (job) => {
     try {
+      const referenceSnippet = await findReferenceSnippet(
+        [job.docPlan.name, job.docPlan.description ?? '', (job.docPlan.outline ?? []).join(' ')]
+          .filter((s) => s.length > 0)
+          .join(' '),
+      ).catch(() => '');
+
       const content = await generateDocContent({
         context: plan.context!,
         docName: job.docPlan.name,
         purpose: job.docPlan.description,
         audience: job.docPlan.audience,
         outline: job.docPlan.outline,
+        referenceSnippet,
       });
       return { job, content };
     } catch (err) {
@@ -181,8 +203,51 @@ export async function runEnrichmentPhase(
   );
 
   await runPool(docWriteJobs, DOC_WRITE_CONCURRENCY, async ({ job, content }) => {
+    const contentLength = content.length;
     try {
-      await client.createDocPage(job.docId, job.docPlan.name, content);
+      const page = await client.createDocPage(
+        job.docId,
+        job.docPlan.name,
+        content,
+        workspaceId,
+      );
+
+      // Verify the page actually got content. ClickUp's doc page endpoints
+      // can silently accept a request and persist nothing (seen on plans
+      // where the v2 endpoint is a partial no-op, or when the doc id format
+      // mismatches the API version). If we can't find the content after the
+      // write, log it so we can diagnose empty-doc reports.
+      const pageId = page?.id;
+      let verified = false;
+      try {
+        const pages = await client.getDocPages(job.docId);
+        const match = pageId
+          ? pages.find((p) => p.id === pageId)
+          : pages.find((p) => p.name === job.docPlan.name);
+        const written = match?.content ?? '';
+        verified = written.trim().length > 0;
+      } catch {
+        // Verification is best-effort; lack of read access should not
+        // escalate to an error state.
+        verified = true;
+      }
+
+      if (!verified) {
+        await logError({
+          source: 'setup.enrichment.doc_write',
+          errorCode: 'content_not_persisted',
+          message: 'createDocPage returned success but the page has no content when read back',
+          workspaceId,
+          userId,
+          metadata: {
+            docId: job.docId,
+            docName: job.docPlan.name,
+            pageId: pageId ?? null,
+            contentLength,
+          },
+        });
+      }
+
       result.docsEnriched++;
     } catch (err) {
       await logError({
@@ -191,7 +256,7 @@ export async function runEnrichmentPhase(
         message: errorToMessage(err),
         workspaceId,
         userId,
-        metadata: { docId: job.docId, docName: job.docPlan.name },
+        metadata: { docId: job.docId, docName: job.docPlan.name, contentLength },
       });
     }
   });
@@ -207,6 +272,7 @@ interface ListJob {
   listId: string;
   listPlan: ListPlan;
   spaceName: string;
+  spacePurpose?: string;
 }
 
 function buildListJobs(plan: SetupPlan, exec: ExecutionResult): ListJob[] {
@@ -223,7 +289,8 @@ function buildListJobs(plan: SetupPlan, exec: ExecutionResult): ListJob[] {
     jobs.push({
       listId: item.clickupId,
       listPlan: match.list,
-      spaceName: match.spaceName,
+      spaceName: match.space.name,
+      spacePurpose: match.space.purpose,
     });
   }
 
@@ -234,16 +301,16 @@ function findListInPlan(
   plan: SetupPlan,
   listName: string,
   parentName: string | undefined,
-): { list: ListPlan; spaceName: string } | null {
+): { list: ListPlan; space: SpacePlan } | null {
   for (const space of plan.spaces) {
     if (space.lists && parentName === space.name) {
       const hit = space.lists.find((l) => l.name === listName);
-      if (hit) return { list: hit, spaceName: space.name };
+      if (hit) return { list: hit, space };
     }
     for (const folder of space.folders) {
       if (folder.name === parentName) {
         const hit = folder.lists.find((l) => l.name === listName);
-        if (hit) return { list: hit, spaceName: space.name };
+        if (hit) return { list: hit, space };
       }
     }
   }
