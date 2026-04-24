@@ -292,8 +292,7 @@ Return a single JSON object with this exact structure:
 }
 
 ## RULES
-- STRUCTURE BEST PRACTICE: Use a FLAT hierarchy. Prefer "lists" directly in spaces over "folders". Each major business area should be its own Space with Lists directly inside. Only add Folders when a Space genuinely needs a 3rd layer of sub-grouping (e.g. 6+ lists that need categorization). NEVER default to a single Space with Folders for distinct business areas.
-- FOLDERS: Only use Folders to group 2+ related Lists within a Space when the Space has many lists. Do NOT create a Folder to hold a single list. If a Space only has 3-5 lists, keep them flat without Folders.
+- STRUCTURE BEST PRACTICE: Prefer a flat hierarchy - lists directly in spaces. Each major business area should be its own Space. A folder should represent a grouping concept distinct from the lists inside it - usually a real thing the work belongs to (a client, a project, a department, a product line, a property, a case) where peer folders share that same grouping meaning. Use folders when the folder's identity is separate from its contents and could naturally hold more work over time. Avoid folders whose only list duplicates the folder's own name or category - those are wrappers with no grouping value, keep the list directly in the space instead. A folder is earned, not assumed.
 - Each space must have at least 1 list (directly in the space) or 1 folder (containing lists)
 - Each folder must have at least 1 list
 - Each list must have at least 2 statuses: minimum one "open" type and one "done" or "closed" type
