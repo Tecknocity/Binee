@@ -1063,6 +1063,27 @@ export async function syncWorkspaceStructure(workspaceId: string): Promise<{
         .eq("workspace_id", workspaceId)
         .not("clickup_id", "in", `(${memberIds.join(",")})`);
     }
+
+    // Cascade-prune time entries whose parent task no longer exists.
+    // cached_time_entries.task_id has no FK to cached_tasks (text column),
+    // so deletions don't propagate automatically. Read back the surviving
+    // task IDs after the cached_tasks prune above and drop time entries
+    // attached to anything outside that set (or all of them if the
+    // workspace is now empty).
+    const { data: remainingTasks } = await supabase
+      .from("cached_tasks")
+      .select("clickup_id")
+      .eq("workspace_id", workspaceId);
+    const remainingTaskIds = (remainingTasks ?? [])
+      .map((t) => t.clickup_id as string);
+    if (remainingTaskIds.length > 0) {
+      await supabase.from("cached_time_entries").delete()
+        .eq("workspace_id", workspaceId)
+        .not("task_id", "in", `(${remainingTaskIds.join(",")})`);
+    } else {
+      await supabase.from("cached_time_entries").delete()
+        .eq("workspace_id", workspaceId);
+    }
   } catch (cleanupErr) {
     console.error("[ClickUp Sync] Structure cleanup error (non-fatal):", cleanupErr);
   }
