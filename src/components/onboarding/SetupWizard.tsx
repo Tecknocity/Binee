@@ -153,8 +153,14 @@ export default function SetupWizard() {
           />
         )}
 
+        {/* Step 3: Generating takes priority so a stale plan from a prior
+            round never flashes while a new one is being built. */}
+        {setup.currentStep === 3 && setup.isGenerating && (
+          <GeneratingWorkspace />
+        )}
+
         {/* Step 3: Editable Structure Preview */}
-        {setup.currentStep === 3 && setup.proposedPlan && (
+        {setup.currentStep === 3 && !setup.isGenerating && setup.proposedPlan && (
           <StructurePreview
             plan={setup.proposedPlan}
             onApprove={setup.approvePlan}
@@ -170,23 +176,19 @@ export default function SetupWizard() {
           />
         )}
 
-        {/* Step 3: Loading state when plan is being generated */}
-        {setup.currentStep === 3 && !setup.proposedPlan && (
-          setup.isGenerating ? (
-            <GeneratingWorkspace />
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <p className="text-sm text-text-secondary">
-                No workspace structure available. Please go back and describe your business.
-              </p>
-              <button
-                onClick={setup.restartSetup}
-                className="text-sm text-accent hover:text-accent-hover transition-colors"
-              >
-                Go Back
-              </button>
-            </div>
-          )
+        {/* Step 3: Empty state when neither generating nor have a plan */}
+        {setup.currentStep === 3 && !setup.isGenerating && !setup.proposedPlan && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+            <p className="text-sm text-text-secondary">
+              No workspace structure available. Please go back and describe your business.
+            </p>
+            <button
+              onClick={setup.restartSetup}
+              className="text-sm text-accent hover:text-accent-hover transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
         )}
 
         {/* Step 4: Build / Execution Progress */}
