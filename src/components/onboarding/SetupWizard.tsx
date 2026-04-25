@@ -199,6 +199,14 @@ export default function SetupWizard() {
             isExecuting={setup.isExecuting}
             onRetry={setup.retryFailedItems}
             onContinue={() => setup.navigateToStep(5 as SetupStep)}
+            buildStartedAt={setup.buildStartedAt}
+            buildEstimatedCompletionAt={setup.buildEstimatedCompletionAt}
+            buildEtaMinutes={setup.buildEtaMinutes}
+            buildStatus={setup.buildStatus}
+            enrichmentJobs={setup.enrichmentJobs}
+            enrichmentSummary={setup.enrichmentSummary}
+            onRetryEnrichmentJob={setup.retryEnrichmentJob}
+            onRetryAllFailedEnrichment={setup.retryAllFailedEnrichment}
           />
         )}
 

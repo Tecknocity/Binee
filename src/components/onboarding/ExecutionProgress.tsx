@@ -18,9 +18,12 @@ import {
   Tag,
   FileText,
   Target,
+  Clock,
 } from 'lucide-react';
 import type { ExecutionProgress as ExecutionProgressType, ExecutionResult, SetupPlan } from '@/lib/setup/types';
 import type { ExecutionItem } from '@/lib/setup/executor';
+import type { EnrichmentJobView, EnrichmentSummary } from '@/stores/setupStore';
+import { formatEtaMinutes } from '@/lib/setup/eta';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +51,15 @@ interface ExecutionProgressProps {
   onRetry?: () => void;
   /** Called when user clicks "Continue Anyway" or "Continue" after build */
   onContinue?: () => void;
+  // Queue-backed enrichment props
+  buildStartedAt?: string | null;
+  buildEstimatedCompletionAt?: string | null;
+  buildEtaMinutes?: number | null;
+  buildStatus?: 'enriching' | 'completed' | 'failed' | 'cancelled' | null;
+  enrichmentJobs?: EnrichmentJobView[];
+  enrichmentSummary?: EnrichmentSummary;
+  onRetryEnrichmentJob?: (jobId: string) => void | Promise<void>;
+  onRetryAllFailedEnrichment?: () => void | Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +114,14 @@ export function ExecutionProgress({
   isExecuting,
   onRetry,
   onContinue,
+  buildStartedAt,
+  buildEstimatedCompletionAt,
+  buildEtaMinutes,
+  buildStatus,
+  enrichmentJobs,
+  enrichmentSummary,
+  onRetryEnrichmentJob,
+  onRetryAllFailedEnrichment,
 }: ExecutionProgressProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
@@ -201,6 +221,19 @@ export function ExecutionProgress({
   const planSkippedItems = executionItems?.filter(isPlanLimitationSkip) ?? [];
   const hasPlanSkips = planSkippedItems.length > 0;
 
+  // Format the "Started at HH:MM" timestamp for the ETA banner. Hooks must
+  // run unconditionally on every render, so this lives above the early
+  // returns below.
+  const startedAtLabel = useMemo(() => {
+    if (!buildStartedAt) return null;
+    try {
+      const d = new Date(buildStartedAt);
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch {
+      return null;
+    }
+  }, [buildStartedAt]);
+
   // Auto-scroll to keep active item visible
   useEffect(() => {
     if (activeRef.current && scrollRef.current) {
@@ -259,6 +292,18 @@ export function ExecutionProgress({
     );
   }
 
+  const showEtaBanner = !!buildStartedAt && buildStatus !== 'completed' && buildStatus !== null;
+
+  // Enrichment job stats for the lower section
+  const enrichJobs = enrichmentJobs ?? [];
+  const enrichSummary = enrichmentSummary ?? { pending: 0, in_progress: 0, done: 0, failed: 0 };
+  const enrichTotal = enrichJobs.length;
+  const enrichDone = enrichSummary.done;
+  const enrichFailed = enrichSummary.failed;
+  const enrichInProgress = enrichSummary.in_progress;
+  const enrichPending = enrichSummary.pending;
+  const showEnrichmentSection = enrichTotal > 0 || buildStatus === 'enriching';
+
   return (
     <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pb-6 overflow-hidden">
       {/* Header - fixed height, no shrink */}
@@ -297,6 +342,39 @@ export function ExecutionProgress({
           </>
         )}
       </div>
+
+      {/* ETA banner - shown while a queue-backed build is active. Tells the
+          user when the build started, the rough completion time, and that they
+          can leave the page. */}
+      {showEtaBanner && (
+        <div className="mb-4 flex-shrink-0 bg-accent/5 border border-accent/20 rounded-xl px-4 py-3">
+          <div className="flex items-start gap-3">
+            <Clock className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                {startedAtLabel && (
+                  <span className="text-text-secondary">
+                    Started at <span className="font-mono text-text-primary">{startedAtLabel}</span>
+                  </span>
+                )}
+                {typeof buildEtaMinutes === 'number' && buildEtaMinutes > 0 && (
+                  <span className="text-text-secondary">
+                    Estimated completion: <span className="text-text-primary">{formatEtaMinutes(buildEtaMinutes)}</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted mt-1">
+                You can leave this page. We will keep building in the background and you can come back any time to check progress.
+              </p>
+            </div>
+            {buildEstimatedCompletionAt && (
+              <span className="text-[11px] text-text-muted hidden sm:inline">
+                ETA {new Date(buildEstimatedCompletionAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Overall progress bar - fixed height */}
       <div className="mb-4 flex-shrink-0">
@@ -578,6 +656,62 @@ export function ExecutionProgress({
           </div>
         )}
 
+      {/* Enrichment section: per-list / per-doc tasks generated and written to
+          ClickUp by the queue worker. Hydrates from polling. */}
+      {showEnrichmentSection && (
+        <div className="mt-4 flex-shrink-0 bg-surface border border-border rounded-xl p-3 max-h-72 overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-accent" />
+              <p className="text-sm font-medium text-text-primary">
+                Populating tasks and docs
+              </p>
+            </div>
+            <p className="text-xs text-text-muted tabular-nums font-mono">
+              {enrichDone}/{enrichTotal} done
+              {enrichFailed > 0 && (
+                <span className="text-error ml-2">{enrichFailed} failed</span>
+              )}
+            </p>
+          </div>
+          {enrichTotal === 0 ? (
+            <p className="text-xs text-text-muted py-2">
+              {buildStatus === 'enriching'
+                ? 'Queueing enrichment work...'
+                : 'No enrichment work for this build.'}
+            </p>
+          ) : (
+            <div className="space-y-0.5">
+              {enrichJobs.map((job) => (
+                <EnrichmentRow
+                  key={job.id}
+                  job={job}
+                  onRetry={onRetryEnrichmentJob}
+                />
+              ))}
+            </div>
+          )}
+          {enrichFailed > 0 && onRetryAllFailedEnrichment && (
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={() => void onRetryAllFailedEnrichment()}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent border border-accent/30 hover:bg-accent/10 rounded-lg transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Retry all failed
+              </button>
+            </div>
+          )}
+          {(enrichInProgress > 0 || enrichPending > 0) && (
+            <p className="text-[11px] text-text-muted mt-2">
+              {enrichInProgress > 0 ? `${enrichInProgress} working` : null}
+              {enrichInProgress > 0 && enrichPending > 0 ? ' • ' : ''}
+              {enrichPending > 0 ? `${enrichPending} queued` : null}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Action buttons - ALWAYS visible at bottom */}
       {isComplete && (onRetry || onContinue) && (
         <div className="mt-4 flex items-center justify-center gap-3 flex-shrink-0">
@@ -609,6 +743,93 @@ export function ExecutionProgress({
             </button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EnrichmentRow: one row in the enrichment job list
+// ---------------------------------------------------------------------------
+
+interface EnrichmentRowProps {
+  job: EnrichmentJobView;
+  onRetry?: (jobId: string) => void | Promise<void>;
+}
+
+function EnrichmentRow({ job, onRetry }: EnrichmentRowProps) {
+  const isList = job.type === 'list_tasks';
+  const isDoc = job.type === 'doc_content';
+  const isViews = job.type === 'list_views';
+
+  const typeLabel = isList ? 'tasks' : isDoc ? 'doc' : isViews ? 'views' : job.type;
+  const displayName = job.parent_name
+    ? `${job.parent_name} / ${job.target_name}`
+    : job.target_name;
+
+  let icon: React.ReactNode;
+  let textCls = 'text-text-secondary';
+  let extra: string | null = null;
+
+  switch (job.status) {
+    case 'done':
+      icon = <CheckCircle2 className="w-4 h-4 text-success" />;
+      if (isList && job.result && typeof job.result.tasksCreated === 'number') {
+        extra = `${job.result.tasksCreated} task${job.result.tasksCreated === 1 ? '' : 's'}`;
+      } else if (isDoc) {
+        extra = 'content written';
+      } else if (isViews && job.result && typeof job.result.viewsCreated === 'number') {
+        extra = `${job.result.viewsCreated} view${job.result.viewsCreated === 1 ? '' : 's'}`;
+      }
+      break;
+    case 'in_progress':
+      icon = <Loader2 className="w-4 h-4 text-accent animate-spin" />;
+      textCls = 'text-text-primary font-medium';
+      extra = 'working...';
+      break;
+    case 'failed':
+      icon = <XCircle className="w-4 h-4 text-error" />;
+      textCls = 'text-error/80';
+      break;
+    case 'pending':
+    default:
+      icon = <Circle className="w-4 h-4 text-text-muted/60" />;
+      textCls = 'text-text-muted';
+      extra = 'queued';
+      break;
+  }
+
+  return (
+    <div className="flex items-center gap-2.5 py-1.5 px-2 rounded-lg text-sm hover:bg-surface-hover/50">
+      <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">{icon}</div>
+      <div className="flex-shrink-0 text-text-muted/60">
+        {isDoc ? <FileText className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
+      </div>
+      <span className={`truncate ${textCls}`}>{displayName}</span>
+      <span className="text-[11px] uppercase tracking-wider text-text-muted/50 ml-auto flex-shrink-0">
+        {typeLabel}
+      </span>
+      {extra && (
+        <span className="text-[11px] text-text-muted/70 flex-shrink-0">
+          {extra}
+        </span>
+      )}
+      {job.status === 'failed' && (
+        <span
+          className="text-[11px] text-error/70 truncate max-w-[200px]"
+          title={job.last_error ?? undefined}
+        >
+          {job.last_error?.slice(0, 60) ?? 'failed'}
+        </span>
+      )}
+      {job.status === 'failed' && onRetry && (
+        <button
+          onClick={() => void onRetry(job.id)}
+          className="flex-shrink-0 p-1 text-accent hover:bg-accent/10 rounded transition-colors"
+          title="Retry this item"
+        >
+          <RefreshCw className="w-3 h-3" />
+        </button>
       )}
     </div>
   );

@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/credit-allocation",
       "schedule": "5 0 * * *"
+    },
+    {
+      "path": "/api/setup/run-enrichment",
+      "schedule": "* * * * *"
     }
   ]
 }

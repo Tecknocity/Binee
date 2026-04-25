@@ -15,7 +15,12 @@ import { generateManualSteps } from '@/lib/setup/manual-steps';
 import { useClickUpStatus } from '@/hooks/useClickUpStatus';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { getSetupStore, buildDescriptionFromForm } from '@/stores/setupStore';
-import type { SetupChatMessage as StoreChatMessage, ExistingWorkspaceStructure } from '@/stores/setupStore';
+import type {
+  SetupChatMessage as StoreChatMessage,
+  ExistingWorkspaceStructure,
+  EnrichmentJobView,
+  EnrichmentSummary,
+} from '@/stores/setupStore';
 
 // ---------------------------------------------------------------------------
 // Types (re-export for consumers)
@@ -107,6 +112,24 @@ export interface UseSetupReturn {
   skipDeletionsAndBuild: () => void;
   /** Whether deletions are currently being executed */
   isDeleting: boolean;
+  /** Active enrichment build ID (queue-backed, navigation-safe) */
+  buildId: string | null;
+  /** Enrichment build status */
+  buildStatus: 'enriching' | 'completed' | 'failed' | 'cancelled' | null;
+  /** When the active build started (ISO) */
+  buildStartedAt: string | null;
+  /** Estimated completion time (ISO) */
+  buildEstimatedCompletionAt: string | null;
+  /** Estimated minutes for the build (display only) */
+  buildEtaMinutes: number | null;
+  /** Per-item enrichment job state, hydrated from polling */
+  enrichmentJobs: EnrichmentJobView[];
+  /** Aggregate enrichment counts */
+  enrichmentSummary: EnrichmentSummary;
+  /** Retry one specific failed enrichment job */
+  retryEnrichmentJob: (jobId: string) => Promise<void>;
+  /** Retry every failed enrichment job in the active build */
+  retryAllFailedEnrichment: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +318,14 @@ export function useSetup(): UseSetupReturn {
   const persistedExecutionResult = storeState?.executionResult ?? null;
   const persistedExecutionItems = storeState?.executionItems ?? [];
   const buildCompleted = storeState?.buildCompleted ?? false;
+  const buildId = storeState?.buildId ?? null;
+  const buildStatus = storeState?.buildStatus ?? null;
+  const buildStartedAt = storeState?.buildStartedAt ?? null;
+  const buildEstimatedCompletionAt = storeState?.buildEstimatedCompletionAt ?? null;
+  const buildEtaMinutes = storeState?.buildEtaMinutes ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const enrichmentJobs = useMemo(() => storeState?.enrichmentJobs ?? [], [storeState?.enrichmentJobs]);
+  const enrichmentSummary = storeState?.enrichmentSummary ?? { pending: 0, in_progress: 0, done: 0, failed: 0 };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const previouslyBuiltItems = useMemo(() => storeState?.previouslyBuiltItems ?? [], [storeState?.previouslyBuiltItems]);
 
@@ -933,15 +964,30 @@ export function useSetup(): UseSetupReturn {
     [sendMessage, generateStructure]
   );
 
-  // Shared execution runner for approvePlan and retryFailedItems
+  // Shared execution runner for approvePlan and retryFailedItems.
+  // Drives the structural creation synchronously, then registers a queue-backed
+  // build for the enrichment phase. Polling is handled by a separate effect
+  // so the enrichment continues even if the user navigates away.
   const runExecution = useCallback(async (
     structure: ExistingWorkspaceStructure | null,
     runOptions?: { generateEnrichment?: boolean },
   ) => {
     if (!proposedPlan) return;
 
+    // Pre-compute manual steps from the plan immediately. They never depend
+    // on execution outcomes, so the Finish step is useful even if the
+    // enrichment is still in flight or the user lands there partway through.
     try {
-      // Execute server-side to avoid client-side Supabase service key issues
+      const steps = generateManualSteps(proposedPlan as SetupPlan);
+      store?.getState().setManualSteps(steps);
+    } catch (err) {
+      console.error('[useSetup] Failed to compute manual steps:', err);
+    }
+
+    try {
+      // Structural creation typically completes well under 60s. The new
+      // execute endpoint returns immediately after structural creation and
+      // enqueues enrichment jobs into setup_enrichment_jobs.
       const response = await fetchWithTimeout('/api/setup/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -951,10 +997,15 @@ export function useSetup(): UseSetupReturn {
           existing_structure: structure,
           generate_enrichment: runOptions?.generateEnrichment !== false,
         }),
-      }, 120_000);
+      }, 90_000);
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: 'Execution failed' }));
+        const structuralFromError = errData?.structural_result;
+        if (structuralFromError?.items) {
+          setExecutionItems(structuralFromError.items);
+          store?.getState().setExecutionItems(structuralFromError.items);
+        }
         setExecutionProgress({
           phase: 'complete',
           current: 0,
@@ -965,8 +1016,16 @@ export function useSetup(): UseSetupReturn {
         return;
       }
 
-      const { result: executorResult } = await response.json() as { result: ExecutorResult };
+      const responseData = await response.json() as {
+        build_id: string | null;
+        started_at: string;
+        estimated_completion_at: string | null;
+        eta_minutes: number;
+        structural_result: ExecutorResult;
+        total_jobs: number;
+      };
 
+      const executorResult = responseData.structural_result;
       const resultItems = executorResult.items;
       const executionResultData: ExecutionResult = {
         success: executorResult.success,
@@ -986,16 +1045,25 @@ export function useSetup(): UseSetupReturn {
       });
       setExecutionResult(executionResultData);
 
-      // Persist build results to store so they survive navigation
       store?.getState().setExecutionItems(resultItems);
       store?.getState().setExecutionResult(executionResultData);
       store?.getState().setBuildCompleted(true);
 
-      // Save successfully created items for future reconciliation (deletion tracking)
-      // Merge with existing previouslyBuiltItems to track across multiple builds
+      // Register the queue-backed build so the polling effect can watch it.
+      store?.getState().setBuild({
+        buildId: responseData.build_id,
+        buildStatus: responseData.build_id ? 'enriching' : 'completed',
+        buildStartedAt: responseData.started_at,
+        buildEstimatedCompletionAt: responseData.estimated_completion_at,
+        buildEtaMinutes: responseData.eta_minutes,
+      });
+      // Reset enrichment view; polling will hydrate it.
+      store?.getState().setEnrichmentJobs([]);
+      store?.getState().setEnrichmentSummary({ pending: 0, in_progress: 0, done: 0, failed: 0 });
+
+      // Save successfully created items for future reconciliation
       const newlyCreated = resultItems.filter(i => i.status === 'success' && i.clickupId);
       const existingBuilt = store?.getState().previouslyBuiltItems ?? [];
-      // Deduplicate by clickupId
       const allBuiltMap = new Map<string, ExecutionItem>();
       for (const item of existingBuilt) {
         if (item.clickupId) allBuiltMap.set(item.clickupId, item);
@@ -1005,13 +1073,9 @@ export function useSetup(): UseSetupReturn {
       }
       store?.getState().setPreviouslyBuiltItems(Array.from(allBuiltMap.values()));
 
-      if (proposedPlan) {
-        const steps = generateManualSteps(proposedPlan as SetupPlan);
-        store?.getState().setManualSteps(steps);
-      }
-
       // Auto-advance if no structural errors (spaces/folders/lists).
       // Tags/docs/goals failures are shown but should not block progression.
+      // Enrichment runs in the background regardless.
       const structuralTypes = new Set(['space', 'folder', 'list']);
       const hasStructuralErrors = resultItems.some(
         i => i.status === 'error' && structuralTypes.has(i.type)
@@ -1218,6 +1282,105 @@ export function useSetup(): UseSetupReturn {
   const retryFailedItems = useCallback(async () => {
     await executeBuild({ isRetry: true });
   }, [executeBuild]);
+
+  // ---------------------------------------------------------------------------
+  // Enrichment polling: keeps the UI in sync with setup_builds /
+  // setup_enrichment_jobs while a build is running. Survives navigation
+  // because state lives in the store + DB. The cron does the actual work
+  // independently; polling is purely for UI freshness when a tab is open.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!buildId || buildStatus !== 'enriching' || !workspace_id) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = async () => {
+      try {
+        const res = await fetchWithTimeout(
+          `/api/setup/enrichment-status?workspace_id=${encodeURIComponent(workspace_id)}&build_id=${encodeURIComponent(buildId)}`,
+          { method: 'GET' },
+          15_000,
+        );
+        if (!res.ok) {
+          if (!cancelled) timer = setTimeout(tick, 8_000);
+          return;
+        }
+        const data = await res.json() as {
+          build: {
+            id: string;
+            status: 'enriching' | 'completed' | 'failed' | 'cancelled';
+            started_at: string;
+            completed_at: string | null;
+            estimated_completion_at: string | null;
+          } | null;
+          jobs: EnrichmentJobView[];
+          summary: EnrichmentSummary;
+        };
+        if (cancelled) return;
+        if (data.build) {
+          store?.getState().setBuildStatus(data.build.status);
+        }
+        store?.getState().setEnrichmentJobs(data.jobs ?? []);
+        store?.getState().setEnrichmentSummary(data.summary ?? { pending: 0, in_progress: 0, done: 0, failed: 0 });
+
+        // Best-effort kick to the worker so progress shows up immediately
+        // when the tab is open. Cron handles it when the tab is closed.
+        if (data.build?.status === 'enriching' && (data.summary?.pending ?? 0) > 0) {
+          fetch('/api/setup/run-enrichment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspace_id }),
+            credentials: 'same-origin',
+          }).catch(() => undefined);
+        }
+
+        const stillRunning = data.build?.status === 'enriching';
+        if (stillRunning && !cancelled) {
+          timer = setTimeout(tick, 4_000);
+        }
+      } catch {
+        if (!cancelled) timer = setTimeout(tick, 8_000);
+      }
+    };
+
+    tick();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [buildId, buildStatus, workspace_id, store]);
+
+  /** Retry a single failed enrichment job by id. */
+  const retryEnrichmentJob = useCallback(async (jobId: string) => {
+    if (!buildId) return;
+    try {
+      await fetchWithTimeout('/api/setup/retry-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ build_id: buildId, job_ids: [jobId] }),
+      }, 15_000);
+      // Mark optimistic; polling will rehydrate.
+      store?.getState().setBuildStatus('enriching');
+    } catch (err) {
+      console.error('[useSetup] retryEnrichmentJob failed:', err);
+    }
+  }, [buildId, store]);
+
+  /** Retry every failed enrichment job in the current build. */
+  const retryAllFailedEnrichment = useCallback(async () => {
+    if (!buildId) return;
+    try {
+      await fetchWithTimeout('/api/setup/retry-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ build_id: buildId, all_failed: true }),
+      }, 15_000);
+      store?.getState().setBuildStatus('enriching');
+    } catch (err) {
+      console.error('[useSetup] retryAllFailedEnrichment failed:', err);
+    }
+  }, [buildId, store]);
 
   const requestChanges = useCallback(
     async (feedback: string) => {
@@ -1454,5 +1617,14 @@ export function useSetup(): UseSetupReturn {
     confirmDeletionsAndBuild,
     skipDeletionsAndBuild,
     isDeleting,
+    buildId,
+    buildStatus,
+    buildStartedAt,
+    buildEstimatedCompletionAt,
+    buildEtaMinutes,
+    enrichmentJobs,
+    enrichmentSummary,
+    retryEnrichmentJob,
+    retryAllFailedEnrichment,
   };
 }
