@@ -107,6 +107,32 @@ const PLAN_CAPABILITIES: Record<ClickUpPlanTier, PlanCapabilities> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Default list views per plan tier
+// ---------------------------------------------------------------------------
+//
+// Every list the setup executor creates gets these views attached automatically
+// (when the user has the "Add starter tasks and doc content" toggle on). 5 per
+// tier, with List + Board + Calendar always included so the basics are covered
+// regardless of plan. Higher tiers swap in views that need more powerful caps:
+//   - Gantt: capped at 100 uses on Free, unlimited on Unlimited+
+//   - Workload: requires Business+ to be useful (capacity by assignee)
+// View type strings match ClickUp's POST /list/{id}/view `type` field.
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_LIST_VIEWS_BY_TIER: Record<ClickUpPlanTier, string[]> = {
+  free: ['list', 'board', 'calendar', 'gantt', 'activity'],
+  unlimited: ['list', 'board', 'calendar', 'gantt', 'timeline'],
+  business: ['list', 'board', 'calendar', 'timeline', 'workload'],
+  business_plus: ['list', 'board', 'calendar', 'timeline', 'workload'],
+  enterprise: ['list', 'board', 'calendar', 'timeline', 'workload'],
+};
+
+export function getDefaultListViews(planTier: string): string[] {
+  const tier = planTier.toLowerCase().replace(/\s+/g, '_') as ClickUpPlanTier;
+  return DEFAULT_LIST_VIEWS_BY_TIER[tier] ?? DEFAULT_LIST_VIEWS_BY_TIER.free;
+}
+
 /**
  * Get the capabilities for a given ClickUp plan tier.
  */

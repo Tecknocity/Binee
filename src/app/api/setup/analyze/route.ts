@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Step 1: Sync fresh workspace structure from ClickUp
-    let structureCounts = { spaces: 0, folders: 0, lists: 0 };
+    let structureCounts = { spaces: 0, folders: 0, lists: 0, members: 0 };
     try {
       structureCounts = await syncWorkspaceStructure(workspace_id);
     } catch (syncErr) {

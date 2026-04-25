@@ -12,6 +12,36 @@ import type {
 } from "@/types/clickup";
 
 // ---------------------------------------------------------------------------
+// ClickUp cache contract
+// ---------------------------------------------------------------------------
+//
+// CACHED in Supabase (must be refreshed AND pruned on every sync to avoid
+// staleness — both the analyze route and the workspace_analyst sub-agent
+// read these tables directly):
+//   - cached_spaces          (row per space, statuses embedded as JSONB)
+//   - cached_folders         (row per folder)
+//   - cached_lists           (row per list, statuses embedded as JSONB)
+//   - cached_tasks           (row per task, FK list_id)
+//   - cached_team_members    (aliased as view `cached_members`)
+//   - cached_time_entries    (only touched by full/reconciliation sync)
+//
+// LIVE-FETCHED from ClickUp on demand (never cached, so staleness is
+// impossible by construction):
+//   - Tags                   (getSpaceTags, fetched in getExistingStructure
+//                             and by the AI tag tool on every call)
+//   - Custom fields          (fetched per-list by tool-executor / executor)
+//   - Documents              (searchDocs, fetched in getExistingStructure)
+//
+// IMPLICITLY fresh: space/list statuses are JSONB columns on their parent
+// row, so they're overwritten whenever the parent is upserted. When the
+// parent is deleted, the statuses go with it.
+//
+// When adding a new cached_* table, add it here AND wire it into each of
+// performInitialSync, syncWorkspaceStructure, and performReconciliationSync
+// with both an upsert and a prune step.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Environment
 // ---------------------------------------------------------------------------
 
@@ -904,6 +934,25 @@ export async function performReconciliationSync(
       result.errors.push(msg);
     }
 
+    // Reconcile team members. Previously this sync never touched the
+    // roster, so members removed from the ClickUp team stayed in
+    // cached_team_members indefinitely and surfaced in AI context.
+    try {
+      const members = await client.getTeamMembers(teamId);
+      await upsertCachedMembers(workspaceId, members);
+      result.members = members.length;
+
+      if (members.length > 0) {
+        const memberIds = members.map(m => String(m.id));
+        await supabase.from("cached_team_members").delete()
+          .eq("workspace_id", workspaceId)
+          .not("clickup_id", "in", `(${memberIds.join(",")})`);
+      }
+    } catch (err) {
+      const msg = `Reconcile members error: ${err instanceof Error ? err.message : String(err)}`;
+      result.errors.push(msg);
+    }
+
     // Mark complete — reconciliation sync is called directly, not via fire-and-forget
     await updateSyncStatus(workspaceId, "complete");
     return result;
@@ -918,20 +967,25 @@ export async function performReconciliationSync(
 }
 
 // ---------------------------------------------------------------------------
-// Lightweight structure-only sync (spaces → folders → lists, no tasks/members)
-// Used by the setup analyzer to ensure we're working with live ClickUp data.
+// Lightweight sync used by the setup flow before Analyze, Review, and Build.
+// Fetches and prunes every cached entity whose count or content the setup
+// surfaces — spaces, folders, lists, tasks (via list_id cascade), and team
+// members. Task rows are pruned based on list membership since this path
+// does not enumerate individual task IDs. Time entries are skipped here;
+// they are synced by performInitialSync and the reconciliation cron.
 // ---------------------------------------------------------------------------
 
 export async function syncWorkspaceStructure(workspaceId: string): Promise<{
   spaces: number;
   folders: number;
   lists: number;
+  members: number;
 }> {
   const client = new ClickUpClient(workspaceId);
 
   const teams = await client.getTeams();
   if (teams.length === 0) {
-    return { spaces: 0, folders: 0, lists: 0 };
+    return { spaces: 0, folders: 0, lists: 0, members: 0 };
   }
   const teamId = teams[0].id;
 
@@ -962,6 +1016,18 @@ export async function syncWorkspaceStructure(workspaceId: string): Promise<{
   await upsertCachedFolders(workspaceId, allFolders);
   await upsertCachedLists(workspaceId, allLists);
 
+  // Refresh team members alongside structure. /api/setup/analyze counts
+  // members directly from cached_team_members, and the workspace_analyst
+  // tools also read from it, so a stale roster would leak into the
+  // Describe step the same way stale tasks did.
+  let members: ClickUpMember[] = [];
+  try {
+    members = await client.getTeamMembers(teamId);
+    await upsertCachedMembers(workspaceId, members);
+  } catch (memberErr) {
+    console.error("[ClickUp Sync] Member refresh failed (non-fatal):", memberErr);
+  }
+
   // Clean up stale entries that no longer exist in ClickUp
   try {
     await cleanupStaleCachedData(workspaceId, {
@@ -969,6 +1035,55 @@ export async function syncWorkspaceStructure(workspaceId: string): Promise<{
       folders: allFolders.map(f => f.id),
       lists: allLists.map(l => l.id),
     });
+
+    const supabase = getSupabaseAdmin();
+
+    // Tasks belong to lists, so any cached_task whose list_id is no longer
+    // present must be stale. This also handles the "user emptied the
+    // workspace in ClickUp" case: with zero lists, all cached_tasks are
+    // dropped. Without this, the /api/setup/analyze count query and the
+    // workspace_analyst sub-agent would continue reporting the previous
+    // build's tasks even after the workspace was cleared.
+    const listIds = allLists.map(l => l.id);
+    if (listIds.length > 0) {
+      await supabase.from("cached_tasks").delete()
+        .eq("workspace_id", workspaceId)
+        .not("list_id", "in", `(${listIds.join(",")})`);
+    } else {
+      await supabase.from("cached_tasks").delete()
+        .eq("workspace_id", workspaceId);
+    }
+
+    // Prune members removed from the team. Only prune when the fetch
+    // succeeded (members.length > 0 or teamId lookup succeeded); otherwise
+    // we'd wipe the roster on a transient API error.
+    if (members.length > 0) {
+      const memberIds = members.map(m => String(m.id));
+      await supabase.from("cached_team_members").delete()
+        .eq("workspace_id", workspaceId)
+        .not("clickup_id", "in", `(${memberIds.join(",")})`);
+    }
+
+    // Cascade-prune time entries whose parent task no longer exists.
+    // cached_time_entries.task_id has no FK to cached_tasks (text column),
+    // so deletions don't propagate automatically. Read back the surviving
+    // task IDs after the cached_tasks prune above and drop time entries
+    // attached to anything outside that set (or all of them if the
+    // workspace is now empty).
+    const { data: remainingTasks } = await supabase
+      .from("cached_tasks")
+      .select("clickup_id")
+      .eq("workspace_id", workspaceId);
+    const remainingTaskIds = (remainingTasks ?? [])
+      .map((t) => t.clickup_id as string);
+    if (remainingTaskIds.length > 0) {
+      await supabase.from("cached_time_entries").delete()
+        .eq("workspace_id", workspaceId)
+        .not("task_id", "in", `(${remainingTaskIds.join(",")})`);
+    } else {
+      await supabase.from("cached_time_entries").delete()
+        .eq("workspace_id", workspaceId);
+    }
   } catch (cleanupErr) {
     console.error("[ClickUp Sync] Structure cleanup error (non-fatal):", cleanupErr);
   }
@@ -977,5 +1092,6 @@ export async function syncWorkspaceStructure(workspaceId: string): Promise<{
     spaces: spaces.length,
     folders: allFolders.length,
     lists: allLists.length,
+    members: members.length,
   };
 }

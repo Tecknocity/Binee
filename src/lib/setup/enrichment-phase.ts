@@ -128,16 +128,24 @@ export async function runEnrichmentPhase(
   );
 
   const writeOutcomes = await runPool(writeJobs, DOC_WRITE_CONCURRENCY, async ({ job, tasks }) => {
-    let created = 0;
+    let createdCount = 0;
+    // Track each task's ClickUp ID by its index in the input array so we can
+    // wire dependencies after all tasks are created. null means the task
+    // failed to create or was skipped, so any task depending on it will skip
+    // its dependency wiring without erroring.
+    const createdTaskIds: Array<string | null> = [];
+
     for (const task of tasks) {
+      let createdTaskId: string | null = null;
       try {
-        await client.createTask(job.listId, {
+        const result = await client.createTask(job.listId, {
           name: task.name,
           ...(task.description ? { description: task.description } : {}),
           ...(task.priority ? { priority: task.priority } : {}),
           ...(task.tags && task.tags.length > 0 ? { tags: task.tags } : {}),
         });
-        created++;
+        createdTaskId = result.id;
+        createdCount++;
       } catch (err) {
         await logError({
           source: 'setup.enrichment.task_create',
@@ -152,8 +160,68 @@ export async function runEnrichmentPhase(
           },
         });
       }
+
+      createdTaskIds.push(createdTaskId);
+
+      // Best-effort checklist. A failure to create the checklist or any
+      // single item never blocks the rest of the task pipeline.
+      if (createdTaskId && task.checklist && task.checklist.length > 0) {
+        try {
+          const checklist = await client.createChecklist(createdTaskId, 'Steps');
+          for (const item of task.checklist) {
+            try {
+              await client.createChecklistItem(checklist.id, item);
+            } catch (itemErr) {
+              await logError({
+                source: 'setup.enrichment.checklist_item',
+                errorCode: 'clickup_failed',
+                message: errorToMessage(itemErr),
+                workspaceId,
+                userId,
+                metadata: { taskId: createdTaskId, item },
+              });
+            }
+          }
+        } catch (checklistErr) {
+          await logError({
+            source: 'setup.enrichment.checklist',
+            errorCode: 'clickup_failed',
+            message: errorToMessage(checklistErr),
+            workspaceId,
+            userId,
+            metadata: { taskId: createdTaskId, taskName: task.name },
+          });
+        }
+      }
     }
-    return created;
+
+    // Wire dependencies once all tasks for this list are written. Skip
+    // entries where either side failed to create.
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
+      if (typeof task.dependsOnIndex !== 'number') continue;
+      const dependentId = createdTaskIds[i];
+      const blockerId = createdTaskIds[task.dependsOnIndex];
+      if (!dependentId || !blockerId || dependentId === blockerId) continue;
+      try {
+        await client.addDependency(dependentId, blockerId);
+      } catch (depErr) {
+        await logError({
+          source: 'setup.enrichment.dependency',
+          errorCode: 'clickup_failed',
+          message: errorToMessage(depErr),
+          workspaceId,
+          userId,
+          metadata: {
+            taskId: dependentId,
+            dependsOn: blockerId,
+            listName: job.listPlan.name,
+          },
+        });
+      }
+    }
+
+    return createdCount;
   });
 
   for (const created of writeOutcomes) {
