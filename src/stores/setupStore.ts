@@ -231,7 +231,7 @@ function createSetupStore(workspaceId: string) {
         setProfileFormData: (data) => set({ profileFormData: data }),
 
         addMessage: (msg) =>
-          set((s) => ({ chatMessages: [...s.chatMessages.slice(-29), msg] })),
+          set((s) => ({ chatMessages: [...s.chatMessages.slice(-199), msg] })),
 
         setBusinessDescription: (desc) => set({ businessDescription: desc }),
         incrementMessageCount: () => set((s) => ({ messageCount: s.messageCount + 1 })),
