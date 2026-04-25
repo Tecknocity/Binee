@@ -881,10 +881,17 @@ export function useSetup(): UseSetupReturn {
       // Read live values from the store to avoid stale closures
       const state = store?.getState();
 
-      // Save current plan to history before generating a new one
+      // Save current plan to history before generating a new one, then clear
+      // it from the store. Clearing avoids two failure modes on regeneration:
+      // (1) the Review step rendering the stale plan while the new one is
+      //     still being generated, and
+      // (2) the stale plan being sent as `previousPlan` to the planner, which
+      //     would compete with `chatStructureSnapshot` as a baseline and push
+      //     the model toward inconsistent output.
       const currentPlan = state?.proposedPlan;
       if (currentPlan) {
         store?.getState().pushPlanToHistory(currentPlan);
+        store?.getState().setPlan(null);
       }
 
       // Resolve businessDescription: prefer store value, fall back to rebuilding
@@ -925,7 +932,10 @@ export function useSetup(): UseSetupReturn {
           },
           workspaceAnalysis: workspaceAnalysis ?? undefined,
           chatStructureSnapshot: chatSnapshot ?? undefined,
-          previousPlan: currentPlan ?? undefined,
+          // Only fall back to the prior generated plan when the chat has not
+          // produced a snapshot. The chat snapshot is the authoritative latest
+          // baseline; sending both confuses the planner.
+          previousPlan: chatSnapshot ? undefined : currentPlan ?? undefined,
           planHistorySummary: planHistorySummary || undefined,
         }),
       });
