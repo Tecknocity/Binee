@@ -8,7 +8,12 @@
 
 import { ClickUpClient, ClickUpApiError } from "@/lib/clickup/client";
 import { upsertCachedSpaces, upsertCachedFolders, upsertCachedLists } from "@/lib/clickup/sync";
-import { isItemTypeSupported, classifyClickUpError, getPlanCapabilities } from "@/lib/clickup/plan-capabilities";
+import {
+  isItemTypeSupported,
+  classifyClickUpError,
+  getPlanCapabilities,
+  getDefaultListViews,
+} from "@/lib/clickup/plan-capabilities";
 import { runEnrichmentPhase } from "@/lib/setup/enrichment-phase";
 import { logError, errorToMessage } from "@/lib/errors/log";
 import type { ClickUpList } from "@/types/clickup";
@@ -300,6 +305,40 @@ export async function executeSetupPlan(
 
       completed++;
       onProgress?.(item, { completed, total: totalItems });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Phase 3c: Create default views per newly-created list
+  // Uses the per-tier default set from plan-capabilities. Gated on the same
+  // "Add starter tasks and doc content" toggle as enrichment - if the user
+  // wants an empty workspace they get one. View creation failures are silent
+  // (logged) so a single bad view never blocks the build.
+  // -------------------------------------------------------------------------
+  if (options?.generateEnrichment !== false && createdListIds.length > 0) {
+    const viewTypes = getDefaultListViews(planTier ?? 'free');
+    // ClickUp creates a default "List view" for every list automatically, so
+    // skip recreating it to avoid duplicates.
+    const viewsToCreate = viewTypes.filter((t) => t !== 'list');
+
+    for (const listId of createdListIds) {
+      for (const viewType of viewsToCreate) {
+        try {
+          await withRetry(() =>
+            client.createListView(
+              listId,
+              viewLabelFor(viewType),
+              viewType,
+            ),
+          );
+        } catch (err) {
+          // Non-fatal: a missing view doesn't break the workspace
+          console.error(
+            `[setup/executor] Failed to create ${viewType} view on list ${listId}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
     }
   }
 
@@ -996,6 +1035,27 @@ async function withRetry<T>(
     }
   }
   throw lastError;
+}
+
+/**
+ * Title-case label for a ClickUp view type, used as the view name on creation.
+ * Anything not in the map falls back to a capitalized form so the executor
+ * still produces a usable name if ClickUp adds a new view type later.
+ */
+function viewLabelFor(type: string): string {
+  const labels: Record<string, string> = {
+    board: 'Board',
+    calendar: 'Calendar',
+    gantt: 'Gantt',
+    timeline: 'Timeline',
+    workload: 'Workload',
+    activity: 'Activity',
+    table: 'Table',
+    map: 'Map',
+    mind_map: 'Mind Map',
+    form: 'Form',
+  };
+  return labels[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 /**

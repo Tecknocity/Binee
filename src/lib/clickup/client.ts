@@ -827,6 +827,79 @@ export class ClickUpClient {
     return res.views ?? [];
   }
 
+  /**
+   * Create a view on a list. ClickUp returns the created view envelope under
+   * `view` on success. We pass an empty grouping/sorting/filtering payload so
+   * the view shows up with sensible defaults — the executor uses this to seed
+   * each list with a baseline set of views (List, Board, Calendar, etc.).
+   */
+  async createListView(
+    listId: string,
+    name: string,
+    type: string,
+  ): Promise<{ id: string; name: string; type: string }> {
+    const res = await this.request<{ view: { id: string; name: string; type: string } }>(
+      `/list/${listId}/view`,
+      {
+        method: 'POST',
+        body: {
+          name,
+          type,
+          grouping: { field: 'status', dir: 1, collapsed: [], ignore: false },
+          divide: { field: null, dir: null, collapsed: [] },
+          sorting: { fields: [] },
+          filters: { op: 'AND', fields: [], search: '', show_closed: false },
+          columns: { fields: [] },
+          team_sidebar: { assignees: [], assigned_comments: false, unassigned_tasks: false },
+          settings: {
+            show_task_locations: false,
+            show_subtasks: 3,
+            show_subtask_parent_names: false,
+            show_closed_subtasks: false,
+            show_assignees: true,
+            show_images: true,
+            collapse_empty_columns: null,
+            me_comments: true,
+            me_subtasks: true,
+            me_checklists: true,
+          },
+        },
+      },
+    );
+    return res.view;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Checklists (task subitems, distinct from subtasks)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Create a checklist on a task. The checklist is a named group of items
+   * (think "Pre-launch QA" with sub-bullets). Use createChecklistItem to add
+   * each item.
+   */
+  async createChecklist(
+    taskId: string,
+    name: string,
+  ): Promise<{ id: string; name: string }> {
+    const res = await this.request<{ checklist: { id: string; name: string } }>(
+      `/task/${taskId}/checklist`,
+      { method: 'POST', body: { name } },
+    );
+    return res.checklist;
+  }
+
+  async createChecklistItem(
+    checklistId: string,
+    name: string,
+  ): Promise<{ id: string; name: string }> {
+    const res = await this.request<{ checklist_item: { id: string; name: string } }>(
+      `/checklist/${checklistId}/checklist_item`,
+      { method: 'POST', body: { name } },
+    );
+    return res.checklist_item;
+  }
+
   // ---------------------------------------------------------------------------
   // Webhook management
   // ---------------------------------------------------------------------------

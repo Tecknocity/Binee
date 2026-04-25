@@ -95,6 +95,19 @@ export interface RecommendedTask {
   priority?: 1 | 2 | 3 | 4;
   /** Tag names that must match tags already created in the workspace */
   tags?: string[];
+  /**
+   * 3-4 short checklist items added to the task after creation. Makes the
+   * starter task feel populated rather than an empty shell. Generic phrasing
+   * is fine - the goal is to show the user what a "lived-in" task looks like.
+   */
+  checklist?: string[];
+  /**
+   * Index (within this list's task array) of another starter task that must
+   * complete before this one can start. The generator uses this on a few
+   * later tasks in lists with 3+ tasks to demonstrate dependencies. Ignored
+   * when the referenced index is invalid or self-referential.
+   */
+  dependsOnIndex?: number;
 }
 
 export interface RecommendedGoal {

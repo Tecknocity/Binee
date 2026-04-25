@@ -66,11 +66,13 @@ SOURCE OF TRUTH ORDER:
 
 RULES:
 - Return ONLY a JSON array. No markdown, no prose, no object wrapper.
-- Each task: { "name": string, "description"?: string, "priority"?: 1|2|3|4, "tags"?: string[] }
+- Each task: { "name": string, "description"?: string, "priority"?: 1|2|3|4, "tags"?: string[], "checklist"?: string[], "dependsOnIndex"?: number }
 - Name: short imperative phrase, 3-9 words. Like "Draft Q3 campaign brief" not "Task: Drafting the Q3 campaign brief document for review."
-- Description: optional, 1-3 short sentences. Reference specifics from the list purpose or task examples when relevant so tasks feel tailored. Skip description on the most obvious tasks.
+- Description: 1-3 short sentences. Reference specifics from the list purpose or task examples when relevant so tasks feel tailored. Aim for descriptions on most tasks, not just the tricky ones - the workspace should feel populated.
 - Priority: 1=urgent, 2=high, 3=normal, 4=low. Distribute naturally - most tasks are normal (3), one or two high (2) if genuinely important, rarely urgent (1). If unsure, omit.
 - Tags: MUST be from the provided availableTags list (exact strings) or omit the field entirely. Never invent tag names.
+- Checklist: 3-4 short imperative items per task (e.g. "Pull last quarter's numbers", "Share draft with stakeholder"). Most tasks should have a checklist so the workspace feels lived-in. Items should be concrete sub-steps of the task name, not a restatement.
+- dependsOnIndex: ONLY for the 2nd or later task in a list that has 3+ tasks. Set it to the array index (0-based) of an earlier task that should complete first. Use this on at most 2 tasks per list to show a small dependency chain (e.g. "Implement" depends on "Design"). Omit otherwise.
 - Tasks should progress logically: early setup tasks first, ongoing work after.
 - Avoid generic placeholders like "Task 1" or "Set up things". Every task must be real work.
 - NEVER invent specifics (client names, project names, numbers, dates, vendors) that do not appear in the chat-derived grounding or workspace context. If you need a placeholder, phrase generically ("a bigger client", "a recurring invoice") rather than making one up.
@@ -182,6 +184,22 @@ function parseTasksResponse(
         .map((t) => (typeof t === 'string' ? t.trim() : ''))
         .filter((t) => t.length > 0 && allowedTags.has(t));
       if (filtered.length > 0) task.tags = filtered;
+    }
+
+    if (Array.isArray(obj.checklist)) {
+      const items = obj.checklist
+        .map((c) => (typeof c === 'string' ? c.trim() : ''))
+        .filter((c) => c.length > 0)
+        .slice(0, 6)
+        .map((c) => c.slice(0, 200));
+      if (items.length > 0) task.checklist = items;
+    }
+
+    if (typeof obj.dependsOnIndex === 'number' && Number.isInteger(obj.dependsOnIndex)) {
+      const idx = obj.dependsOnIndex;
+      if (idx >= 0 && idx < tasks.length) {
+        task.dependsOnIndex = idx;
+      }
     }
 
     tasks.push(task);

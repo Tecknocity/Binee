@@ -1194,7 +1194,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
       <div className="flex items-center justify-end gap-3 pt-3 border-t border-border shrink-0">
         <label
           className="flex items-center gap-2 text-xs text-text-secondary cursor-pointer select-none mr-auto"
-          title="After your workspace is built, Binee will use AI to add a few starter tasks to each list and fill in your docs with relevant content. Turn off to create an empty workspace."
+          title="After your workspace is built, Binee adds starter tasks to each list (with checklists, descriptions, and a few example dependencies), seeds your docs with relevant content, and creates a default set of views (Board, Calendar, Gantt, etc.) per list. Turn off for a bare empty workspace."
         >
           <input
             type="checkbox"
@@ -1203,7 +1203,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             className="w-4 h-4 rounded border-border accent-accent cursor-pointer"
           />
           <Sparkles className="w-3.5 h-3.5 text-accent" />
-          <span>Add starter tasks and doc content</span>
+          <span>Populate with starter tasks, views, and doc content</span>
         </label>
         <button
           onClick={onEdit}
