@@ -81,6 +81,24 @@ interface Recommendation {
   text: string;
 }
 
+export interface EnrichmentJobView {
+  id: string;
+  type: 'list_tasks' | 'doc_content' | 'list_views';
+  target_name: string;
+  parent_name: string | null;
+  status: 'pending' | 'in_progress' | 'done' | 'failed';
+  attempts: number;
+  last_error: string | null;
+  result: Record<string, unknown> | null;
+}
+
+export interface EnrichmentSummary {
+  pending: number;
+  in_progress: number;
+  done: number;
+  failed: number;
+}
+
 // ---------------------------------------------------------------------------
 // Store shape — only resumable state, no transient UI flags
 // ---------------------------------------------------------------------------
@@ -127,6 +145,18 @@ interface SetupState {
   /** Items successfully created by Binee in previous builds (for reconciliation/deletion) */
   previouslyBuiltItems: ExecutionItem[];
 
+  // Step 4: Enrichment job tracking (the queue model). When a build is in
+  // progress, buildId is set and the frontend polls /enrichment-status to
+  // hydrate enrichmentJobs and buildStatus. These survive navigation so the
+  // user can leave the page and come back to live progress.
+  buildId: string | null;
+  buildStatus: 'enriching' | 'completed' | 'failed' | 'cancelled' | null;
+  buildStartedAt: string | null;
+  buildEstimatedCompletionAt: string | null;
+  buildEtaMinutes: number | null;
+  enrichmentJobs: EnrichmentJobView[];
+  enrichmentSummary: EnrichmentSummary;
+
   // Step 5: Manual steps
   manualSteps: ManualStep[];
 
@@ -148,6 +178,16 @@ interface SetupState {
   setExecutionItems: (items: ExecutionItem[]) => void;
   setBuildCompleted: (completed: boolean) => void;
   setPreviouslyBuiltItems: (items: ExecutionItem[]) => void;
+  setBuild: (info: {
+    buildId: string | null;
+    buildStatus: 'enriching' | 'completed' | 'failed' | 'cancelled' | null;
+    buildStartedAt: string | null;
+    buildEstimatedCompletionAt: string | null;
+    buildEtaMinutes: number | null;
+  }) => void;
+  setBuildStatus: (status: 'enriching' | 'completed' | 'failed' | 'cancelled' | null) => void;
+  setEnrichmentJobs: (jobs: EnrichmentJobView[]) => void;
+  setEnrichmentSummary: (summary: EnrichmentSummary) => void;
   setManualSteps: (steps: ManualStep[]) => void;
   toggleManualStep: (index: number) => void;
   resetFromStep: (step: SetupStep) => void;
@@ -215,6 +255,14 @@ function createSetupStore(workspaceId: string) {
         buildCompleted: false,
         previouslyBuiltItems: [],
 
+        buildId: null,
+        buildStatus: null,
+        buildStartedAt: null,
+        buildEstimatedCompletionAt: null,
+        buildEtaMinutes: null,
+        enrichmentJobs: [],
+        enrichmentSummary: { pending: 0, in_progress: 0, done: 0, failed: 0 },
+
         manualSteps: [],
 
         setStep: (step) => set((s) => ({
@@ -247,6 +295,10 @@ function createSetupStore(workspaceId: string) {
         setExecutionItems: (items) => set({ executionItems: items }),
         setBuildCompleted: (completed) => set({ buildCompleted: completed }),
         setPreviouslyBuiltItems: (items) => set({ previouslyBuiltItems: items }),
+        setBuild: (info) => set(info),
+        setBuildStatus: (status) => set({ buildStatus: status }),
+        setEnrichmentJobs: (jobs) => set({ enrichmentJobs: jobs }),
+        setEnrichmentSummary: (summary) => set({ enrichmentSummary: summary }),
         setManualSteps: (steps) => set({ manualSteps: steps }),
         toggleManualStep: (index) =>
           set((s) => ({
@@ -295,6 +347,13 @@ function createSetupStore(workspaceId: string) {
               updates.executionResult = null;
               updates.executionItems = [];
               updates.buildCompleted = false;
+              updates.buildId = null;
+              updates.buildStatus = null;
+              updates.buildStartedAt = null;
+              updates.buildEstimatedCompletionAt = null;
+              updates.buildEtaMinutes = null;
+              updates.enrichmentJobs = [];
+              updates.enrichmentSummary = { pending: 0, in_progress: 0, done: 0, failed: 0 };
               updates.manualSteps = [];
             }
             return updates;
@@ -322,6 +381,13 @@ function createSetupStore(workspaceId: string) {
             executionItems: [],
             buildCompleted: false,
             previouslyBuiltItems: [],
+            buildId: null,
+            buildStatus: null,
+            buildStartedAt: null,
+            buildEstimatedCompletionAt: null,
+            buildEtaMinutes: null,
+            enrichmentJobs: [],
+            enrichmentSummary: { pending: 0, in_progress: 0, done: 0, failed: 0 },
             manualSteps: [],
           }),
       }),
@@ -349,6 +415,13 @@ function createSetupStore(workspaceId: string) {
           executionItems: state.executionItems,
           buildCompleted: state.buildCompleted,
           previouslyBuiltItems: state.previouslyBuiltItems,
+          buildId: state.buildId,
+          buildStatus: state.buildStatus,
+          buildStartedAt: state.buildStartedAt,
+          buildEstimatedCompletionAt: state.buildEstimatedCompletionAt,
+          buildEtaMinutes: state.buildEtaMinutes,
+          enrichmentJobs: state.enrichmentJobs,
+          enrichmentSummary: state.enrichmentSummary,
           manualSteps: state.manualSteps,
         }),
       }
