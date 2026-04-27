@@ -4,6 +4,7 @@ import { executeSubAgent } from '@/lib/ai/sub-agents/executor';
 import { classifyMessageCost } from '@/billing/engine/flat-credit-classifier';
 import { calculateAnthropicCost } from '@/billing/engine/token-converter';
 import { loadUserMemories } from '@/lib/ai/user-memory';
+import type { ImageAttachmentPayload } from '@/types/ai';
 
 const SONNET_MODEL_ID = 'claude-sonnet-4-20250514';
 
@@ -41,6 +42,8 @@ interface SetupperInput {
     services?: string;
     teamSize?: string;
   };
+  /** Base64-encoded images attached to this message (Claude vision) */
+  imageAttachments?: ImageAttachmentPayload[];
 }
 
 interface SetupperResult {
@@ -120,12 +123,36 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   // The system prompt already contains the workspace analysis, templates,
   // profile data, user memories, and proposed plan. Conversation history
   // provides continuity. No need for tools to re-fetch this data.
+  const hasImages = !!input.imageAttachments && input.imageAttachments.length > 0;
+
+  let latestUserContent: Anthropic.MessageParam['content'];
+  if (hasImages) {
+    const blocks: Array<Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [];
+    for (const img of input.imageAttachments!) {
+      blocks.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: img.media_type,
+          data: img.base64,
+        },
+      });
+    }
+    blocks.push({
+      type: 'text',
+      text: `[The user attached ${input.imageAttachments!.length} image(s) above. Read them carefully (charts, workflows, screenshots) and use what you see to inform your response.]\n\n${input.userMessage}`,
+    });
+    latestUserContent = blocks;
+  } else {
+    latestUserContent = input.userMessage;
+  }
+
   const messages: Anthropic.MessageParam[] = input.conversationHistory.length > 0
     ? [
         ...input.conversationHistory.slice(0, -1),
-        { role: 'user' as const, content: input.userMessage },
+        { role: 'user' as const, content: latestUserContent },
       ]
-    : [{ role: 'user' as const, content: input.userMessage }];
+    : [{ role: 'user' as const, content: latestUserContent }];
 
   const response = await anthropic.messages.create({
     model: SONNET_MODEL_ID,

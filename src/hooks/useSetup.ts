@@ -21,6 +21,7 @@ import type {
   EnrichmentJobView,
   EnrichmentSummary,
 } from '@/stores/setupStore';
+import type { ImageAttachmentPayload } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
 // Types (re-export for consumers)
@@ -85,7 +86,7 @@ export interface UseSetupReturn {
   refreshClickUpStatus: () => Promise<void>;
   isRefreshingClickUp: boolean;
   continueFromConnect: () => void;
-  sendMessage: (msg: string, fileContext?: string) => void;
+  sendMessage: (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => void;
   submitProfileForm: (data: ProfileFormData) => void;
   updatePlan: (plan: SetupPlan) => void;
   approvePlan: (opts?: { generateEnrichment?: boolean }) => void;
@@ -786,7 +787,7 @@ export function useSetup(): UseSetupReturn {
   }, [currentStep, proposedPlan, isSending, isGenerating, addMessage, setCurrentStep]);
 
   const sendMessage = useCallback(
-    async (msg: string, fileContext?: string) => {
+    async (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => {
       if (!msg.trim() || isSending) return;
 
       addMessage('user', msg);
@@ -806,6 +807,7 @@ export function useSetup(): UseSetupReturn {
         // Send the chat structure snapshot so the AI has full context
         chat_structure_snapshot: state?.chatStructureSnapshot ?? undefined,
         ...(fileContext ? { file_context: fileContext } : {}),
+        ...(imageAttachments && imageAttachments.length > 0 ? { image_attachments: imageAttachments } : {}),
       };
 
       // Try with one automatic retry on failure (handles transient 500s)
@@ -967,9 +969,9 @@ export function useSetup(): UseSetupReturn {
   }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState, conversationId]);
 
   const enhancedSendMessage = useCallback(
-    (msg: string, fileContext?: string) => {
+    (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => {
       if (msg === '__generate_structure__') { generateStructure(); return; }
-      sendMessage(msg, fileContext);
+      sendMessage(msg, fileContext, imageAttachments);
     },
     [sendMessage, generateStructure]
   );
