@@ -88,13 +88,46 @@ export async function POST(request: NextRequest) {
         { onConflict: 'id' },
       );
 
-    // Save user message to DB immediately — before the AI call
+    // Save user message to DB immediately — before the AI call.
+    // Stash a small metadata marker when the turn included image attachments
+    // so future turns know an image was in scope here, even though the image
+    // bytes themselves are not re-sent. Without this, the model loses all
+    // memory of past uploads and tells the user "I don't see any screenshot"
+    // when they refer back to one.
+    const hasImages = Array.isArray(image_attachments) && image_attachments.length > 0;
+    const userMessageMetadata: Record<string, unknown> = {};
+    if (hasImages) {
+      userMessageMetadata.image_count = image_attachments.length;
+      const names = (image_attachments as Array<{ name?: unknown }>)
+        .map((img) => (typeof img?.name === 'string' ? img.name : null))
+        .filter((n): n is string => !!n);
+      if (names.length > 0) userMessageMetadata.image_names = names;
+    }
+    // Stash parsed file content so subsequent turns can still see what the
+    // user uploaded (e.g. an Excel of goals). Capped at FILE_CONTEXT_CAP to
+    // keep the message row and downstream conversation-history tokens
+    // bounded; longer content is preserved as head + tail with a truncation
+    // marker, which is enough for the model to remember structure and key
+    // values without duplicating the full file every turn.
+    const FILE_CONTEXT_CAP = 8_000;
+    if (typeof file_context === 'string' && file_context.trim().length > 0) {
+      const fc = file_context.trim();
+      if (fc.length <= FILE_CONTEXT_CAP) {
+        userMessageMetadata.file_context = fc;
+      } else {
+        const head = fc.slice(0, Math.floor(FILE_CONTEXT_CAP * 0.7));
+        const tail = fc.slice(-Math.floor(FILE_CONTEXT_CAP * 0.25));
+        const omitted = fc.length - head.length - tail.length;
+        userMessageMetadata.file_context = `${head}\n...[file content truncated, ${omitted} chars omitted]...\n${tail}`;
+      }
+    }
     await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
       role: 'user',
       content: message.trim(),
       credits_used: 0,
+      ...(Object.keys(userMessageMetadata).length > 0 ? { metadata: userMessageMetadata } : {}),
     });
 
     // Load context in parallel
@@ -110,7 +143,7 @@ export async function POST(request: NextRequest) {
       // very long conversations that exceed the budget.
       adminClient
         .from('messages')
-        .select('role, content')
+        .select('role, content, metadata')
         .eq('conversation_id', conversation_id)
         .order('created_at', { ascending: false })
         .limit(200),
@@ -132,11 +165,40 @@ export async function POST(request: NextRequest) {
     const allMessages = (historyResult.data || []).reverse();
     const summary = conversationResult.data?.summary;
 
+    // Render each persisted row to the exact text that goes to the model, so
+    // image-attachment markers from past turns are visible in conversation
+    // history. The model's prior reply (which describes what it saw) is also
+    // in history, giving it full memory of earlier uploads even though the
+    // raw image bytes are only sent on the turn they were attached to.
+    const renderHistoryContent = (row: { role: string; content: string; metadata?: unknown }): string => {
+      if (row.role !== 'user') return row.content;
+      const meta = (row.metadata && typeof row.metadata === 'object') ? row.metadata as Record<string, unknown> : null;
+      if (!meta) return row.content;
+
+      const imageCount = typeof meta.image_count === 'number' ? meta.image_count : 0;
+      const fileContext = typeof meta.file_context === 'string' ? meta.file_context : null;
+      if (imageCount <= 0 && !fileContext) return row.content;
+
+      let prefix = '';
+      if (imageCount > 0) {
+        const names = Array.isArray(meta.image_names)
+          ? (meta.image_names as unknown[]).filter((n): n is string => typeof n === 'string')
+          : [];
+        const namesPart = names.length > 0 ? `: ${names.join(', ')}` : '';
+        const noun = imageCount === 1 ? 'image' : 'images';
+        prefix = `[Earlier in this chat the user attached ${imageCount} ${noun}${namesPart}. The image bytes are not re-attached on this turn, but your description of what they contained is in your reply that follows; treat that as your memory of the upload.]\n\n`;
+      }
+      const suffix = fileContext
+        ? `\n\n--- ATTACHED FILE CONTENT ---\n${fileContext}\n--- END ATTACHED FILE CONTENT ---`
+        : '';
+      return `${prefix}${row.content}${suffix}`;
+    };
+
     // Count tokens from newest to oldest, keeping messages that fit the budget
     let tokenCount = 0;
     let cutoffIndex = 0; // Index where we start including messages
     for (let i = allMessages.length - 1; i >= 0; i--) {
-      const msgTokens = estimateTokens(allMessages[i].content as string);
+      const msgTokens = estimateTokens(renderHistoryContent(allMessages[i]));
       if (tokenCount + msgTokens > HISTORY_TOKEN_BUDGET) {
         cutoffIndex = i + 1;
         break;
@@ -166,7 +228,7 @@ export async function POST(request: NextRequest) {
     for (let i = startIdx; i < recentMessages.length; i++) {
       conversationHistory.push({
         role: recentMessages[i].role as 'user' | 'assistant',
-        content: recentMessages[i].content,
+        content: renderHistoryContent(recentMessages[i]),
       });
     }
 
