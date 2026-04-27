@@ -21,6 +21,7 @@ import type {
   EnrichmentJobView,
   EnrichmentSummary,
 } from '@/stores/setupStore';
+import type { ImageAttachmentPayload } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
 // Types (re-export for consumers)
@@ -52,6 +53,12 @@ export interface ProfileFormData {
   teamSize: string;
   /** Optional context from uploaded files (Excel, CSV, etc.) */
   fileContext?: string;
+  /**
+   * Optional images uploaded in the form's "Additional context" zone.
+   * These are stored as pending and pre-loaded into the chat input so the
+   * user sends them with their first chat message.
+   */
+  imageAttachments?: ImageAttachmentPayload[];
 }
 
 export interface UseSetupReturn {
@@ -85,7 +92,11 @@ export interface UseSetupReturn {
   refreshClickUpStatus: () => Promise<void>;
   isRefreshingClickUp: boolean;
   continueFromConnect: () => void;
-  sendMessage: (msg: string, fileContext?: string) => void;
+  sendMessage: (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => void;
+  /** Images uploaded in the BusinessProfileForm waiting to be sent with the next chat message. */
+  pendingImageAttachments: ImageAttachmentPayload[];
+  /** Clear pending images once they've been attached to a chat message. */
+  clearPendingImageAttachments: () => void;
   submitProfileForm: (data: ProfileFormData) => void;
   updatePlan: (plan: SetupPlan) => void;
   approvePlan: (opts?: { generateEnrichment?: boolean }) => void;
@@ -310,6 +321,7 @@ export function useSetup(): UseSetupReturn {
   const profileFormData = storeState?.profileFormData ?? null;
   const storedMessages = storeState?.chatMessages ?? [];
   const businessDescription = storeState?.businessDescription ?? '';
+  const pendingImageAttachments = storeState?.pendingImageAttachments ?? [];
   // messageCount from store is no longer used directly — sendMessage derives
   // the fallback index from actual chatMessages to avoid count drift.
   const proposedPlan = storeState?.proposedPlan ?? null;
@@ -795,7 +807,7 @@ export function useSetup(): UseSetupReturn {
   }, [currentStep, proposedPlan, isSending, isGenerating, addMessage, setCurrentStep]);
 
   const sendMessage = useCallback(
-    async (msg: string, fileContext?: string) => {
+    async (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => {
       if (!msg.trim() || isSending) return;
 
       addMessage('user', msg);
@@ -815,6 +827,7 @@ export function useSetup(): UseSetupReturn {
         // Send the chat structure snapshot so the AI has full context
         chat_structure_snapshot: state?.chatStructureSnapshot ?? undefined,
         ...(fileContext ? { file_context: fileContext } : {}),
+        ...(imageAttachments && imageAttachments.length > 0 ? { image_attachments: imageAttachments } : {}),
       };
 
       // Try with one automatic retry on failure (handles transient 500s)
@@ -976,9 +989,9 @@ export function useSetup(): UseSetupReturn {
   }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState, conversationId]);
 
   const enhancedSendMessage = useCallback(
-    (msg: string, fileContext?: string) => {
+    (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => {
       if (msg === '__generate_structure__') { generateStructure(); return; }
-      sendMessage(msg, fileContext);
+      sendMessage(msg, fileContext, imageAttachments);
     },
     [sendMessage, generateStructure]
   );
@@ -1566,13 +1579,21 @@ export function useSetup(): UseSetupReturn {
 
   const submitProfileForm = useCallback(
     (data: ProfileFormData) => {
-      store?.getState().setProfileFormData(data);
+      // Strip imageAttachments before persisting profileFormData — they live
+      // in pendingImageAttachments instead so they can be consumed once.
+      const { imageAttachments: pendingImages, ...persistedData } = data;
+      store?.getState().setProfileFormData(persistedData);
       store?.getState().setProfileFormCompleted(true);
 
       // Use the shared buildDescriptionFromForm so the description logic
       // (e.g. resolving "Other" → industryCustom) stays in one place.
-      const desc = buildDescriptionFromForm(data, data.fileContext);
+      const desc = buildDescriptionFromForm(persistedData, persistedData.fileContext);
       store?.getState().setBusinessDescription(desc);
+
+      // Stash any uploaded images so the next chat send picks them up.
+      if (pendingImages && pendingImages.length > 0) {
+        store?.getState().setPendingImageAttachments(pendingImages);
+      }
     },
     [store],
   );
@@ -1617,6 +1638,8 @@ export function useSetup(): UseSetupReturn {
     isRefreshingClickUp,
     continueFromConnect,
     sendMessage: enhancedSendMessage,
+    pendingImageAttachments,
+    clearPendingImageAttachments: () => store?.getState().clearPendingImageAttachments(),
     submitProfileForm,
     updatePlan,
     approvePlan,

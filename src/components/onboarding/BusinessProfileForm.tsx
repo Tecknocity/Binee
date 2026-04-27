@@ -16,8 +16,17 @@ import {
   X,
 } from 'lucide-react';
 import type { ProfileFormData } from '@/hooks/useSetup';
-import { parseFile, getFileError, isFileSupported, formatAttachmentsForAI } from '@/lib/file-parser';
-import type { FileAttachment } from '@/lib/file-parser';
+import {
+  parseFile,
+  parseImage,
+  parseImageBlob,
+  getFileError,
+  isImageFile,
+  isAnySupportedFile,
+  formatAttachmentsForAI,
+} from '@/lib/file-parser';
+import type { FileAttachment, ImageAttachment } from '@/lib/file-parser';
+import type { ImageAttachmentPayload } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -93,6 +102,7 @@ export function BusinessProfileForm({
 
   // File upload state
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -101,13 +111,14 @@ export function BusinessProfileForm({
   const effectiveIndustry = industry === 'Other' ? industryCustom.trim() : industry;
   const isValid = effectiveIndustry && workStyle && services.trim() && teamSize;
   const filledCount = [effectiveIndustry, workStyle, services.trim(), teamSize].filter(Boolean).length;
+  const totalAttachmentCount = attachments.length + imageAttachments.length;
 
   const handleFiles = async (files: FileList | File[]) => {
     setFileError(null);
     const fileArray = Array.from(files);
 
-    if (attachments.length + fileArray.length > 3) {
-      setFileError('Maximum 3 files');
+    if (totalAttachmentCount + fileArray.length > 3) {
+      setFileError('Maximum 3 attachments');
       return;
     }
 
@@ -116,23 +127,62 @@ export function BusinessProfileForm({
       if (error) { setFileError(error); return; }
     }
 
+    const imageFiles = fileArray.filter(isImageFile);
+    const dataFiles = fileArray.filter((f) => !isImageFile(f));
+
     setIsParsing(true);
     try {
-      const parsed = await Promise.all(
-        fileArray.map(async (file) => {
-          const result = await parseFile(file);
-          return {
-            name: result.name,
-            type: result.type,
-            content: result.content,
-            rowCount: result.rowCount,
-            columns: result.columns,
-          } as FileAttachment;
-        }),
-      );
-      setAttachments((prev) => [...prev, ...parsed]);
+      if (dataFiles.length > 0) {
+        const parsed = await Promise.all(
+          dataFiles.map(async (file) => {
+            const result = await parseFile(file);
+            return {
+              name: result.name,
+              type: result.type,
+              content: result.content,
+              rowCount: result.rowCount,
+              columns: result.columns,
+            } as FileAttachment;
+          }),
+        );
+        setAttachments((prev) => [...prev, ...parsed]);
+      }
+      if (imageFiles.length > 0) {
+        const parsedImages = await Promise.all(imageFiles.map((file) => parseImage(file)));
+        setImageAttachments((prev) => [...prev, ...parsedImages]);
+      }
     } catch {
       setFileError('Failed to parse file. Please try a different format.');
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItems = items.filter((item) => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+
+    e.preventDefault();
+    setFileError(null);
+
+    if (totalAttachmentCount + imageItems.length > 3) {
+      setFileError('Maximum 3 attachments');
+      return;
+    }
+
+    setIsParsing(true);
+    try {
+      const parsedImages = await Promise.all(
+        imageItems.map(async (item) => {
+          const blob = item.getAsFile();
+          if (!blob) throw new Error('Failed to read clipboard image');
+          return parseImageBlob(blob);
+        }),
+      );
+      setImageAttachments((prev) => [...prev, ...parsedImages]);
+    } catch {
+      setFileError('Failed to read clipboard image. Try saving it as a file first.');
     } finally {
       setIsParsing(false);
     }
@@ -142,9 +192,20 @@ export function BusinessProfileForm({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const removeImageAttachment = (index: number) => {
+    setImageAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid || isSubmitting) return;
+    const imagePayloads: ImageAttachmentPayload[] | undefined = imageAttachments.length > 0
+      ? imageAttachments.map((img) => ({
+          base64: img.base64,
+          media_type: img.media_type,
+          name: img.name,
+        }))
+      : undefined;
     onSubmit({
       industry: effectiveIndustry,
       industryCustom: industry === 'Other' ? industryCustom.trim() : '',
@@ -152,6 +213,7 @@ export function BusinessProfileForm({
       services: services.trim(),
       teamSize,
       fileContext: attachments.length > 0 ? formatAttachmentsForAI(attachments) : undefined,
+      imageAttachments: imagePayloads,
     });
   };
 
@@ -280,20 +342,22 @@ export function BusinessProfileForm({
               </label>
             </div>
             <p className="text-xs text-text-muted mb-2">
-              Have existing Excel files, spreadsheets, or docs with your current workflows? Share them for better results.
+              Have existing Excel files, spreadsheets, docs, or images of your workflows or charts? Share them for better results. You can also paste screenshots.
             </p>
 
             {/* Drop zone */}
             <div
               onClick={() => fileInputRef.current?.click()}
+              onPaste={handlePaste}
+              tabIndex={0}
               onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
               onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
               onDrop={(e) => {
                 e.preventDefault();
                 setIsDragOver(false);
-                const files = Array.from(e.dataTransfer.files).filter(isFileSupported);
+                const files = Array.from(e.dataTransfer.files).filter(isAnySupportedFile);
                 if (files.length > 0) handleFiles(files);
-                else if (e.dataTransfer.files.length > 0) setFileError('Unsupported file type. Use CSV, XLSX, TXT, MD, or JSON.');
+                else if (e.dataTransfer.files.length > 0) setFileError('Unsupported file type. Use CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, or WebP.');
               }}
               className={`
                 cursor-pointer border-2 border-dashed rounded-xl px-4 py-4 text-center transition-all
@@ -315,7 +379,7 @@ export function BusinessProfileForm({
                   <span className="text-sm text-text-secondary">
                     Drop files here or <span className="text-accent font-medium">browse</span>
                   </span>
-                  <span className="text-xs text-text-muted">CSV, XLSX, TXT, MD, JSON (max 5MB)</span>
+                  <span className="text-xs text-text-muted">CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, WebP (max 5MB)</span>
                 </div>
               )}
             </div>
@@ -324,7 +388,7 @@ export function BusinessProfileForm({
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv"
+              accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv,.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp"
               multiple
               onChange={(e) => {
                 if (e.target.files?.length) handleFiles(e.target.files);
@@ -337,9 +401,30 @@ export function BusinessProfileForm({
               <p className="mt-1.5 text-xs text-error">{fileError}</p>
             )}
 
-            {/* Attached files list */}
-            {attachments.length > 0 && (
+            {/* Attached files / images list */}
+            {(attachments.length > 0 || imageAttachments.length > 0) && (
               <div className="mt-2 space-y-1.5">
+                {imageAttachments.map((img, i) => (
+                  <div
+                    key={`img-${img.name}-${i}`}
+                    className="flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-lg text-sm"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`data:${img.media_type};base64,${img.base64}`}
+                      alt={img.name}
+                      className="w-7 h-7 object-cover rounded flex-shrink-0"
+                    />
+                    <span className="truncate text-text-secondary">{img.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); removeImageAttachment(i); }}
+                      className="ml-auto p-0.5 text-text-muted hover:text-error transition-colors flex-shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
                 {attachments.map((att, i) => {
                   const Icon = att.type === 'csv' || att.type === 'xlsx' ? FileSpreadsheet : FileText;
                   return (

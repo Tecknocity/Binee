@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { SetupPlan, ManualStep, ExecutionResult } from '@/lib/setup/types';
 import type { ExecutionItem } from '@/lib/setup/executor';
+import type { ImageAttachmentPayload } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -128,6 +129,13 @@ interface SetupState {
   businessDescription: string;
   messageCount: number;
 
+  /**
+   * Images uploaded in the BusinessProfileForm "Additional context" zone.
+   * Pre-loaded into the BusinessChatStep input so the user sends them with
+   * their first chat message. Cleared once consumed.
+   */
+  pendingImageAttachments: ImageAttachmentPayload[];
+
   // Step 2-3: Chat structure snapshot (built incrementally during chat)
   chatStructureSnapshot: Record<string, unknown> | null;
 
@@ -169,6 +177,8 @@ interface SetupState {
   setProfileFormData: (data: { industry: string; industryCustom: string; workStyle: string; services: string; teamSize: string } | null) => void;
   addMessage: (msg: SetupChatMessage) => void;
   setBusinessDescription: (desc: string) => void;
+  setPendingImageAttachments: (images: ImageAttachmentPayload[]) => void;
+  clearPendingImageAttachments: () => void;
   incrementMessageCount: () => void;
   setChatStructureSnapshot: (snapshot: Record<string, unknown> | null) => void;
   setPlan: (plan: SetupPlan | null) => void;
@@ -244,6 +254,7 @@ function createSetupStore(workspaceId: string) {
         chatMessages: [],
         businessDescription: '',
         messageCount: 0,
+        pendingImageAttachments: [],
 
         chatStructureSnapshot: null,
         proposedPlan: null,
@@ -282,6 +293,8 @@ function createSetupStore(workspaceId: string) {
           set((s) => ({ chatMessages: [...s.chatMessages.slice(-199), msg] })),
 
         setBusinessDescription: (desc) => set({ businessDescription: desc }),
+        setPendingImageAttachments: (images) => set({ pendingImageAttachments: images }),
+        clearPendingImageAttachments: () => set({ pendingImageAttachments: [] }),
         incrementMessageCount: () => set((s) => ({ messageCount: s.messageCount + 1 })),
 
         setChatStructureSnapshot: (snapshot) => set({ chatStructureSnapshot: snapshot }),
@@ -333,6 +346,7 @@ function createSetupStore(workspaceId: string) {
               updates.chatMessages = []; // Clear chat messages
               updates.messageCount = 0; // Reset message count
               updates.chatStructureSnapshot = null; // Clear chat snapshot
+              updates.pendingImageAttachments = []; // Clear pending images
               updates.conversationId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; // New conversation
             }
             if (step <= 3) {
@@ -373,6 +387,7 @@ function createSetupStore(workspaceId: string) {
             chatMessages: [],
             businessDescription: '',
             messageCount: 0,
+            pendingImageAttachments: [],
             chatStructureSnapshot: null,
             proposedPlan: null,
             planHistory: [],
@@ -407,6 +422,7 @@ function createSetupStore(workspaceId: string) {
           chatMessages: state.chatMessages,
           businessDescription: state.businessDescription,
           messageCount: state.messageCount,
+          pendingImageAttachments: state.pendingImageAttachments,
           chatStructureSnapshot: state.chatStructureSnapshot,
           proposedPlan: state.proposedPlan,
           planHistory: state.planHistory,
