@@ -305,8 +305,12 @@ export function useSetup(): UseSetupReturn {
   const clickUp = useClickUpStatus();
   const { workspace_id, workspace } = useWorkspace();
 
-  // Get the zustand store for this workspace — auto-persists to localStorage
-  const store = workspace_id ? getSetupStore(workspace_id) : null;
+  // Get the zustand store for this workspace + currently connected ClickUp
+  // team. Switching ClickUp teams (consultant managing multiple clients)
+  // re-keys the store, so the new team starts with a fresh wizard instead
+  // of inheriting the previous client's chat, profile, draft, or plan tier.
+  const clickUpTeamId = workspace?.clickup_team_id ?? null;
+  const store = workspace_id ? getSetupStore(workspace_id, clickUpTeamId) : null;
   const storeState = store?.getState();
 
   // Read persisted state from store (or defaults if no store yet)

@@ -93,9 +93,18 @@ export async function GET(request: NextRequest) {
       if (teams.length > 0) {
         teamId = teams[0].id;
 
-        // Detect plan tier from team response
-        const rawPlan = teams[0].plan?.name ?? teams[0].plan?.tier ?? "free";
+        // Detect plan tier from team response. ClickUp's /team endpoint
+        // exposes plan info inconsistently across accounts and OAuth scopes,
+        // so we may legitimately get nothing back here. Treating an unknown
+        // plan as "free" is the wrong default - it triggers Free-plan limit
+        // warnings for users who are actually on Business/Enterprise.
+        const rawPlan = teams[0].plan?.name ?? teams[0].plan?.tier ?? null;
         const planTier = normalizePlanTier(rawPlan);
+        if (!planTier) {
+          console.warn(
+            `[OAuth] Could not detect ClickUp plan tier for team ${teamId} (raw plan field: ${JSON.stringify(teams[0].plan)})`
+          );
+        }
 
         // If connecting a different ClickUp workspace, purge old cached data
         if (previousTeamId && previousTeamId !== teamId) {
@@ -132,15 +141,28 @@ export async function GET(request: NextRequest) {
           }).eq("workspace_id", workspaceId);
         }
 
+        // Decide whether to update clickup_plan_tier:
+        //  - If we detected a plan, persist it (this is also how upgrades get
+        //    picked up on re-auth).
+        //  - If we did NOT detect a plan and the team changed, clear the
+        //    previous team's tier so the new workspace is not stuck under the
+        //    old account's limits.
+        //  - If we did NOT detect a plan and the team did not change, leave
+        //    the existing value alone rather than overwriting it with null.
+        const workspaceUpdate: Record<string, unknown> = {
+          clickup_team_id: teamId,
+          clickup_team_name: teams[0].name,
+          clickup_sync_status: "syncing",
+          clickup_sync_started_at: new Date().toISOString(),
+        };
+        if (planTier) {
+          workspaceUpdate.clickup_plan_tier = planTier;
+        } else if (previousTeamId && previousTeamId !== teamId) {
+          workspaceUpdate.clickup_plan_tier = null;
+        }
         await supabase
           .from("workspaces")
-          .update({
-            clickup_team_id: teamId,
-            clickup_team_name: teams[0].name,
-            clickup_plan_tier: planTier,
-            clickup_sync_status: "syncing",
-            clickup_sync_started_at: new Date().toISOString(),
-          })
+          .update(workspaceUpdate)
           .eq("id", workspaceId);
       }
     } catch (teamError) {

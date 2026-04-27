@@ -534,7 +534,7 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
                 key={`flist-${si}-${li}`}
                 icon={<List className="w-4 h-4 text-info" />}
                 label={list.name}
-                badge={`${list.statuses.length} statuses (manual)`}
+                badge={`${list.statuses.length} statuses`}
                 badgeColor="bg-info/15 text-info"
                 editable={editable}
                 onRename={(name) => renameFolderlessList(si, li, name)}
