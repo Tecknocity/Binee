@@ -41,6 +41,10 @@ interface BusinessChatStepProps {
   profileFormData: ProfileFormData | null;
   onSendMessage: (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => void;
   onEditProfile: () => void;
+  /** Images uploaded in the profile form, pre-loaded into the chat input. */
+  pendingImageAttachments?: ImageAttachmentPayload[];
+  /** Called once the pending images have been attached to a chat message. */
+  onConsumePendingImages?: () => void;
 }
 
 // (Templates removed - profile form now collects business info directly)
@@ -49,8 +53,10 @@ interface BusinessChatStepProps {
 // Profile progress items
 // ---------------------------------------------------------------------------
 
+type ProfileFieldKey = 'industry' | 'workStyle' | 'teamSize' | 'services';
+
 const PROFILE_FORM_FIELDS: Array<{
-  key: keyof ProfileFormData;
+  key: ProfileFieldKey;
   label: string;
   icon: typeof Briefcase;
   hint: string;
@@ -99,6 +105,8 @@ export function BusinessChatStep({
   profileFormData,
   onSendMessage,
   onEditProfile,
+  pendingImageAttachments,
+  onConsumePendingImages,
 }: BusinessChatStepProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -129,6 +137,29 @@ export function BusinessChatStep({
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  // Pre-load images uploaded in the profile form so they get attached to
+  // the next chat message the user sends. Hydrate once per pending batch.
+  const hydratedKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingImageAttachments || pendingImageAttachments.length === 0) return;
+    const key = pendingImageAttachments.map((i) => `${i.name}:${i.base64.length}`).join('|');
+    if (hydratedKey.current === key) return;
+    hydratedKey.current = key;
+    setImageAttachments((prev) => {
+      const existingNames = new Set(prev.map((p) => p.name));
+      const additions: ImageAttachment[] = pendingImageAttachments
+        .filter((p) => !existingNames.has(p.name))
+        .map((p) => ({
+          name: p.name,
+          type: 'image' as const,
+          base64: p.base64,
+          media_type: p.media_type,
+          size: 0,
+        }));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
+    });
+  }, [pendingImageAttachments]);
 
   // Re-focus after sending completes
   useEffect(() => {
@@ -261,6 +292,9 @@ export function BusinessChatStep({
     setInput('');
     setAttachments([]);
     setImageAttachments([]);
+    if (imagePayloads && imagePayloads.length > 0) {
+      onConsumePendingImages?.();
+    }
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -312,13 +346,13 @@ export function BusinessChatStep({
     return FileText;
   };
 
-  const isFormFieldCollected = (key: keyof ProfileFormData): boolean => {
+  const isFormFieldCollected = (key: ProfileFieldKey): boolean => {
     if (!profileFormData) return false;
     const val = profileFormData[key];
     return !!val && val.trim().length > 0;
   };
 
-  const getFormFieldValue = (key: keyof ProfileFormData): string | null => {
+  const getFormFieldValue = (key: ProfileFieldKey): string | null => {
     if (!profileFormData) return null;
     const val = profileFormData[key];
     if (!val || !val.trim()) return null;

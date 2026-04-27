@@ -150,6 +150,8 @@ export default function SetupWizard() {
             profileFormData={setup.profileFormData}
             onSendMessage={setup.sendMessage}
             onEditProfile={setup.editProfile}
+            pendingImageAttachments={setup.pendingImageAttachments}
+            onConsumePendingImages={setup.clearPendingImageAttachments}
           />
         )}
 
