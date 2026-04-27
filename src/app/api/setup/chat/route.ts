@@ -35,10 +35,32 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data, file_context, chat_structure_snapshot } = body;
+    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data, file_context, chat_structure_snapshot, image_attachments } = body;
 
     if (!workspace_id || !conversation_id || !message?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Validate image_attachments if provided (mirrors /api/chat validation)
+    if (image_attachments) {
+      if (!Array.isArray(image_attachments) || image_attachments.length > 3) {
+        return NextResponse.json(
+          { error: 'image_attachments must be an array of 3 or fewer images' },
+          { status: 400 },
+        );
+      }
+      const validMediaTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+      for (const img of image_attachments) {
+        if (!img.base64 || typeof img.base64 !== 'string') {
+          return NextResponse.json({ error: 'Each image must have a base64 string' }, { status: 400 });
+        }
+        if (!validMediaTypes.has(img.media_type)) {
+          return NextResponse.json({ error: `Unsupported image type: ${img.media_type}` }, { status: 400 });
+        }
+        if (img.base64.length > 7_000_000) {
+          return NextResponse.json({ error: 'Image too large (max 5MB)' }, { status: 400 });
+        }
+      }
     }
 
     const adminClient = createClient(
@@ -204,6 +226,7 @@ export async function POST(request: NextRequest) {
       proposedPlan: proposed_plan || undefined,
       chatStructureSnapshot: chat_structure_snapshot || undefined,
       profileData: profile_data || undefined,
+      imageAttachments: Array.isArray(image_attachments) && image_attachments.length > 0 ? image_attachments : undefined,
     });
 
     // -----------------------------------------------------------------------

@@ -18,8 +18,17 @@ import {
   FileText,
 } from 'lucide-react';
 import type { SetupChatMessage, ProfileFormData } from '@/hooks/useSetup';
-import { parseFile, getFileError, isFileSupported, formatAttachmentsForAI } from '@/lib/file-parser';
-import type { FileAttachment } from '@/lib/file-parser';
+import {
+  parseFile,
+  parseImage,
+  parseImageBlob,
+  getFileError,
+  isImageFile,
+  isAnySupportedFile,
+  formatAttachmentsForAI,
+} from '@/lib/file-parser';
+import type { FileAttachment, ImageAttachment } from '@/lib/file-parser';
+import type { ImageAttachmentPayload } from '@/types/ai';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -30,8 +39,12 @@ interface BusinessChatStepProps {
   isSending: boolean;
   messageCount: number;
   profileFormData: ProfileFormData | null;
-  onSendMessage: (msg: string, fileContext?: string) => void;
+  onSendMessage: (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => void;
   onEditProfile: () => void;
+  /** Images uploaded in the profile form, pre-loaded into the chat input. */
+  pendingImageAttachments?: ImageAttachmentPayload[];
+  /** Called once the pending images have been attached to a chat message. */
+  onConsumePendingImages?: () => void;
 }
 
 // (Templates removed - profile form now collects business info directly)
@@ -40,8 +53,10 @@ interface BusinessChatStepProps {
 // Profile progress items
 // ---------------------------------------------------------------------------
 
+type ProfileFieldKey = 'industry' | 'workStyle' | 'teamSize' | 'services';
+
 const PROFILE_FORM_FIELDS: Array<{
-  key: keyof ProfileFormData;
+  key: ProfileFieldKey;
   label: string;
   icon: typeof Briefcase;
   hint: string;
@@ -90,15 +105,20 @@ export function BusinessChatStep({
   profileFormData,
   onSendMessage,
   onEditProfile,
+  pendingImageAttachments,
+  onConsumePendingImages,
 }: BusinessChatStepProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const totalAttachmentCount = attachments.length + imageAttachments.length;
 
   const canGenerate = messageCount >= 1;
   const completeness = profileFormData
@@ -117,6 +137,29 @@ export function BusinessChatStep({
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  // Pre-load images uploaded in the profile form so they get attached to
+  // the next chat message the user sends. Hydrate once per pending batch.
+  const hydratedKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingImageAttachments || pendingImageAttachments.length === 0) return;
+    const key = pendingImageAttachments.map((i) => `${i.name}:${i.base64.length}`).join('|');
+    if (hydratedKey.current === key) return;
+    hydratedKey.current = key;
+    setImageAttachments((prev) => {
+      const existingNames = new Set(prev.map((p) => p.name));
+      const additions: ImageAttachment[] = pendingImageAttachments
+        .filter((p) => !existingNames.has(p.name))
+        .map((p) => ({
+          name: p.name,
+          type: 'image' as const,
+          base64: p.base64,
+          media_type: p.media_type,
+          size: 0,
+        }));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
+    });
+  }, [pendingImageAttachments]);
 
   // Re-focus after sending completes
   useEffect(() => {
@@ -144,8 +187,8 @@ export function BusinessChatStep({
     setFileError(null);
     const fileArray = Array.from(files);
 
-    if (attachments.length + fileArray.length > 3) {
-      setFileError('Maximum 3 files per message');
+    if (totalAttachmentCount + fileArray.length > 3) {
+      setFileError('Maximum 3 attachments per message');
       return;
     }
 
@@ -157,21 +200,31 @@ export function BusinessChatStep({
       }
     }
 
+    const imageFiles = fileArray.filter(isImageFile);
+    const dataFiles = fileArray.filter((f) => !isImageFile(f));
+
     setIsParsing(true);
     try {
-      const parsed = await Promise.all(
-        fileArray.map(async (file) => {
-          const result = await parseFile(file);
-          return {
-            name: result.name,
-            type: result.type,
-            content: result.content,
-            rowCount: result.rowCount,
-            columns: result.columns,
-          } as FileAttachment;
-        }),
-      );
-      setAttachments((prev) => [...prev, ...parsed]);
+      if (dataFiles.length > 0) {
+        const parsed = await Promise.all(
+          dataFiles.map(async (file) => {
+            const result = await parseFile(file);
+            return {
+              name: result.name,
+              type: result.type,
+              content: result.content,
+              rowCount: result.rowCount,
+              columns: result.columns,
+            } as FileAttachment;
+          }),
+        );
+        setAttachments((prev) => [...prev, ...parsed]);
+      }
+
+      if (imageFiles.length > 0) {
+        const parsedImages = await Promise.all(imageFiles.map((file) => parseImage(file)));
+        setImageAttachments((prev) => [...prev, ...parsedImages]);
+      }
     } catch {
       setFileError('Failed to parse file. Please try a different format.');
     } finally {
@@ -183,14 +236,65 @@ export function BusinessChatStep({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const removeImageAttachment = (index: number) => {
+    setImageAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    if (isSending) return;
+
+    const items = Array.from(e.clipboardData.items);
+    const imageItems = items.filter((item) => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+
+    e.preventDefault();
+
+    if (totalAttachmentCount + imageItems.length > 3) {
+      setFileError('Maximum 3 attachments per message');
+      return;
+    }
+
+    setIsParsing(true);
+    try {
+      const parsedImages = await Promise.all(
+        imageItems.map(async (item) => {
+          const blob = item.getAsFile();
+          if (!blob) throw new Error('Failed to read clipboard image');
+          return parseImageBlob(blob);
+        }),
+      );
+      setImageAttachments((prev) => [...prev, ...parsedImages]);
+    } catch {
+      setFileError('Failed to read clipboard image. Try saving it as a file first.');
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
   const handleSend = () => {
-    if ((!input.trim() && attachments.length === 0) || isSending) return;
+    const hasAttachments = attachments.length > 0 || imageAttachments.length > 0;
+    if ((!input.trim() && !hasAttachments) || isSending) return;
 
     const fileContext = attachments.length > 0 ? formatAttachmentsForAI(attachments) : undefined;
+    const imagePayloads: ImageAttachmentPayload[] | undefined = imageAttachments.length > 0
+      ? imageAttachments.map((img) => ({
+          base64: img.base64,
+          media_type: img.media_type,
+          name: img.name,
+        }))
+      : undefined;
 
-    onSendMessage(input.trim() || 'Please analyze the attached file(s) for my workspace setup.', fileContext);
+    const fallbackPrompt = imageAttachments.length > 0
+      ? 'Please analyze the attached image(s) for my workspace setup.'
+      : 'Please analyze the attached file(s) for my workspace setup.';
+
+    onSendMessage(input.trim() || fallbackPrompt, fileContext, imagePayloads);
     setInput('');
     setAttachments([]);
+    setImageAttachments([]);
+    if (imagePayloads && imagePayloads.length > 0) {
+      onConsumePendingImages?.();
+    }
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -222,11 +326,11 @@ export function BusinessChatStep({
     setIsDragOver(false);
     if (isSending) return;
 
-    const files = Array.from(e.dataTransfer.files).filter(isFileSupported);
+    const files = Array.from(e.dataTransfer.files).filter(isAnySupportedFile);
     if (files.length > 0) {
       handleFiles(files);
     } else if (e.dataTransfer.files.length > 0) {
-      setFileError('Unsupported file type. Use CSV, XLSX, TXT, MD, or JSON.');
+      setFileError('Unsupported file type. Use CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, or WebP.');
     }
   };
 
@@ -242,13 +346,13 @@ export function BusinessChatStep({
     return FileText;
   };
 
-  const isFormFieldCollected = (key: keyof ProfileFormData): boolean => {
+  const isFormFieldCollected = (key: ProfileFieldKey): boolean => {
     if (!profileFormData) return false;
     const val = profileFormData[key];
     return !!val && val.trim().length > 0;
   };
 
-  const getFormFieldValue = (key: keyof ProfileFormData): string | null => {
+  const getFormFieldValue = (key: ProfileFieldKey): string | null => {
     if (!profileFormData) return null;
     const val = profileFormData[key];
     if (!val || !val.trim()) return null;
@@ -389,15 +493,36 @@ export function BusinessChatStep({
               <div className="flex items-center gap-2 justify-center">
                 <Paperclip className="w-3.5 h-3.5 text-accent" />
                 <span className="text-xs text-accent font-medium">
-                  Drop files here (CSV, XLSX, TXT, MD, JSON)
+                  Drop files here (CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, WebP)
                 </span>
               </div>
             </div>
           )}
 
           {/* Attachment chips */}
-          {attachments.length > 0 && (
+          {(attachments.length > 0 || imageAttachments.length > 0) && (
             <div className="px-4 py-2 border-t border-border flex flex-wrap gap-2">
+              {imageAttachments.map((img, i) => (
+                <div
+                  key={`img-${img.name}-${i}`}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-navy-dark border border-border text-xs text-text-secondary"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:${img.media_type};base64,${img.base64}`}
+                    alt={img.name}
+                    className="w-7 h-7 object-cover rounded shrink-0"
+                  />
+                  <span className="truncate max-w-[120px]">{img.name}</span>
+                  <button
+                    onClick={() => removeImageAttachment(i)}
+                    className="ml-0.5 p-0.5 rounded hover:bg-border transition-colors"
+                    title="Remove image"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
               {attachments.map((att, i) => {
                 const Icon = getFileIcon(att.type);
                 return (
@@ -430,6 +555,7 @@ export function BusinessChatStep({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={
                 messageCount === 0
                   ? 'Describe your business, team, and how you work...'
@@ -445,14 +571,14 @@ export function BusinessChatStep({
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isSending || isParsing}
                   className="p-1.5 rounded-md text-text-muted hover:text-accent hover:bg-navy-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Attach file (CSV, XLSX, TXT, MD, JSON)"
+                  title="Attach file or image (CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, WebP). You can also paste screenshots."
                 >
                   <Paperclip className="w-4 h-4" />
                 </button>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv"
+                  accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv,.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp"
                   multiple
                   onChange={handleFileInputChange}
                   className="hidden"
@@ -460,7 +586,7 @@ export function BusinessChatStep({
               </div>
               <button
                 onClick={handleSend}
-                disabled={(!input.trim() && attachments.length === 0) || isSending}
+                disabled={(!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isSending}
                 className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
                   hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
