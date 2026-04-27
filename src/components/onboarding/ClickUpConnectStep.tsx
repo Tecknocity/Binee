@@ -1,6 +1,7 @@
 'use client';
 
-import { ExternalLink, CheckCircle2, Loader2, Eye, PenLine, Users, Shield, Lock } from 'lucide-react';
+import { useState } from 'react';
+import { ExternalLink, CheckCircle2, Loader2, Eye, PenLine, Users, Shield, Lock, AlertTriangle, X } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // ClickUp Logo SVG
@@ -62,6 +63,8 @@ interface ClickUpConnectStepProps {
   teamName?: string | null;
   isRevisit?: boolean;
   isRefreshing?: boolean;
+  /** True when user has progressed past Connect (so reconnecting will discard work) */
+  hasProgress?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,20 +80,111 @@ export function ClickUpConnectStep({
   teamName,
   isRevisit,
   isRefreshing,
+  hasProgress = false,
 }: ClickUpConnectStepProps) {
-  if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 text-accent animate-spin" />
-          <p className="text-sm text-text-muted">Checking ClickUp connection...</p>
+  const [showReconnectConfirm, setShowReconnectConfirm] = useState(false);
+
+  // Trigger OAuth, but warn first if reconnecting will wipe progress
+  const requestConnect = () => {
+    if (hasProgress) {
+      setShowReconnectConfirm(true);
+    } else {
+      onConnect();
+    }
+  };
+
+  const reconnectModal = showReconnectConfirm && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+      <div className="bg-navy-dark border border-border rounded-2xl w-full max-w-md flex flex-col shadow-2xl">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-text-primary">
+                Reconnect will reset all progress
+              </h3>
+              <p className="text-xs text-text-secondary mt-0.5">
+                This action cannot be undone.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowReconnectConfirm(false)}
+            className="p-1.5 text-text-muted hover:text-text-secondary transition-colors rounded-lg hover:bg-surface-hover"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-sm text-text-primary leading-relaxed">
+            Connecting a different ClickUp workspace will clear your entire setup.
+            You will start over from step 1.
+          </p>
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+            <p className="text-xs font-medium text-text-primary mb-2">You will lose:</p>
+            <ul className="text-xs text-text-secondary space-y-1.5">
+              <li className="flex items-start gap-2">
+                <span className="text-red-400 mt-0.5">-</span>
+                <span>Workspace analysis results</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-red-400 mt-0.5">-</span>
+                <span>Business profile and chat history</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-red-400 mt-0.5">-</span>
+                <span>Generated structure plan</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-red-400 mt-0.5">-</span>
+                <span>Build progress and manual steps</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+          <button
+            onClick={() => setShowReconnectConfirm(false)}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              setShowReconnectConfirm(false);
+              onConnect();
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+          >
+            Reset and reconnect
+          </button>
         </div>
       </div>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="w-6 h-6 text-accent animate-spin" />
+            <p className="text-sm text-text-muted">Checking ClickUp connection...</p>
+          </div>
+        </div>
+        {reconnectModal}
+      </>
     );
   }
 
   if (connected) {
     return (
+      <>
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="flex flex-col items-center gap-6 text-center max-w-md">
           {/* Connection status card */}
@@ -155,7 +249,7 @@ export function ClickUpConnectStep({
             {isRevisit && (
               <>
                 <button
-                  onClick={onConnect}
+                  onClick={requestConnect}
                   className="flex items-center justify-center gap-2 w-full px-5 py-3 rounded-xl text-sm font-medium transition-all
                     border border-border text-text-secondary hover:border-accent/40 hover:text-text-primary"
                 >
@@ -176,10 +270,13 @@ export function ClickUpConnectStep({
           </div>
         </div>
       </div>
+      {reconnectModal}
+      </>
     );
   }
 
   return (
+    <>
     <div className="flex-1 flex items-center justify-center px-4">
       <div className="flex flex-col items-center gap-8 text-center max-w-lg">
         {/* ClickUp Logo */}
@@ -220,7 +317,7 @@ export function ClickUpConnectStep({
 
         {/* Connect button — large & prominent */}
         <button
-          onClick={onConnect}
+          onClick={requestConnect}
           className="flex items-center justify-center gap-2.5 w-full px-6 py-4 rounded-xl text-base font-semibold transition-all bg-[#7B68EE] text-white hover:bg-[#6A5ACD] shadow-lg shadow-[#7B68EE]/20 hover:shadow-xl hover:shadow-[#7B68EE]/30"
         >
           <ClickUpLogo className="w-5 h-5" />
@@ -255,5 +352,7 @@ export function ClickUpConnectStep({
         </button>
       </div>
     </div>
+    {reconnectModal}
+    </>
   );
 }
