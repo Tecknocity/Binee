@@ -116,6 +116,7 @@ export default function SetupWizard() {
             teamName={setup.clickUpTeamName}
             isRevisit={setup.furthestStep > 0}
             isRefreshing={setup.isRefreshingClickUp}
+            hasProgress={setup.furthestStep > 0}
           />
         )}
 

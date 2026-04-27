@@ -521,7 +521,8 @@ export function useSetup(): UseSetupReturn {
 
   // Auto-advance from step 0 → step 1 when ClickUp is connected
   // On first visit (furthestStep === 0): always auto-advance after 800ms
-  // On revisit after OAuth: auto-advance if URL has success=clickup_connected
+  // On revisit after OAuth: fully reset the wizard so the new workspace
+  // starts from scratch (analysis, profile, chat, plan, build all cleared).
   useEffect(() => {
     if (!clickUp.loading && clickUp.connected && currentStep === 0) {
       const isFirstVisit = furthestStep === 0;
@@ -536,13 +537,21 @@ export function useSetup(): UseSetupReturn {
             url.searchParams.delete('success');
             window.history.replaceState({}, '', url.toString());
           }
-          // Reset analysis so it re-runs with fresh data
+          // After (re)connecting via OAuth, wipe everything from the previous
+          // workspace. The user was warned in the reconnect modal that
+          // progress would be reset; honor that by doing a true full reset
+          // (form data, plan history, previously built items, etc.).
           if (isReturningFromOAuth && furthestStep > 0) {
-            store?.getState().resetFromStep(1);
-            // resetFromStep(1) cascades through all steps - reset tracking refs
+            const newId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            store?.getState().reset(newId);
             existingStructureLoadedRef.current = false;
             buildRestoredRef.current = false;
             recommendationsLoadedRef.current = false;
+            setExecutionProgress(null);
+            setExecutionResult(null);
+            setExecutionItems([]);
+            setIsExecuting(false);
+            setIsSending(false);
           }
           analysisStartedRef.current = false;
           setCurrentStep(1);
