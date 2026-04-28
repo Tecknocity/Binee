@@ -61,6 +61,24 @@ interface SetupperInput {
   attachmentDigestBlock?: string;
 }
 
+/**
+ * Phase 4 observability: diagnostics returned alongside the merged snapshot
+ * so the chat route can persist a setup_draft_changes row. None of these
+ * fields affect runtime behavior - they exist purely to give us a usable
+ * audit trail when something looks wrong in production.
+ */
+export interface SnapshotDiagnostics {
+  intent: 'update' | 'full_replace';
+  intentFullReplaceDowngraded: boolean;
+  truncatedResponse: boolean;
+  spacesBefore: number;
+  spacesAfter: number;
+  listsBefore: number;
+  listsAfter: number;
+  renameCount: number;
+  removeCount: number;
+}
+
 interface SetupperResult {
   content: string;
   creditsToCharge: number;
@@ -70,6 +88,8 @@ interface SetupperResult {
   toolCalls: string[];
   /** Extracted structure snapshot from this response (if the AI proposed/updated a structure) */
   structureSnapshot?: Record<string, unknown>;
+  /** Phase 4: emitted only when a snapshot was successfully merged this turn. */
+  snapshotDiagnostics?: SnapshotDiagnostics;
 }
 
 let client: Anthropic | null = null;
@@ -206,6 +226,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   // opening delimiter to the end so raw JSON never leaks into the chat UI.
   let finalContent = rawContent;
   let structureSnapshot: Record<string, unknown> | undefined;
+  let snapshotDiagnostics: SnapshotDiagnostics | undefined;
 
   const closedSnapshot = rawContent.match(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*([\s\S]*?)\s*\|\|\|END_STRUCTURE\|\|\|/);
   const openSnapshot = closedSnapshot ? null : rawContent.match(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*([\s\S]*)$/);
@@ -221,7 +242,13 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
         // missing from this snapshot are preserved unless the model emitted
         // _intent: "full_replace" AND the user actually asked to restructure
         // (the merge applies an additional safety check on user phrasing).
-        structureSnapshot = mergeSnapshot(input.chatStructureSnapshot, parsed, input.userMessage);
+        const merged = mergeSnapshotWithDiagnostics(
+          input.chatStructureSnapshot,
+          parsed,
+          input.userMessage,
+        );
+        structureSnapshot = merged.snapshot;
+        snapshotDiagnostics = { ...merged.diagnostics, truncatedResponse: wasTruncated };
       }
     } catch {
       // Truncated JSON is expected when stop_reason === max_tokens; in that
@@ -262,6 +289,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     anthropicCostCents: anthropicCost.totalCostCents,
     toolCalls: [],
     structureSnapshot,
+    snapshotDiagnostics,
   };
 }
 
@@ -472,28 +500,44 @@ function applyRemoves(snap: Record<string, unknown>, removes: RemoveOp[]): void 
   }
 }
 
-function mergeSnapshot(
+function countLists(snapshot: Record<string, unknown> | undefined): number {
+  if (!snapshot) return 0;
+  const spaces = (snapshot.spaces as DraftSpace[] | undefined) || [];
+  let count = 0;
+  for (const space of spaces) {
+    count += (space.lists?.length ?? 0);
+    for (const folder of space.folders ?? []) {
+      count += (folder.lists?.length ?? 0);
+    }
+  }
+  return count;
+}
+
+interface MergeOutcome {
+  snapshot: Record<string, unknown>;
+  diagnostics: Omit<SnapshotDiagnostics, 'truncatedResponse'>;
+}
+
+function mergeSnapshotWithDiagnostics(
   prev: Record<string, unknown> | undefined,
   next: Record<string, unknown>,
   userMessage?: string,
-): Record<string, unknown> {
+): MergeOutcome {
   // The _intent flag is set by the model when the user explicitly asked to
-  // restructure. In that case we honor a clean replace (and strip the flag
-  // before persisting so downstream consumers do not see it). If the model
-  // claimed full_replace but the user message does not actually authorize a
-  // rebuild, downgrade to update so an additive request like "add goals"
-  // never silently drops the rest of the draft.
-  let intent = next._intent;
-  if (intent === 'full_replace' && !userAskedForRebuild(userMessage)) {
+  // restructure. If the model claimed full_replace but the user message
+  // does not actually authorize a rebuild, downgrade to update so an
+  // additive request like "add goals" never silently drops the draft.
+  const declaredIntent = next._intent === 'full_replace' ? 'full_replace' : 'update';
+  let effectiveIntent: 'update' | 'full_replace' = declaredIntent;
+  let downgraded = false;
+  if (declaredIntent === 'full_replace' && !userAskedForRebuild(userMessage)) {
     console.warn(
       '[setupper-brain] Model emitted _intent: "full_replace" but user message does not authorize a rebuild; downgrading to "update" to preserve the existing draft.',
     );
-    intent = 'update';
+    effectiveIntent = 'update';
+    downgraded = true;
   }
 
-  // Capture the snapshot ops the model emitted, then strip them from the
-  // payload that flows through the structural merge so they never end up
-  // serialized into setup_drafts.draft.
   const renames = Array.isArray(next._rename) ? (next._rename as RenameOp[]) : [];
   const removes = Array.isArray(next._remove) ? (next._remove as RemoveOp[]) : [];
 
@@ -502,44 +546,59 @@ function mergeSnapshot(
   delete cleaned._rename;
   delete cleaned._remove;
 
-  if (intent === 'full_replace' || !prev || typeof prev !== 'object') {
+  const spacesBefore = (prev?.spaces as DraftSpace[] | undefined)?.length ?? 0;
+  const listsBefore = countLists(prev);
+
+  let merged: Record<string, unknown>;
+  if (effectiveIntent === 'full_replace' || !prev || typeof prev !== 'object') {
     // For a full replace there is no prior draft to mutate, so renames
     // and removes are meaningless. The model may emit them anyway; we
     // silently drop them.
-    return cleaned;
+    merged = cleaned;
+  } else {
+    const prevSpaces = (prev.spaces as DraftSpace[] | undefined) || [];
+    const nextSpaces = (cleaned.spaces as DraftSpace[] | undefined) || [];
+    const mergedSpaces = mergeNamedArray(prevSpaces, nextSpaces).map(space => {
+      const old = prevSpaces.find(s => sameName(s.name, space.name));
+      return old ? mergeSpace(old, space) : space;
+    });
+
+    const mergedTags = mergeNamedArray(
+      prev.recommended_tags as DraftNamed[] | undefined,
+      cleaned.recommended_tags as DraftNamed[] | undefined,
+    );
+    const mergedDocs = mergeNamedArray(
+      prev.recommended_docs as DraftNamed[] | undefined,
+      cleaned.recommended_docs as DraftNamed[] | undefined,
+    );
+
+    merged = {
+      ...prev,
+      ...cleaned,
+      spaces: mergedSpaces,
+      recommended_tags: mergedTags,
+      recommended_docs: mergedDocs,
+    };
+
+    // Renames first so a subsequent _remove can target the new path if
+    // the model is removing something it just renamed.
+    if (renames.length > 0) applyRenames(merged, renames);
+    // Removes last so they always win - even if the model also emitted
+    // the node in spaces this turn, the explicit remove wins.
+    if (removes.length > 0) applyRemoves(merged, removes);
   }
 
-  const prevSpaces = (prev.spaces as DraftSpace[] | undefined) || [];
-  const nextSpaces = (cleaned.spaces as DraftSpace[] | undefined) || [];
-  const mergedSpaces = mergeNamedArray(prevSpaces, nextSpaces).map(space => {
-    const old = prevSpaces.find(s => sameName(s.name, space.name));
-    return old ? mergeSpace(old, space) : space;
-  });
-
-  const mergedTags = mergeNamedArray(
-    prev.recommended_tags as DraftNamed[] | undefined,
-    cleaned.recommended_tags as DraftNamed[] | undefined,
-  );
-  const mergedDocs = mergeNamedArray(
-    prev.recommended_docs as DraftNamed[] | undefined,
-    cleaned.recommended_docs as DraftNamed[] | undefined,
-  );
-
-  const merged: Record<string, unknown> = {
-    ...prev,
-    ...cleaned,
-    spaces: mergedSpaces,
-    recommended_tags: mergedTags,
-    recommended_docs: mergedDocs,
+  return {
+    snapshot: merged,
+    diagnostics: {
+      intent: effectiveIntent,
+      intentFullReplaceDowngraded: downgraded,
+      spacesBefore,
+      spacesAfter: (merged.spaces as DraftSpace[] | undefined)?.length ?? 0,
+      listsBefore,
+      listsAfter: countLists(merged),
+      renameCount: renames.length,
+      removeCount: removes.length,
+    },
   };
-
-  // Renames first so a subsequent _remove can target the new path if the
-  // model is removing something it just renamed (rare but legal).
-  if (renames.length > 0) applyRenames(merged, renames);
-  // Removes last so they always win - even if the model also emitted the
-  // node in `spaces` this turn (which would have been re-added by the
-  // monotonic merge above), the explicit remove wins.
-  if (removes.length > 0) applyRemoves(merged, removes);
-
-  return merged;
 }
