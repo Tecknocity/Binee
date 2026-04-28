@@ -72,13 +72,12 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
 
-    // Load conversation + latest draft. The setup_drafts row is the single
-    // source of truth for the snapshot - chat, manual edits in Review, and
-    // generate-plan all read/write the same row. Falling back to
-    // messages.metadata.structure_snapshot keeps us compatible with any
-    // conversation that started before setup_drafts existed; falling back
-    // to the client-sent value is a last resort for callers that pre-date
-    // both server stores.
+    // Load conversation + latest draft. setup_drafts is the single source
+    // of truth for the snapshot since Phase 1 - chat, manual edits in
+    // Review, and generate-plan all read/write the same row. Phase 4
+    // dropped the legacy messages.metadata.structure_snapshot fallback;
+    // any conversation that does not have a setup_drafts row simply has
+    // no prior draft, which the planner handles correctly.
     let resolvedContext = conversationContext;
     let resolvedSnapshot: Record<string, unknown> | undefined;
 
@@ -91,7 +90,7 @@ export async function POST(request: NextRequest) {
           .maybeSingle(),
         adminClient
           .from('messages')
-          .select('role, content, metadata, created_at')
+          .select('role, content, created_at')
           .eq('conversation_id', conversation_id)
           .order('created_at', { ascending: false })
           .limit(200),
@@ -124,20 +123,6 @@ export async function POST(request: NextRequest) {
         resolvedContext = recent
           .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
           .join('\n\n');
-
-        // Legacy fallback: messages.metadata.structure_snapshot. Only used
-        // when setup_drafts has no row for this conversation yet (e.g.
-        // conversations that started before this migration).
-        if (!resolvedSnapshot) {
-          for (let i = ordered.length - 1; i >= 0; i--) {
-            const meta = ordered[i].metadata as Record<string, unknown> | null;
-            const snap = meta?.structure_snapshot as Record<string, unknown> | undefined;
-            if (snap && typeof snap === 'object' && snap.spaces) {
-              resolvedSnapshot = snap;
-              break;
-            }
-          }
-        }
       }
     }
 

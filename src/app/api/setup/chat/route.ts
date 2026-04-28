@@ -361,10 +361,11 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
 
     // Save assistant message right away (don't wait for billing).
-    // We still mirror structure_snapshot into messages.metadata for legacy
-    // consumers and audit trail, but the canonical store is setup_drafts
-    // below. Phase 5 will drop the metadata mirror once the migration has
-    // been live long enough that no in-flight conversations rely on it.
+    // Phase 4 dropped the messages.metadata.structure_snapshot mirror -
+    // setup_drafts is the canonical store for the workspace draft, and
+    // generate-plan reads from there directly. Keeping a duplicate copy
+    // on every assistant message just bloated the messages table and
+    // gave the impression of two sources of truth.
     const assistantInsert = await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
@@ -375,7 +376,6 @@ export async function POST(request: NextRequest) {
         source: 'setup',
         tool_calls: result.toolCalls,
         anthropic_cost_cents: result.anthropicCostCents,
-        ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
       },
     });
     if (assistantInsert.error) {
@@ -412,6 +412,34 @@ export async function POST(request: NextRequest) {
         );
       if (draftError) {
         console.error('[setup/chat] setup_drafts upsert failed:', draftError);
+      }
+
+      // Phase 4: write a setup_draft_changes audit row so we can spot
+      // regressions without reading server logs. The diagnostics object
+      // is produced by mergeSnapshot itself and includes intent
+      // downgrades, truncation flags, and before/after counts. Failure
+      // to log is non-fatal - the draft itself is already saved above.
+      if (result.snapshotDiagnostics) {
+        const d = result.snapshotDiagnostics;
+        const { error: auditError } = await adminClient
+          .from('setup_draft_changes')
+          .insert({
+            workspace_id,
+            conversation_id,
+            source: 'chat',
+            intent: d.intent,
+            intent_full_replace_downgraded: d.intentFullReplaceDowngraded,
+            truncated_response: d.truncatedResponse,
+            spaces_before: d.spacesBefore,
+            spaces_after: d.spacesAfter,
+            lists_before: d.listsBefore,
+            lists_after: d.listsAfter,
+            rename_count: d.renameCount,
+            remove_count: d.removeCount,
+          });
+        if (auditError) {
+          console.error('[setup/chat] setup_draft_changes insert failed:', auditError);
+        }
       }
     }
 
