@@ -41,7 +41,6 @@ export async function POST(request: NextRequest) {
       businessProfile,
       workspaceAnalysis,
       conversationContext,
-      chatStructureSnapshot,
       previousPlan,
       planHistorySummary,
       conversation_id,
@@ -49,7 +48,6 @@ export async function POST(request: NextRequest) {
       businessProfile: BusinessProfile;
       workspaceAnalysis?: string;
       conversationContext?: string;
-      chatStructureSnapshot?: Record<string, unknown>;
       previousPlan?: Record<string, unknown>;
       planHistorySummary?: string;
       conversation_id?: string;
@@ -72,7 +70,7 @@ export async function POST(request: NextRequest) {
     // to the client-sent value is a last resort for callers that pre-date
     // both server stores.
     let resolvedContext = conversationContext;
-    let resolvedSnapshot = chatStructureSnapshot;
+    let resolvedSnapshot: Record<string, unknown> | undefined;
 
     if (conversation_id) {
       const [draftResult, messagesResult] = await Promise.all([
