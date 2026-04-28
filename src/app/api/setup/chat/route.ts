@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data, file_context, chat_structure_snapshot, image_attachments } = body;
+    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data, file_context, image_attachments } = body;
 
     if (!workspace_id || !conversation_id || !message?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -301,12 +301,11 @@ export async function POST(request: NextRequest) {
       precomputedAnalysis: workspace_analysis || undefined,
       planTier,
       proposedPlan: proposed_plan || undefined,
-      // The chat_structure_snapshot field on the request body is now legacy;
-      // we read the canonical draft from setup_drafts.draft above. We still
-      // accept the client value as a fallback in case setup_drafts has not
-      // been populated yet (first message in a brand-new conversation,
-      // before this migration ran in production), but server state wins.
-      chatStructureSnapshot: serverDraft ?? (chat_structure_snapshot || undefined),
+      // Previous draft comes from setup_drafts (Phase 1). On the first
+      // turn of a new conversation this is null; mergeSnapshot handles the
+      // missing-prev case by treating the model's emission as the initial
+      // draft.
+      chatStructureSnapshot: serverDraft ?? undefined,
       profileData: profile_data || undefined,
       imageAttachments: Array.isArray(image_attachments) && image_attachments.length > 0 ? image_attachments : undefined,
     });

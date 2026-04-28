@@ -878,8 +878,11 @@ export function useSetup(): UseSetupReturn {
         workspace_analysis: fullAnalysisContext,
         proposed_plan: state?.proposedPlan ?? undefined,
         profile_data: state?.profileFormData ?? undefined,
-        // Send the chat structure snapshot so the AI has full context
-        chat_structure_snapshot: state?.chatStructureSnapshot ?? undefined,
+        // The chat structure snapshot is no longer sent on the wire.
+        // /api/setup/chat reads it from setup_drafts (Phase 1) so the
+        // server-side draft is always authoritative; sending the cached
+        // value would risk reverting a manual Review edit if zustand was
+        // stale.
         ...(fileContext ? { file_context: fileContext } : {}),
         ...(imageAttachments && imageAttachments.length > 0 ? { image_attachments: imageAttachments } : {}),
       };
@@ -1007,10 +1010,10 @@ export function useSetup(): UseSetupReturn {
             painPoints: businessProfile.painPoints,
           },
           workspaceAnalysis: workspaceAnalysis ?? undefined,
-          chatStructureSnapshot: chatSnapshot ?? undefined,
-          // Only fall back to the prior generated plan when the chat has not
-          // produced a snapshot. The chat snapshot is the authoritative latest
-          // baseline; sending both confuses the planner.
+          // chatStructureSnapshot is no longer sent on the wire; the server
+          // reads it from setup_drafts (Phase 1). The local cache value is
+          // still used below to decide whether to send previousPlan as a
+          // fallback for legacy callers without conversation_id.
           previousPlan: chatSnapshot ? undefined : currentPlan ?? undefined,
           planHistorySummary: planHistorySummary || undefined,
         }),
@@ -1502,7 +1505,8 @@ export function useSetup(): UseSetupReturn {
         workspace_analysis: fullAnalysisContext,
         proposed_plan: livePlan ?? undefined,
         profile_data: liveProfile ?? undefined,
-        chat_structure_snapshot: state?.chatStructureSnapshot ?? undefined,
+        // chat_structure_snapshot intentionally omitted; /api/setup/chat
+        // reads the canonical draft from setup_drafts (Phase 1).
       };
 
       // Try with one automatic retry
