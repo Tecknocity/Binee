@@ -22,6 +22,7 @@ import type {
   EnrichmentSummary,
 } from '@/stores/setupStore';
 import type { ImageAttachmentPayload } from '@/types/ai';
+import type { FileAttachment } from '@/lib/file-parser';
 
 // ---------------------------------------------------------------------------
 // Types (re-export for consumers)
@@ -92,7 +93,11 @@ export interface UseSetupReturn {
   refreshClickUpStatus: () => Promise<void>;
   isRefreshingClickUp: boolean;
   continueFromConnect: () => void;
-  sendMessage: (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => void;
+  sendMessage: (
+    msg: string,
+    fileAttachments?: FileAttachment[],
+    imageAttachments?: ImageAttachmentPayload[],
+  ) => void;
   /** Images uploaded in the BusinessProfileForm waiting to be sent with the next chat message. */
   pendingImageAttachments: ImageAttachmentPayload[];
   /** Clear pending images once they've been attached to a chat message. */
@@ -918,7 +923,11 @@ export function useSetup(): UseSetupReturn {
   }, [currentStep, proposedPlan, isSending, isGenerating, addMessage, setCurrentStep]);
 
   const sendMessage = useCallback(
-    async (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => {
+    async (
+      msg: string,
+      fileAttachments?: FileAttachment[],
+      imageAttachments?: ImageAttachmentPayload[],
+    ) => {
       if (!msg.trim() || isSending) return;
 
       addMessage('user', msg);
@@ -939,6 +948,61 @@ export function useSetup(): UseSetupReturn {
         return;
       }
 
+      // Phase 2: every attached file or image becomes its own
+      // chat_attachments row BEFORE the chat call. The server generates a
+      // Haiku digest for each one and returns an attachment_id, which we
+      // pass to /api/setup/chat in attachment_ids. This means the model
+      // can reference earlier uploads on later turns without us
+      // re-sending bytes, and unlike the legacy file_context/image_attachments
+      // path the content survives a localStorage clear.
+      const attachmentIds: string[] = [];
+      const uploadAttachment = async (body: Record<string, unknown>): Promise<string | null> => {
+        try {
+          const res = await fetchWithTimeout('/api/setup/attachments/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, conversation_id: liveConversationId }),
+          }, 30_000);
+          if (!res.ok) {
+            console.error('[useSetup] attachment upload failed:', res.status);
+            return null;
+          }
+          const data = await res.json();
+          return typeof data?.id === 'string' ? data.id : null;
+        } catch (err) {
+          console.error('[useSetup] attachment upload error:', err);
+          return null;
+        }
+      };
+      if (fileAttachments && fileAttachments.length > 0) {
+        for (const att of fileAttachments) {
+          const id = await uploadAttachment({
+            filename: att.name,
+            // FileAttachment has no media_type; pick a sensible MIME from
+            // the parsed type so the server-side digest call uses the
+            // right framing.
+            media_type:
+              att.type === 'csv' ? 'text/csv' :
+              att.type === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' :
+              'text/plain',
+            size_bytes: att.content.length,
+            extracted_text: att.content,
+          });
+          if (id) attachmentIds.push(id);
+        }
+      }
+      if (imageAttachments && imageAttachments.length > 0) {
+        for (const img of imageAttachments) {
+          const id = await uploadAttachment({
+            filename: img.name,
+            media_type: img.media_type,
+            size_bytes: Math.floor((img.base64.length * 3) / 4),
+            raw_base64: img.base64,
+          });
+          if (id) attachmentIds.push(id);
+        }
+      }
+
       const payload = {
         workspace_id,
         conversation_id: liveConversationId,
@@ -948,11 +1012,8 @@ export function useSetup(): UseSetupReturn {
         profile_data: state?.profileFormData ?? undefined,
         // The chat structure snapshot is no longer sent on the wire.
         // /api/setup/chat reads it from setup_drafts (Phase 1) so the
-        // server-side draft is always authoritative; sending the cached
-        // value would risk reverting a manual Review edit if zustand was
-        // stale.
-        ...(fileContext ? { file_context: fileContext } : {}),
-        ...(imageAttachments && imageAttachments.length > 0 ? { image_attachments: imageAttachments } : {}),
+        // server-side draft is always authoritative.
+        ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
       };
 
       // Try with one automatic retry on failure (handles transient 500s)
@@ -1116,9 +1177,13 @@ export function useSetup(): UseSetupReturn {
   }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState, conversationId]);
 
   const enhancedSendMessage = useCallback(
-    (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => {
+    (
+      msg: string,
+      fileAttachments?: FileAttachment[],
+      imageAttachments?: ImageAttachmentPayload[],
+    ) => {
       if (msg === '__generate_structure__') { generateStructure(); return; }
-      sendMessage(msg, fileContext, imageAttachments);
+      sendMessage(msg, fileAttachments, imageAttachments);
     },
     [sendMessage, generateStructure]
   );
