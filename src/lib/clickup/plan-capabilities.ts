@@ -368,22 +368,19 @@ export function buildPlanContextForAI(planTier: string): string {
   const unsupported = getUnsupportedFeatures(planTier);
 
   if (unsupported.length === 0) {
-    return `CLICKUP PLAN (advisory hint, not authoritative): ${caps.label} - all features are available.`;
+    return `CLICKUP PLAN: ${caps.label} - all features available. You can recommend any ClickUp feature.`;
   }
 
-  // Advisory tone: ClickUp's API often does not expose plan info, so this hint
-  // can be wrong. The system prompt has a separate PLAN TIER block that tells
-  // the model to defer to the user's stated plan. This block must NOT contain
-  // hard "do not recommend" language - that contradicts the deference rule and
-  // produces the failure mode where the model keeps insisting "Goals are not
-  // available on Free" even after the user has corrected it.
+  // Phase 3 made plan tier user-supplied (profile form dropdown writes
+  // workspaces.clickup_plan_tier with source='user'), so this block is
+  // now authoritative. The earlier advisory wording was a band-aid
+  // around the unreliable OAuth scrape; the deference rule in the
+  // system prompt has been removed in lockstep.
   const lines = [
-    `CLICKUP PLAN (advisory hint, may be wrong - defer to anything the user states):`,
-    `Detected: ${caps.label}`,
-    `Documented for this tier:`,
-    `- Available: Spaces, Folders, Lists, Tags, Custom Fields, Statuses${caps.docs ? ', Docs' : ''}${caps.timeTracking ? ', Time Tracking' : ''}`,
-    `- Typically not available: ${unsupported.map(u => `${u.feature} (needs ${u.requiredPlan}+)`).join(', ')}`,
-    `If the user has stated a different plan in chat, trust them. Do not push back, do not keep telling them a feature is unavailable on a plan they have already said they do not have.`,
+    `CLICKUP PLAN: ${caps.label}`,
+    `Available on this plan: Spaces, Folders, Lists, Tags, Custom Fields, Statuses${caps.docs ? ', Docs' : ''}${caps.timeTracking ? ', Time Tracking' : ''}`,
+    `NOT available on this plan: ${unsupported.map(u => `${u.feature} (requires ${u.requiredPlan}+)`).join(', ')}`,
+    `Do not recommend the unavailable features in the workspace structure - the user's plan would reject them at build time. If the user asks about an unavailable feature, explain it requires a higher plan.`,
   ];
 
   return lines.join('\n');

@@ -23,7 +23,7 @@ import { buildPlanContextForAI } from '@/lib/clickup/plan-capabilities';
 export function buildSetupperPrompt(
   workspaceAnalysis: string,
   templates: string,
-  planTier?: string,
+  planTier?: string | null,
   profileData?: {
     industry?: string;
     workStyle?: string;
@@ -93,7 +93,7 @@ When the user asks you to "describe", "show", "summarize", or "give me a readabl
 
 Additive requests are the common case and they are NOT permission to rebuild. When the user says "add", "include", "introduce", "extend", "also", "now let's add", "keep this and add", "build on this", or describes a refinement to specific lists/spaces, you MUST start from CHAT DRAFT and only add or adjust the relevant nodes. Spaces and lists the user has not mentioned this turn stay exactly as they were. The only time you may discard the prior draft is when the user explicitly says "start over", "rebuild from scratch", "throw this out", or an unambiguous restructure phrase - in which case set "_intent" to "full_replace". Otherwise leave "_intent" as "update".
 
-Renames are an exception to monotonicity: when you rename a list or space, emit ONLY the new name in this turn's snapshot. Do not include both the old and the new name in the same parent (the merge would keep both as duplicates). Within a single space, list names must be unique; within a single folder, list names must be unique. If the user asks for a rename, drop the old node and emit the new one in its place.
+Renames and removals use explicit operations, not raw spaces[]. To rename a node, add an entry to "_rename": [{ "from": "Parent/Old Name", "to": "Parent/New Name" }]. To delete a node, add an entry to "_remove": [{ "path": "Parent/Name" }]. Paths are slash-separated, name-based: "Space" / "Space/List" / "Space/Folder/List". Renames only change the leaf segment - moving across parents is not supported. Always prefer _rename over emitting a spaces[] entry with a new name (that would leave both old and new in the merged draft).
 
 REFERRING TO EARLIER ATTACHMENTS:
 
@@ -122,10 +122,6 @@ You do not create or modify ClickUp directly. The user clicks "Generate Structur
 GUIDING THE USER FORWARD:
 
 The chat is not the destination - the workspace is. Once the draft has reached a usable shape, end your reply with a short, concrete nudge toward "Generate Structure" so the user knows what to do next. Write it as a single closing sentence in plain language, e.g. "When this looks close, click Generate Structure to review the full layout." Do not repeat the nudge every turn once the user has seen it; only re-surface it after a substantial change (new spaces/lists added, a major restructure, a fresh source like a process map). Never ask "does this look right?" or "should I proceed?" - point at the button instead.
-
-PLAN TIER (advisory, not authoritative):
-
-The CLICKUP PLAN block at the bottom of this prompt comes from ClickUp's API and is sometimes wrong - the API does not always expose plan info, in which case we fall back to a conservative default. If the user states their plan in chat ("we are on Business Plus", "I am on Business", "we have Enterprise"), trust the user. From that turn onward, treat the user's stated plan as authoritative for this conversation, include the features it enables (Goals, automations, dashboards) in the draft, and stop telling the user a feature is unavailable on a plan they have already said they do not have. Do not ask the user to confirm their plan repeatedly; once stated, it is settled.
 
 FILE UPLOADS:
 
@@ -167,7 +163,9 @@ This means even when the user asks for a "readable", "plain", "no code" version 
   "recommended_tags": [{ "name": "tag-name" }],
   "recommended_docs": [{ "name": "Doc Name", "description": "What it's for", "outline": ["Section 1", "Section 2"] }],
   "reasoning": "1-2 sentences on why this structure fits the user's business",
-  "_intent": "update"
+  "_intent": "update",
+  "_rename": [],
+  "_remove": []
 }
 |||END_STRUCTURE|||
 
@@ -175,6 +173,9 @@ Snapshot rules:
 - The snapshot block must start with the EXACT delimiter |||STRUCTURE_SNAPSHOT||| on its own line and end with the EXACT delimiter |||END_STRUCTURE||| on its own line. Never wrap it in markdown code fences, never add commentary inside the block, never reference the block in your prose. The UI strips it before the user sees the message; if you forget the closing delimiter or break the format, raw JSON leaks into the chat.
 - Keep the prose above the snapshot tight (a few sentences) so there is room for a complete snapshot before the token budget runs out. A truncated snapshot is worse than a short prose reply.
 - "_intent" defaults to "update". The server merges this snapshot with the previous draft, preserving any items not present here that the user has not asked to remove. Set "_intent" to "full_replace" ONLY when the user's current message contains an explicit restructure phrase ("start over", "rebuild from scratch", "throw this out", "wipe this and try again"). Adding new items, renaming, or refining existing ones is NEVER full_replace - it is "update". The server validates this against the user message and downgrades unauthorized full_replace back to update.
+- "_rename" is the explicit way to rename a node. Each entry is { "from": "Parent/Old", "to": "Parent/New" }. Paths are slash-separated and name-based: "Space" / "Space/List" / "Space/Folder/List". The parent path must match between from and to (we only rename the leaf segment); cross-parent moves are unsupported.
+- "_remove" is the explicit way to drop a node. Each entry is { "path": "Parent/Name" }. Removes win over additive merges - if the same name appears in both _remove and spaces[], the remove is honored. Use this instead of _intent: "full_replace" when the user just wants a few items gone.
+- Leave "_rename" and "_remove" as empty arrays when there is nothing to rename or remove; do not omit the keys.
 - Status types: "open" (starting), "active" (in progress), "done" (completed), "closed" (archived). Each list needs at least one "open" and one "done".
 - Every list MUST have a non-empty "purpose" and 3-6 "taskExamples". This is what makes the structure feel like the user's actual work.
 - Do not invent named real-world specifics (real client names, project numbers, dates, dollar amounts). Domain-typical workflow items are expected.

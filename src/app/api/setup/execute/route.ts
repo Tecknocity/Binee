@@ -66,7 +66,19 @@ export async function POST(request: NextRequest) {
       .select('clickup_plan_tier')
       .eq('id', workspace_id)
       .single();
+    // Phase 3: the executor still needs SOME tier value to decide which
+    // plan-gated items (Goals, Automations) to skip during build. The
+    // user picks their plan in the profile form before they ever reach
+    // Build, so this fallback should be a defensive backstop, not a
+    // production code path. Defaulting to 'free' (most restrictive) is
+    // the safest choice if the column is somehow null - we under-build
+    // rather than firing requests ClickUp will reject.
     const planTier = workspaceRow?.clickup_plan_tier || 'free';
+    if (!workspaceRow?.clickup_plan_tier) {
+      console.warn(
+        `[setup/execute] No clickup_plan_tier set for workspace ${workspace_id}; defaulting to 'free' for plan-gated items`,
+      );
+    }
 
     // Refresh ClickUp cache and rebuild existing_structure server-side so the
     // executor operates on current reality. Falls back to client-supplied

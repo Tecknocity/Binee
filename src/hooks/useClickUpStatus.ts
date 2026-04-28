@@ -10,7 +10,14 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 export interface ClickUpConnectionStatus {
   connected: boolean;
   teamName: string | null;
-  planTier: string;
+  /**
+   * Phase 3: nullable. Null means the user has not yet set their plan in
+   * the profile form / Settings dropdown. Consumers should treat null as
+   * "unknown" - render "Plan: not set" in the UI, and on the AI side
+   * skip the plan-context block in the system prompt entirely so the
+   * model is not told a wrong plan.
+   */
+  planTier: string | null;
   loading: boolean;
 }
 
@@ -34,7 +41,7 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
   const derived = useMemo<ClickUpConnectionStatus>(() => ({
     connected: !!workspace?.clickup_team_id,
     teamName: workspace?.clickup_team_name ?? null,
-    planTier: workspace?.clickup_plan_tier ?? 'free',
+    planTier: workspace?.clickup_plan_tier ?? null,
     loading: workspaceLoading,
   }), [workspace?.clickup_team_id, workspace?.clickup_team_name, workspace?.clickup_plan_tier, workspaceLoading]);
 
@@ -44,7 +51,7 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
   // Explicit refetch via API (for manual refresh scenarios)
   const refetch = useCallback(async () => {
     if (!workspace_id) {
-      setOverride({ connected: false, teamName: null, planTier: 'free', loading: false });
+      setOverride({ connected: false, teamName: null, planTier: null, loading: false });
       return;
     }
 
@@ -55,7 +62,7 @@ export function useClickUpStatus(): ClickUpConnectionStatus & {
         setOverride({
           connected: data.connected ?? false,
           teamName: data.team_name ?? null,
-          planTier: data.plan_tier ?? 'free',
+          planTier: data.plan_tier ?? null,
           loading: false,
         });
       }

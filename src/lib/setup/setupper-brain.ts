@@ -16,8 +16,14 @@ interface SetupperInput {
   conversationHistory: Anthropic.MessageParam[];
   /** Pre-computed analysis from the analyzer step — avoids redundant sub-agent call */
   precomputedAnalysis?: string;
-  /** ClickUp plan tier for the workspace (e.g. 'free', 'business') */
-  planTier?: string;
+  /**
+   * ClickUp plan tier for the workspace ('free' | 'unlimited' | 'business' |
+   * 'business_plus' | 'enterprise'). Phase 3 made this user-supplied via
+   * the profile form dropdown. Null when the user has not yet picked one;
+   * the prompt builder skips the CLICKUP PLAN block entirely in that case
+   * so the model is never told a fabricated default.
+   */
+  planTier?: string | null;
   /** The currently proposed workspace plan (if one has been generated) */
   proposedPlan?: {
     spaces: Array<{
@@ -371,6 +377,101 @@ function userAskedForRebuild(userMessage: string | undefined): boolean {
   return /\b(start over|from scratch|throw (this|it|them|everything) (out|away)|rebuild( this| it| everything| from)?|restart|wipe|reset|trash this|forget (everything|this)|clean slate|blank slate)\b/.test(m);
 }
 
+/**
+ * Phase 3 snapshot ops. Before this phase the only way the model could
+ * drop a node was `_intent: "full_replace"` (which we then had to guard
+ * against because the model would emit it for additive requests like
+ * "add goals"). Renames likewise produced duplicates because the
+ * monotonicity merge kept both the old and the new name in the same
+ * parent. The model now has explicit verbs:
+ *   _rename: [{ from: "Client Management/New Clients",
+ *               to:   "Client Management/New Prospects" }]
+ *   _remove: [{ path: "Operations/All Test Projects" }]
+ * Paths are slash-separated, name-based. Parent levels must match for a
+ * rename (we only rename the leaf segment, not move across parents).
+ */
+interface RenameOp { from?: string; to?: string }
+interface RemoveOp { path?: string }
+
+function parsePath(path: string): string[] {
+  return path.split('/').map(s => s.trim()).filter((s) => s.length > 0);
+}
+
+function findNodeByPath(
+  snap: Record<string, unknown>,
+  parts: string[],
+): { node: DraftNamed } | null {
+  if (parts.length === 0) return null;
+  const spaces = (snap.spaces as DraftSpace[] | undefined) || [];
+  const space = spaces.find((s) => sameName(s.name, parts[0]));
+  if (!space) return null;
+  if (parts.length === 1) return { node: space };
+  if (parts.length === 2) {
+    const list = (space.lists || []).find((l) => sameName(l.name, parts[1]));
+    if (list) return { node: list };
+    const folder = (space.folders || []).find((f) => sameName(f.name, parts[1]));
+    if (folder) return { node: folder };
+    return null;
+  }
+  if (parts.length === 3) {
+    const folder = (space.folders || []).find((f) => sameName(f.name, parts[1]));
+    if (!folder) return null;
+    const list = (folder.lists || []).find((l) => sameName(l.name, parts[2]));
+    if (list) return { node: list };
+    return null;
+  }
+  return null;
+}
+
+function applyRenames(snap: Record<string, unknown>, renames: RenameOp[]): void {
+  for (const op of renames) {
+    if (!op?.from || !op?.to) continue;
+    const fromParts = parsePath(op.from);
+    const toParts = parsePath(op.to);
+    if (fromParts.length === 0 || fromParts.length !== toParts.length) continue;
+    // We only support leaf renames; the parent path must be identical.
+    let parentMatches = true;
+    for (let i = 0; i < fromParts.length - 1; i++) {
+      if (!sameName(fromParts[i], toParts[i])) {
+        parentMatches = false;
+        break;
+      }
+    }
+    if (!parentMatches) {
+      console.warn('[setupper-brain] _rename across parents is unsupported, skipping:', op);
+      continue;
+    }
+    const located = findNodeByPath(snap, fromParts);
+    if (!located) continue;
+    located.node.name = toParts[toParts.length - 1];
+  }
+}
+
+function applyRemoves(snap: Record<string, unknown>, removes: RemoveOp[]): void {
+  for (const op of removes) {
+    if (!op?.path) continue;
+    const parts = parsePath(op.path);
+    if (parts.length === 0) continue;
+    const spaces = (snap.spaces as DraftSpace[] | undefined) || [];
+    if (parts.length === 1) {
+      snap.spaces = spaces.filter((s) => !sameName(s.name, parts[0]));
+      continue;
+    }
+    const space = spaces.find((s) => sameName(s.name, parts[0]));
+    if (!space) continue;
+    if (parts.length === 2) {
+      space.lists = (space.lists || []).filter((l) => !sameName(l.name, parts[1]));
+      space.folders = (space.folders || []).filter((f) => !sameName(f.name, parts[1]));
+      continue;
+    }
+    if (parts.length === 3) {
+      const folder = (space.folders || []).find((f) => sameName(f.name, parts[1]));
+      if (!folder) continue;
+      folder.lists = (folder.lists || []).filter((l) => !sameName(l.name, parts[2]));
+    }
+  }
+}
+
 function mergeSnapshot(
   prev: Record<string, unknown> | undefined,
   next: Record<string, unknown>,
@@ -389,10 +490,22 @@ function mergeSnapshot(
     );
     intent = 'update';
   }
+
+  // Capture the snapshot ops the model emitted, then strip them from the
+  // payload that flows through the structural merge so they never end up
+  // serialized into setup_drafts.draft.
+  const renames = Array.isArray(next._rename) ? (next._rename as RenameOp[]) : [];
+  const removes = Array.isArray(next._remove) ? (next._remove as RemoveOp[]) : [];
+
   const cleaned: Record<string, unknown> = { ...next };
   delete cleaned._intent;
+  delete cleaned._rename;
+  delete cleaned._remove;
 
   if (intent === 'full_replace' || !prev || typeof prev !== 'object') {
+    // For a full replace there is no prior draft to mutate, so renames
+    // and removes are meaningless. The model may emit them anyway; we
+    // silently drop them.
     return cleaned;
   }
 
@@ -412,11 +525,21 @@ function mergeSnapshot(
     cleaned.recommended_docs as DraftNamed[] | undefined,
   );
 
-  return {
+  const merged: Record<string, unknown> = {
     ...prev,
     ...cleaned,
     spaces: mergedSpaces,
     recommended_tags: mergedTags,
     recommended_docs: mergedDocs,
   };
+
+  // Renames first so a subsequent _remove can target the new path if the
+  // model is removing something it just renamed (rare but legal).
+  if (renames.length > 0) applyRenames(merged, renames);
+  // Removes last so they always win - even if the model also emitted the
+  // node in `spaces` this turn (which would have been re-added by the
+  // monotonic merge above), the explicit remove wins.
+  if (removes.length > 0) applyRemoves(merged, removes);
+
+  return merged;
 }

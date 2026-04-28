@@ -53,6 +53,15 @@ export interface Workspace {
   clickup_last_synced_at: string | null;
   clickup_sync_error: string | null;
   clickup_plan_tier: 'free' | 'unlimited' | 'business' | 'business_plus' | 'enterprise' | null;
+  /**
+   * Provenance for clickup_plan_tier. 'user' means the workspace owner
+   * picked it from the dropdown in the setup form or Settings; 'api'
+   * is a historical value (legacy OAuth scrape, kept for back-compat
+   * but no new code writes it); NULL means we do not yet know what plan
+   * the workspace is on and the UI should prompt the user to set it.
+   */
+  clickup_plan_tier_source: 'user' | 'api' | null;
+  clickup_plan_tier_set_at: string | null;
   last_sync_at: string | null;
   credits_reset_at: string | null;
   settings: Record<string, unknown>;
