@@ -22,6 +22,7 @@ import type {
   EnrichmentSummary,
 } from '@/stores/setupStore';
 import type { ImageAttachmentPayload } from '@/types/ai';
+import type { FileAttachment } from '@/lib/file-parser';
 
 // ---------------------------------------------------------------------------
 // Types (re-export for consumers)
@@ -92,7 +93,11 @@ export interface UseSetupReturn {
   refreshClickUpStatus: () => Promise<void>;
   isRefreshingClickUp: boolean;
   continueFromConnect: () => void;
-  sendMessage: (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => void;
+  sendMessage: (
+    msg: string,
+    fileAttachments?: FileAttachment[],
+    imageAttachments?: ImageAttachmentPayload[],
+  ) => void;
   /** Images uploaded in the BusinessProfileForm waiting to be sent with the next chat message. */
   pendingImageAttachments: ImageAttachmentPayload[];
   /** Clear pending images once they've been attached to a chat message. */
@@ -183,6 +188,43 @@ function buildWelcomeMessage(profile: ProfileFormData | null): SetupChatMessage 
       "Welcome! I'm here to help you set up your ClickUp workspace.\n\nTell me about your business: what do you do, what services or products do you offer, and how does your team work? The more detail you share, the better I can tailor your workspace.",
     timestamp: new Date(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Conversation ID helpers
+//
+// conversations.id and messages.conversation_id are uuid columns. Anything
+// that is not a UUID makes Postgres reject every upsert silently (the
+// supabase-js client returns {data: null, error: ...} but our routes do
+// not always inspect .error, so failures stay invisible). Phase 1's
+// setup_drafts row would never be created either, because its FK to
+// conversations(id) cannot resolve.
+//
+// We standardise on crypto.randomUUID(), which is available in every
+// browser secure context (HTTPS or localhost) and on Node 19+, and we
+// detect legacy "setup-..." values in localStorage on hydration so
+// existing users automatically migrate to a fresh UUID on next mount.
+// ---------------------------------------------------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+function newConversationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Last-resort fallback for environments that somehow lack crypto.randomUUID.
+  // Constructs a v4-shaped UUID from Math.random; not cryptographically
+  // strong, but valid format so Postgres accepts it. This branch should
+  // never run in our supported runtimes.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +358,12 @@ export function useSetup(): UseSetupReturn {
   // Read persisted state from store (or defaults if no store yet)
   const currentStep = (storeState?.currentStep ?? 0) as SetupStep;
   const furthestStep = (storeState?.furthestStep ?? 0) as SetupStep;
-  const conversationId = storeState?.conversationId ?? 'setup-fallback';
+  // Surface only valid UUIDs. Legacy "setup-..." values from localStorage
+  // are filtered out here so callers cannot accidentally fire API requests
+  // with an id that the database will reject; the hydration effect below
+  // replaces them on next tick.
+  const rawConversationId = storeState?.conversationId;
+  const conversationId = isUuid(rawConversationId) ? rawConversationId : null;
   const workspaceAnalysis = storeState?.workspaceAnalysis ?? null;
   const workspaceCounts = storeState?.workspaceCounts ?? null;
   const workspaceFindings = storeState?.workspaceFindings ?? [];
@@ -350,6 +397,21 @@ export function useSetup(): UseSetupReturn {
   useEffect(() => {
     if (!store) return;
     return store.subscribe(() => forceUpdate((n) => n + 1));
+  }, [store]);
+
+  // Hydration guard: any setup conversation persisted in localStorage with
+  // a legacy "setup-..." id (or any other non-UUID value) is replaced with
+  // a fresh UUID on next mount. Without this every API call for that
+  // conversation would be silently rejected by Postgres because
+  // conversations.id and messages.conversation_id are uuid columns. The
+  // user keeps their visible chat history in zustand; the server simply
+  // starts a fresh conversation row for the new UUID.
+  useEffect(() => {
+    if (!store) return;
+    const current = store.getState().conversationId;
+    if (!isUuid(current)) {
+      store.getState().setConversationId(newConversationId());
+    }
   }, [store]);
 
   // Load the canonical setup draft from setup_drafts on mount and whenever
@@ -596,7 +658,7 @@ export function useSetup(): UseSetupReturn {
           // progress would be reset; honor that by doing a true full reset
           // (form data, plan history, previously built items, etc.).
           if (isReturningFromOAuth && furthestStep > 0) {
-            const newId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const newId = newConversationId();
             store?.getState().reset(newId);
             existingStructureLoadedRef.current = false;
             buildRestoredRef.current = false;
@@ -861,15 +923,85 @@ export function useSetup(): UseSetupReturn {
   }, [currentStep, proposedPlan, isSending, isGenerating, addMessage, setCurrentStep]);
 
   const sendMessage = useCallback(
-    async (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => {
+    async (
+      msg: string,
+      fileAttachments?: FileAttachment[],
+      imageAttachments?: ImageAttachmentPayload[],
+    ) => {
       if (!msg.trim() || isSending) return;
 
       addMessage('user', msg);
       setIsSending(true);
 
-      // Read live values from the store to avoid stale closures
+      // Read live values from the store to avoid stale closures.
+      // The hydration guard guarantees conversationId is a UUID by the
+      // time any user-initiated chat fires; we re-validate here so a
+      // bare-state edge case (store still rehydrating) cannot send a
+      // request that the database will silently reject.
       const state = store?.getState();
-      const liveConversationId = state?.conversationId ?? conversationId;
+      const liveConversationId = isUuid(state?.conversationId)
+        ? state!.conversationId
+        : conversationId;
+      if (!liveConversationId) {
+        addMessage('assistant', "I'm still loading your conversation. Please try again in a moment.");
+        setIsSending(false);
+        return;
+      }
+
+      // Phase 2: every attached file or image becomes its own
+      // chat_attachments row BEFORE the chat call. The server generates a
+      // Haiku digest for each one and returns an attachment_id, which we
+      // pass to /api/setup/chat in attachment_ids. This means the model
+      // can reference earlier uploads on later turns without us
+      // re-sending bytes, and unlike the legacy file_context/image_attachments
+      // path the content survives a localStorage clear.
+      const attachmentIds: string[] = [];
+      const uploadAttachment = async (body: Record<string, unknown>): Promise<string | null> => {
+        try {
+          const res = await fetchWithTimeout('/api/setup/attachments/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, conversation_id: liveConversationId }),
+          }, 30_000);
+          if (!res.ok) {
+            console.error('[useSetup] attachment upload failed:', res.status);
+            return null;
+          }
+          const data = await res.json();
+          return typeof data?.id === 'string' ? data.id : null;
+        } catch (err) {
+          console.error('[useSetup] attachment upload error:', err);
+          return null;
+        }
+      };
+      if (fileAttachments && fileAttachments.length > 0) {
+        for (const att of fileAttachments) {
+          const id = await uploadAttachment({
+            filename: att.name,
+            // FileAttachment has no media_type; pick a sensible MIME from
+            // the parsed type so the server-side digest call uses the
+            // right framing.
+            media_type:
+              att.type === 'csv' ? 'text/csv' :
+              att.type === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' :
+              'text/plain',
+            size_bytes: att.content.length,
+            extracted_text: att.content,
+          });
+          if (id) attachmentIds.push(id);
+        }
+      }
+      if (imageAttachments && imageAttachments.length > 0) {
+        for (const img of imageAttachments) {
+          const id = await uploadAttachment({
+            filename: img.name,
+            media_type: img.media_type,
+            size_bytes: Math.floor((img.base64.length * 3) / 4),
+            raw_base64: img.base64,
+          });
+          if (id) attachmentIds.push(id);
+        }
+      }
 
       const payload = {
         workspace_id,
@@ -880,11 +1012,8 @@ export function useSetup(): UseSetupReturn {
         profile_data: state?.profileFormData ?? undefined,
         // The chat structure snapshot is no longer sent on the wire.
         // /api/setup/chat reads it from setup_drafts (Phase 1) so the
-        // server-side draft is always authoritative; sending the cached
-        // value would risk reverting a manual Review edit if zustand was
-        // stale.
-        ...(fileContext ? { file_context: fileContext } : {}),
-        ...(imageAttachments && imageAttachments.length > 0 ? { image_attachments: imageAttachments } : {}),
+        // server-side draft is always authoritative.
+        ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
       };
 
       // Try with one automatic retry on failure (handles transient 500s)
@@ -993,7 +1122,9 @@ export function useSetup(): UseSetupReturn {
       // Pass conversation_id so the server loads the full chat history and
       // latest structure snapshot directly from the DB - same context the
       // chat AI sees. The client no longer needs to bundle it all up.
-      const liveConversationId = state?.conversationId ?? conversationId;
+      const liveConversationId = isUuid(state?.conversationId)
+        ? state!.conversationId
+        : conversationId;
       const chatSnapshot = state?.chatStructureSnapshot as Record<string, unknown> | null;
 
       const res = await fetchWithTimeout('/api/setup/generate-plan', {
@@ -1046,9 +1177,13 @@ export function useSetup(): UseSetupReturn {
   }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState, conversationId]);
 
   const enhancedSendMessage = useCallback(
-    (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => {
+    (
+      msg: string,
+      fileAttachments?: FileAttachment[],
+      imageAttachments?: ImageAttachmentPayload[],
+    ) => {
       if (msg === '__generate_structure__') { generateStructure(); return; }
-      sendMessage(msg, fileContext, imageAttachments);
+      sendMessage(msg, fileAttachments, imageAttachments);
     },
     [sendMessage, generateStructure]
   );
@@ -1479,7 +1614,14 @@ export function useSetup(): UseSetupReturn {
 
       // Read live values from store to avoid stale closures
       const state = store?.getState();
-      const liveConversationId = state?.conversationId ?? conversationId;
+      const liveConversationId = isUuid(state?.conversationId)
+        ? state!.conversationId
+        : conversationId;
+      if (!liveConversationId) {
+        addMessage('assistant', "I'm still loading your conversation. Please try again in a moment.");
+        setIsSending(false);
+        return;
+      }
       const livePlan = state?.proposedPlan ?? proposedPlan;
       const liveProfile = state?.profileFormData ?? profileFormData;
 
@@ -1605,7 +1747,7 @@ export function useSetup(): UseSetupReturn {
   }, [store]);
 
   const restartSetup = useCallback(() => {
-    const newId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const newId = newConversationId();
     store?.getState().reset(newId);
     // Reset all tracking refs so effects re-run with fresh data
     analysisStartedRef.current = false;
@@ -1667,7 +1809,7 @@ export function useSetup(): UseSetupReturn {
     // the user with optimistic state that will reconcile on next visit
     // (the visibility-change effect re-pulls the server draft).
     const liveConversationId = store?.getState().conversationId;
-    if (!liveConversationId) return;
+    if (!isUuid(liveConversationId)) return;
     (async () => {
       try {
         const res = await fetchWithTimeout('/api/setup/draft', {

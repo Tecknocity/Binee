@@ -44,6 +44,15 @@ interface SetupperInput {
   };
   /** Base64-encoded images attached to this message (Claude vision) */
   imageAttachments?: ImageAttachmentPayload[];
+  /**
+   * Phase 2: pre-formatted "ATTACHMENTS IN THIS CONVERSATION" block built
+   * by the chat route from every chat_attachments row in the conversation.
+   * Each line is the filename + media type + Haiku-generated digest. The
+   * brain appends this to the system prompt verbatim so the model carries
+   * a stable memory of every upload across turns without us re-sending the
+   * raw bytes. Empty string when the conversation has no attachments.
+   */
+  attachmentDigestBlock?: string;
 }
 
 interface SetupperResult {
@@ -117,6 +126,14 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   const previousDraft = pickPreviousDraft(input.chatStructureSnapshot, input.proposedPlan);
   if (previousDraft) {
     systemPrompt += `\n\nCHAT DRAFT (the proposed structure the user has been refining with you - this IS the deliverable; iterate on it, do not regenerate, never confuse it with EXISTING CLICKUP STRUCTURE above):\n${JSON.stringify(previousDraft)}`;
+  }
+
+  // Phase 2: include the per-conversation attachment digest block. Even
+  // when no attachments exist the chat route passes an empty string, in
+  // which case we skip the section entirely so the model doesn't see a
+  // dangling header.
+  if (input.attachmentDigestBlock && input.attachmentDigestBlock.trim().length > 0) {
+    systemPrompt += `\n\n${input.attachmentDigestBlock}`;
   }
 
   // Step 3: Single Sonnet call - no tools, no loop

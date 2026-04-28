@@ -4,6 +4,12 @@ import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { summarizeOlderMessages } from '@/lib/ai/conversation-summary';
+import {
+  loadConversationAttachments,
+  attachAttachmentsToMessage,
+  buildAttachmentDigestBlock,
+  type ConversationAttachment,
+} from '@/lib/setup/attachments';
 
 // ---------------------------------------------------------------------------
 // Token budget for conversation history.
@@ -35,32 +41,32 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { workspace_id, conversation_id, message, workspace_analysis, proposed_plan, profile_data, file_context, image_attachments } = body;
+    const {
+      workspace_id,
+      conversation_id,
+      message,
+      workspace_analysis,
+      proposed_plan,
+      profile_data,
+      // Phase 2: every attachment lives in chat_attachments and is
+      // referenced here by id. The legacy file_context / image_attachments
+      // request fields are gone - the upload endpoint owns persistence
+      // and digest generation.
+      attachment_ids,
+    } = body;
 
     if (!workspace_id || !conversation_id || !message?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-
-    // Validate image_attachments if provided (mirrors /api/chat validation)
-    if (image_attachments) {
-      if (!Array.isArray(image_attachments) || image_attachments.length > 3) {
-        return NextResponse.json(
-          { error: 'image_attachments must be an array of 3 or fewer images' },
-          { status: 400 },
-        );
-      }
-      const validMediaTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-      for (const img of image_attachments) {
-        if (!img.base64 || typeof img.base64 !== 'string') {
-          return NextResponse.json({ error: 'Each image must have a base64 string' }, { status: 400 });
-        }
-        if (!validMediaTypes.has(img.media_type)) {
-          return NextResponse.json({ error: `Unsupported image type: ${img.media_type}` }, { status: 400 });
-        }
-        if (img.base64.length > 7_000_000) {
-          return NextResponse.json({ error: 'Image too large (max 5MB)' }, { status: 400 });
-        }
-      }
+    // conversations.id is a uuid column. A non-UUID conversation_id used
+    // to silently fail every downstream upsert (Phase 1.5 root cause).
+    // Reject at the boundary so the server-side error path is the only
+    // path that can fail and the client gets a clear 400 instead of 500.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversation_id)) {
+      return NextResponse.json(
+        { error: 'conversation_id must be a UUID' },
+        { status: 400 },
+      );
     }
 
     const adminClient = createClient(
@@ -74,8 +80,13 @@ export async function POST(request: NextRequest) {
     // call times out or fails — the next retry will see all prior messages.
     // -----------------------------------------------------------------------
 
-    // Ensure conversation record exists (must happen before message insert)
-    await adminClient
+    // Ensure conversation record exists (must happen before message insert).
+    // We surface the error explicitly here because conversations.id is a
+    // uuid column - if the client sends anything that is not a UUID the
+    // upsert silently fails and every downstream insert (messages,
+    // setup_drafts) cascades into the same silent failure. Better to
+    // refuse the request than to drop the user's data on the floor.
+    const convoUpsert = await adminClient
       .from('conversations')
       .upsert(
         {
@@ -87,51 +98,64 @@ export async function POST(request: NextRequest) {
         },
         { onConflict: 'id' },
       );
+    if (convoUpsert.error) {
+      console.error('[setup/chat] conversations upsert failed:', convoUpsert.error);
+      return NextResponse.json(
+        {
+          error: 'Could not persist conversation. Please refresh the page and try again.',
+          detail: convoUpsert.error.message,
+        },
+        { status: 500 },
+      );
+    }
 
-    // Save user message to DB immediately — before the AI call.
-    // Stash a small metadata marker when the turn included image attachments
-    // so future turns know an image was in scope here, even though the image
-    // bytes themselves are not re-sent. Without this, the model loses all
-    // memory of past uploads and tells the user "I don't see any screenshot"
-    // when they refer back to one.
-    const hasImages = Array.isArray(image_attachments) && image_attachments.length > 0;
-    const userMessageMetadata: Record<string, unknown> = {};
-    if (hasImages) {
-      userMessageMetadata.image_count = image_attachments.length;
-      const names = (image_attachments as Array<{ name?: unknown }>)
-        .map((img) => (typeof img?.name === 'string' ? img.name : null))
-        .filter((n): n is string => !!n);
-      if (names.length > 0) userMessageMetadata.image_names = names;
+    // Save user message to DB immediately — before the AI call. Phase 2
+    // moved attachment durability into chat_attachments (with Haiku
+    // digests), so the metadata image_count / image_names / file_context
+    // band-aids that used to live on this row are gone; the row carries
+    // only the user's text now.
+    const userInsert = await adminClient
+      .from('messages')
+      .insert({
+        workspace_id,
+        conversation_id,
+        role: 'user',
+        content: message.trim(),
+        credits_used: 0,
+      })
+      .select('id')
+      .single();
+    if (userInsert.error || !userInsert.data) {
+      console.error('[setup/chat] user message insert failed:', userInsert.error);
+      return NextResponse.json(
+        {
+          error: 'Could not save your message. Please try again.',
+          detail: userInsert.error?.message ?? 'unknown insert error',
+        },
+        { status: 500 },
+      );
     }
-    // Stash parsed file content so subsequent turns can still see what the
-    // user uploaded (e.g. an Excel of goals). Capped at FILE_CONTEXT_CAP to
-    // keep the message row and downstream conversation-history tokens
-    // bounded; longer content is preserved as head + tail with a truncation
-    // marker, which is enough for the model to remember structure and key
-    // values without duplicating the full file every turn.
-    const FILE_CONTEXT_CAP = 8_000;
-    if (typeof file_context === 'string' && file_context.trim().length > 0) {
-      const fc = file_context.trim();
-      if (fc.length <= FILE_CONTEXT_CAP) {
-        userMessageMetadata.file_context = fc;
-      } else {
-        const head = fc.slice(0, Math.floor(FILE_CONTEXT_CAP * 0.7));
-        const tail = fc.slice(-Math.floor(FILE_CONTEXT_CAP * 0.25));
-        const omitted = fc.length - head.length - tail.length;
-        userMessageMetadata.file_context = `${head}\n...[file content truncated, ${omitted} chars omitted]...\n${tail}`;
-      }
+
+    const userMessageId = userInsert.data.id as string;
+
+    // Phase 2: link any attachments the client uploaded ahead of this turn
+    // to the user message we just persisted, so we can later show "this
+    // file was attached to that turn" in the UI and so chat_attachments
+    // rows have a valid message_id FK once the message exists. Validation
+    // of the attachment ids themselves happens implicitly: if any id does
+    // not belong to this conversation (RLS / membership), the UPDATE
+    // matches zero rows and we move on.
+    const incomingAttachmentIds = Array.isArray(attachment_ids)
+      ? (attachment_ids as unknown[]).filter(
+          (x): x is string => typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x),
+        )
+      : [];
+    if (incomingAttachmentIds.length > 0) {
+      await attachAttachmentsToMessage(adminClient, incomingAttachmentIds, userMessageId);
     }
-    await adminClient.from('messages').insert({
-      workspace_id,
-      conversation_id,
-      role: 'user',
-      content: message.trim(),
-      credits_used: 0,
-      ...(Object.keys(userMessageMetadata).length > 0 ? { metadata: userMessageMetadata } : {}),
-    });
 
     // Load context in parallel
-    const [workspaceResult, historyResult, conversationResult, draftResult] = await Promise.all([
+    const [workspaceResult, historyResult, conversationResult, draftResult, allAttachments] = await Promise.all([
       adminClient
         .from('workspaces')
         .select('clickup_plan_tier, clickup_team_id')
@@ -143,7 +167,7 @@ export async function POST(request: NextRequest) {
       // very long conversations that exceed the budget.
       adminClient
         .from('messages')
-        .select('role, content, metadata')
+        .select('role, content')
         .eq('conversation_id', conversation_id)
         .order('created_at', { ascending: false })
         .limit(200),
@@ -164,7 +188,19 @@ export async function POST(request: NextRequest) {
         .select('draft, version, updated_by, updated_at')
         .eq('conversation_id', conversation_id)
         .maybeSingle(),
+      // Every attachment in this conversation. We need:
+      //   - the digest of every one for the system-prompt block
+      //   - the full content of the attachments referenced on THIS turn
+      //     so the model can analyze them fresh
+      // Ordering is by created_at ASC so the digest list reads in upload
+      // order (matches the conversation timeline).
+      loadConversationAttachments(adminClient, conversation_id),
     ]);
+
+    const conversationAttachments: ConversationAttachment[] = allAttachments;
+    const currentTurnAttachments = conversationAttachments.filter((a) =>
+      incomingAttachmentIds.includes(a.id),
+    );
 
     const planTier = workspaceResult.data?.clickup_plan_tier || 'free';
     const clickupTeamId = workspaceResult.data?.clickup_team_id ?? null;
@@ -180,40 +216,15 @@ export async function POST(request: NextRequest) {
     const allMessages = (historyResult.data || []).reverse();
     const summary = conversationResult.data?.summary;
 
-    // Render each persisted row to the exact text that goes to the model, so
-    // image-attachment markers from past turns are visible in conversation
-    // history. The model's prior reply (which describes what it saw) is also
-    // in history, giving it full memory of earlier uploads even though the
-    // raw image bytes are only sent on the turn they were attached to.
-    const renderHistoryContent = (row: { role: string; content: string; metadata?: unknown }): string => {
-      if (row.role !== 'user') return row.content;
-      const meta = (row.metadata && typeof row.metadata === 'object') ? row.metadata as Record<string, unknown> : null;
-      if (!meta) return row.content;
-
-      const imageCount = typeof meta.image_count === 'number' ? meta.image_count : 0;
-      const fileContext = typeof meta.file_context === 'string' ? meta.file_context : null;
-      if (imageCount <= 0 && !fileContext) return row.content;
-
-      let prefix = '';
-      if (imageCount > 0) {
-        const names = Array.isArray(meta.image_names)
-          ? (meta.image_names as unknown[]).filter((n): n is string => typeof n === 'string')
-          : [];
-        const namesPart = names.length > 0 ? `: ${names.join(', ')}` : '';
-        const noun = imageCount === 1 ? 'image' : 'images';
-        prefix = `[Earlier in this chat the user attached ${imageCount} ${noun}${namesPart}. The image bytes are not re-attached on this turn, but your description of what they contained is in your reply that follows; treat that as your memory of the upload.]\n\n`;
-      }
-      const suffix = fileContext
-        ? `\n\n--- ATTACHED FILE CONTENT ---\n${fileContext}\n--- END ATTACHED FILE CONTENT ---`
-        : '';
-      return `${prefix}${row.content}${suffix}`;
-    };
-
-    // Count tokens from newest to oldest, keeping messages that fit the budget
+    // Phase 2 made attachments first-class: their digests live in the
+    // ATTACHMENTS IN THIS CONVERSATION block injected by the brain, not
+    // in per-message metadata. So conversation history is now just the
+    // user/assistant text - no marker injection, no metadata read.
+    // Count tokens from newest to oldest, keeping messages that fit the budget.
     let tokenCount = 0;
-    let cutoffIndex = 0; // Index where we start including messages
+    let cutoffIndex = 0;
     for (let i = allMessages.length - 1; i >= 0; i--) {
-      const msgTokens = estimateTokens(renderHistoryContent(allMessages[i]));
+      const msgTokens = estimateTokens(allMessages[i].content as string);
       if (tokenCount + msgTokens > HISTORY_TOKEN_BUDGET) {
         cutoffIndex = i + 1;
         break;
@@ -243,7 +254,7 @@ export async function POST(request: NextRequest) {
     for (let i = startIdx; i < recentMessages.length; i++) {
       conversationHistory.push({
         role: recentMessages[i].role as 'user' | 'assistant',
-        content: renderHistoryContent(recentMessages[i]),
+        content: recentMessages[i].content as string,
       });
     }
 
@@ -281,10 +292,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Enrich message with file context if the user attached files
-    const enrichedMessage = file_context
-      ? `${message.trim()}\n\n--- ATTACHED FILE CONTENT ---\n${file_context}\n--- END ATTACHED FILE CONTENT ---`
+    // Phase 2: build the user message from this turn's chat_attachments.
+    // Text files inlined as ATTACHED FILE CONTENT, images sent as vision
+    // blocks via the brain's imageAttachments path. There is no longer a
+    // legacy inline path - all attachments go through chat_attachments.
+    const inlineTextSections: string[] = [];
+    for (const att of currentTurnAttachments) {
+      if (att.extracted_text) {
+        inlineTextSections.push(
+          `--- ATTACHED FILE CONTENT (${att.filename}) ---\n${att.extracted_text}\n--- END ATTACHED FILE CONTENT ---`,
+        );
+      }
+    }
+    const enrichedMessage = inlineTextSections.length > 0
+      ? `${message.trim()}\n\n${inlineTextSections.join('\n\n')}`
       : message.trim();
+
+    const turnImageAttachments = currentTurnAttachments
+      .filter((a) => a.raw_base64 && a.media_type.startsWith('image/'))
+      .map((a) => ({
+        base64: a.raw_base64 as string,
+        media_type: a.media_type as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+        name: a.filename,
+      }));
+    const allImageAttachments = turnImageAttachments.length > 0 ? turnImageAttachments : undefined;
+
+    // ATTACHMENTS IN THIS CONVERSATION block - one entry per attachment in
+    // the conversation, with its digest. Replayed in the system prompt so
+    // the model can recall earlier uploads on later turns without us
+    // re-sending the bytes.
+    const attachmentDigestBlock = buildAttachmentDigestBlock(conversationAttachments);
 
     // -----------------------------------------------------------------------
     // PHASE 2: Call the AI brain.
@@ -307,7 +344,11 @@ export async function POST(request: NextRequest) {
       // draft.
       chatStructureSnapshot: serverDraft ?? undefined,
       profileData: profile_data || undefined,
-      imageAttachments: Array.isArray(image_attachments) && image_attachments.length > 0 ? image_attachments : undefined,
+      imageAttachments: allImageAttachments,
+      // Phase 2: digests of every attachment in this conversation. The
+      // brain injects this block into the system prompt so the model can
+      // reference earlier uploads without us re-sending bytes.
+      attachmentDigestBlock,
     });
 
     // -----------------------------------------------------------------------
@@ -320,7 +361,7 @@ export async function POST(request: NextRequest) {
     // consumers and audit trail, but the canonical store is setup_drafts
     // below. Phase 5 will drop the metadata mirror once the migration has
     // been live long enough that no in-flight conversations rely on it.
-    await adminClient.from('messages').insert({
+    const assistantInsert = await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
       role: 'assistant',
@@ -333,6 +374,12 @@ export async function POST(request: NextRequest) {
         ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
       },
     });
+    if (assistantInsert.error) {
+      // Non-fatal: the AI already responded and we still want to deliver
+      // the text to the user. Loud log so silent persistence loss never
+      // creeps back in.
+      console.error('[setup/chat] assistant message insert failed:', assistantInsert.error);
+    }
 
     // Persist the merged snapshot to setup_drafts. mergeSnapshot has already
     // applied monotonicity (preserving user-named items the model dropped),

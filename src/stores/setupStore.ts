@@ -249,7 +249,16 @@ function createSetupStore(storeKey: string) {
       (set) => ({
         currentStep: 0,
         furthestStep: 0,
-        conversationId: `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        // Conversation IDs MUST be UUIDs because conversations.id and
+        // messages.conversation_id are uuid columns - any other format
+        // makes Postgres reject every upsert silently. crypto.randomUUID
+        // is available in every browser secure context (HTTPS or
+        // localhost) and on Node 19+, which covers all environments
+        // that run this store. The hydration guard in useSetup detects
+        // legacy non-UUID values from localStorage and replaces them.
+        conversationId: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : '',
 
         workspaceAnalysis: null,
         workspaceCounts: null,
@@ -354,7 +363,10 @@ function createSetupStore(storeKey: string) {
               updates.messageCount = 0; // Reset message count
               updates.chatStructureSnapshot = null; // Clear chat snapshot
               updates.pendingImageAttachments = []; // Clear pending images
-              updates.conversationId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; // New conversation
+              // New conversation - must be a UUID (see comment in defaults).
+              updates.conversationId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : '';
             }
             if (step <= 3) {
               // Resetting from Review: clear plan + existing structure + build + manual steps

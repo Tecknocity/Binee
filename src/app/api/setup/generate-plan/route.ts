@@ -56,6 +56,16 @@ export async function POST(request: NextRequest) {
     if (!businessProfile?.businessDescription) {
       return NextResponse.json({ error: 'Missing business description' }, { status: 400 });
     }
+    // Same UUID guard as the chat route. conversation_id is optional here
+    // (callers without one only get the planner's stateless behaviour) but
+    // when provided it MUST be a UUID; otherwise both the SELECT for
+    // history loading and the setup_drafts upsert below silently fail.
+    if (conversation_id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversation_id)) {
+      return NextResponse.json(
+        { error: 'conversation_id must be a UUID' },
+        { status: 400 },
+      );
+    }
 
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

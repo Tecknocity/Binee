@@ -4,6 +4,15 @@ import { createClient } from '@supabase/supabase-js';
 
 export const maxDuration = 15;
 
+// conversations.id (and therefore setup_drafts.conversation_id, since it
+// FKs to it) is a uuid column. Reject non-UUID ids at the API boundary so
+// a malformed client cannot trigger a Postgres-level error and exercise
+// the silent-failure mode that Phase 1.5 fixed.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
 /**
  * GET /api/setup/draft?conversation_id=...
  *
@@ -28,6 +37,9 @@ export async function GET(request: NextRequest) {
     const conversationId = request.nextUrl.searchParams.get('conversation_id');
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversation_id' }, { status: 400 });
+    }
+    if (!isUuid(conversationId)) {
+      return NextResponse.json({ error: 'conversation_id must be a UUID' }, { status: 400 });
     }
 
     // Use the user-scoped client so RLS verifies workspace membership for us
@@ -98,6 +110,9 @@ export async function PATCH(request: NextRequest) {
 
     if (!conversation_id) {
       return NextResponse.json({ error: 'Missing conversation_id' }, { status: 400 });
+    }
+    if (!isUuid(conversation_id)) {
+      return NextResponse.json({ error: 'conversation_id must be a UUID' }, { status: 400 });
     }
     if (!draft || typeof draft !== 'object') {
       return NextResponse.json({ error: 'Missing or invalid draft' }, { status: 400 });

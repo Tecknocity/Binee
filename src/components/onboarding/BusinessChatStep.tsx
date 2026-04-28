@@ -25,7 +25,6 @@ import {
   getFileError,
   isImageFile,
   isAnySupportedFile,
-  formatAttachmentsForAI,
 } from '@/lib/file-parser';
 import type { FileAttachment, ImageAttachment } from '@/lib/file-parser';
 import type { ImageAttachmentPayload } from '@/types/ai';
@@ -39,7 +38,17 @@ interface BusinessChatStepProps {
   isSending: boolean;
   messageCount: number;
   profileFormData: ProfileFormData | null;
-  onSendMessage: (msg: string, fileContext?: string, imageAttachments?: ImageAttachmentPayload[]) => void;
+  /**
+   * Phase 2: send the parsed attachments themselves rather than a flattened
+   * fileContext blob. The hook layer uploads each one to
+   * /api/setup/attachments/upload (which generates the Haiku digest and
+   * persists the row) and then references them in the chat call by id.
+   */
+  onSendMessage: (
+    msg: string,
+    fileAttachments?: FileAttachment[],
+    imageAttachments?: ImageAttachmentPayload[],
+  ) => void;
   onEditProfile: () => void;
   /** Images uploaded in the profile form, pre-loaded into the chat input. */
   pendingImageAttachments?: ImageAttachmentPayload[];
@@ -275,7 +284,7 @@ export function BusinessChatStep({
     const hasAttachments = attachments.length > 0 || imageAttachments.length > 0;
     if ((!input.trim() && !hasAttachments) || isSending) return;
 
-    const fileContext = attachments.length > 0 ? formatAttachmentsForAI(attachments) : undefined;
+    const fileAttachments = attachments.length > 0 ? attachments : undefined;
     const imagePayloads: ImageAttachmentPayload[] | undefined = imageAttachments.length > 0
       ? imageAttachments.map((img) => ({
           base64: img.base64,
@@ -288,7 +297,7 @@ export function BusinessChatStep({
       ? 'Please analyze the attached image(s) for my workspace setup.'
       : 'Please analyze the attached file(s) for my workspace setup.';
 
-    onSendMessage(input.trim() || fallbackPrompt, fileContext, imagePayloads);
+    onSendMessage(input.trim() || fallbackPrompt, fileAttachments, imagePayloads);
     setInput('');
     setAttachments([]);
     setImageAttachments([]);
