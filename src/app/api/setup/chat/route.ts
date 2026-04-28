@@ -40,6 +40,16 @@ export async function POST(request: NextRequest) {
     if (!workspace_id || !conversation_id || !message?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+    // conversations.id is a uuid column. A non-UUID conversation_id used
+    // to silently fail every downstream upsert (Phase 1.5 root cause).
+    // Reject at the boundary so the server-side error path is the only
+    // path that can fail and the client gets a clear 400 instead of 500.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversation_id)) {
+      return NextResponse.json(
+        { error: 'conversation_id must be a UUID' },
+        { status: 400 },
+      );
+    }
 
     // Validate image_attachments if provided (mirrors /api/chat validation)
     if (image_attachments) {
