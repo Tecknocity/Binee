@@ -74,8 +74,13 @@ export async function POST(request: NextRequest) {
     // call times out or fails — the next retry will see all prior messages.
     // -----------------------------------------------------------------------
 
-    // Ensure conversation record exists (must happen before message insert)
-    await adminClient
+    // Ensure conversation record exists (must happen before message insert).
+    // We surface the error explicitly here because conversations.id is a
+    // uuid column - if the client sends anything that is not a UUID the
+    // upsert silently fails and every downstream insert (messages,
+    // setup_drafts) cascades into the same silent failure. Better to
+    // refuse the request than to drop the user's data on the floor.
+    const convoUpsert = await adminClient
       .from('conversations')
       .upsert(
         {
@@ -87,6 +92,16 @@ export async function POST(request: NextRequest) {
         },
         { onConflict: 'id' },
       );
+    if (convoUpsert.error) {
+      console.error('[setup/chat] conversations upsert failed:', convoUpsert.error);
+      return NextResponse.json(
+        {
+          error: 'Could not persist conversation. Please refresh the page and try again.',
+          detail: convoUpsert.error.message,
+        },
+        { status: 500 },
+      );
+    }
 
     // Save user message to DB immediately — before the AI call.
     // Stash a small metadata marker when the turn included image attachments
@@ -121,7 +136,7 @@ export async function POST(request: NextRequest) {
         userMessageMetadata.file_context = `${head}\n...[file content truncated, ${omitted} chars omitted]...\n${tail}`;
       }
     }
-    await adminClient.from('messages').insert({
+    const userInsert = await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
       role: 'user',
@@ -129,6 +144,19 @@ export async function POST(request: NextRequest) {
       credits_used: 0,
       ...(Object.keys(userMessageMetadata).length > 0 ? { metadata: userMessageMetadata } : {}),
     });
+    if (userInsert.error) {
+      // Same rationale as the conversations upsert above: surfacing the
+      // error keeps us honest about persistence failures instead of
+      // letting the AI respond to a message we never actually stored.
+      console.error('[setup/chat] user message insert failed:', userInsert.error);
+      return NextResponse.json(
+        {
+          error: 'Could not save your message. Please try again.',
+          detail: userInsert.error.message,
+        },
+        { status: 500 },
+      );
+    }
 
     // Load context in parallel
     const [workspaceResult, historyResult, conversationResult, draftResult] = await Promise.all([
@@ -320,7 +348,7 @@ export async function POST(request: NextRequest) {
     // consumers and audit trail, but the canonical store is setup_drafts
     // below. Phase 5 will drop the metadata mirror once the migration has
     // been live long enough that no in-flight conversations rely on it.
-    await adminClient.from('messages').insert({
+    const assistantInsert = await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
       role: 'assistant',
@@ -333,6 +361,12 @@ export async function POST(request: NextRequest) {
         ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
       },
     });
+    if (assistantInsert.error) {
+      // Non-fatal: the AI already responded and we still want to deliver
+      // the text to the user. Loud log so silent persistence loss never
+      // creeps back in.
+      console.error('[setup/chat] assistant message insert failed:', assistantInsert.error);
+    }
 
     // Persist the merged snapshot to setup_drafts. mergeSnapshot has already
     // applied monotonicity (preserving user-named items the model dropped),

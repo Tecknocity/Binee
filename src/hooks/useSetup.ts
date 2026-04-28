@@ -186,6 +186,43 @@ function buildWelcomeMessage(profile: ProfileFormData | null): SetupChatMessage 
 }
 
 // ---------------------------------------------------------------------------
+// Conversation ID helpers
+//
+// conversations.id and messages.conversation_id are uuid columns. Anything
+// that is not a UUID makes Postgres reject every upsert silently (the
+// supabase-js client returns {data: null, error: ...} but our routes do
+// not always inspect .error, so failures stay invisible). Phase 1's
+// setup_drafts row would never be created either, because its FK to
+// conversations(id) cannot resolve.
+//
+// We standardise on crypto.randomUUID(), which is available in every
+// browser secure context (HTTPS or localhost) and on Node 19+, and we
+// detect legacy "setup-..." values in localStorage on hydration so
+// existing users automatically migrate to a fresh UUID on next mount.
+// ---------------------------------------------------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+function newConversationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Last-resort fallback for environments that somehow lack crypto.randomUUID.
+  // Constructs a v4-shaped UUID from Math.random; not cryptographically
+  // strong, but valid format so Postgres accepts it. This branch should
+  // never run in our supported runtimes.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Timeout-wrapped fetch helper
 // ---------------------------------------------------------------------------
 
@@ -316,7 +353,12 @@ export function useSetup(): UseSetupReturn {
   // Read persisted state from store (or defaults if no store yet)
   const currentStep = (storeState?.currentStep ?? 0) as SetupStep;
   const furthestStep = (storeState?.furthestStep ?? 0) as SetupStep;
-  const conversationId = storeState?.conversationId ?? 'setup-fallback';
+  // Surface only valid UUIDs. Legacy "setup-..." values from localStorage
+  // are filtered out here so callers cannot accidentally fire API requests
+  // with an id that the database will reject; the hydration effect below
+  // replaces them on next tick.
+  const rawConversationId = storeState?.conversationId;
+  const conversationId = isUuid(rawConversationId) ? rawConversationId : null;
   const workspaceAnalysis = storeState?.workspaceAnalysis ?? null;
   const workspaceCounts = storeState?.workspaceCounts ?? null;
   const workspaceFindings = storeState?.workspaceFindings ?? [];
@@ -350,6 +392,21 @@ export function useSetup(): UseSetupReturn {
   useEffect(() => {
     if (!store) return;
     return store.subscribe(() => forceUpdate((n) => n + 1));
+  }, [store]);
+
+  // Hydration guard: any setup conversation persisted in localStorage with
+  // a legacy "setup-..." id (or any other non-UUID value) is replaced with
+  // a fresh UUID on next mount. Without this every API call for that
+  // conversation would be silently rejected by Postgres because
+  // conversations.id and messages.conversation_id are uuid columns. The
+  // user keeps their visible chat history in zustand; the server simply
+  // starts a fresh conversation row for the new UUID.
+  useEffect(() => {
+    if (!store) return;
+    const current = store.getState().conversationId;
+    if (!isUuid(current)) {
+      store.getState().setConversationId(newConversationId());
+    }
   }, [store]);
 
   // Load the canonical setup draft from setup_drafts on mount and whenever
@@ -596,7 +653,7 @@ export function useSetup(): UseSetupReturn {
           // progress would be reset; honor that by doing a true full reset
           // (form data, plan history, previously built items, etc.).
           if (isReturningFromOAuth && furthestStep > 0) {
-            const newId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const newId = newConversationId();
             store?.getState().reset(newId);
             existingStructureLoadedRef.current = false;
             buildRestoredRef.current = false;
@@ -867,9 +924,20 @@ export function useSetup(): UseSetupReturn {
       addMessage('user', msg);
       setIsSending(true);
 
-      // Read live values from the store to avoid stale closures
+      // Read live values from the store to avoid stale closures.
+      // The hydration guard guarantees conversationId is a UUID by the
+      // time any user-initiated chat fires; we re-validate here so a
+      // bare-state edge case (store still rehydrating) cannot send a
+      // request that the database will silently reject.
       const state = store?.getState();
-      const liveConversationId = state?.conversationId ?? conversationId;
+      const liveConversationId = isUuid(state?.conversationId)
+        ? state!.conversationId
+        : conversationId;
+      if (!liveConversationId) {
+        addMessage('assistant', "I'm still loading your conversation. Please try again in a moment.");
+        setIsSending(false);
+        return;
+      }
 
       const payload = {
         workspace_id,
@@ -993,7 +1061,9 @@ export function useSetup(): UseSetupReturn {
       // Pass conversation_id so the server loads the full chat history and
       // latest structure snapshot directly from the DB - same context the
       // chat AI sees. The client no longer needs to bundle it all up.
-      const liveConversationId = state?.conversationId ?? conversationId;
+      const liveConversationId = isUuid(state?.conversationId)
+        ? state!.conversationId
+        : conversationId;
       const chatSnapshot = state?.chatStructureSnapshot as Record<string, unknown> | null;
 
       const res = await fetchWithTimeout('/api/setup/generate-plan', {
@@ -1479,7 +1549,14 @@ export function useSetup(): UseSetupReturn {
 
       // Read live values from store to avoid stale closures
       const state = store?.getState();
-      const liveConversationId = state?.conversationId ?? conversationId;
+      const liveConversationId = isUuid(state?.conversationId)
+        ? state!.conversationId
+        : conversationId;
+      if (!liveConversationId) {
+        addMessage('assistant', "I'm still loading your conversation. Please try again in a moment.");
+        setIsSending(false);
+        return;
+      }
       const livePlan = state?.proposedPlan ?? proposedPlan;
       const liveProfile = state?.profileFormData ?? profileFormData;
 
@@ -1605,7 +1682,7 @@ export function useSetup(): UseSetupReturn {
   }, [store]);
 
   const restartSetup = useCallback(() => {
-    const newId = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const newId = newConversationId();
     store?.getState().reset(newId);
     // Reset all tracking refs so effects re-run with fresh data
     analysisStartedRef.current = false;
@@ -1667,7 +1744,7 @@ export function useSetup(): UseSetupReturn {
     // the user with optimistic state that will reconcile on next visit
     // (the visibility-change effect re-pulls the server draft).
     const liveConversationId = store?.getState().conversationId;
-    if (!liveConversationId) return;
+    if (!isUuid(liveConversationId)) return;
     (async () => {
       try {
         const res = await fetchWithTimeout('/api/setup/draft', {
