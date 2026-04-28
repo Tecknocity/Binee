@@ -584,6 +584,7 @@ export function useSetup(): UseSetupReturn {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            workspace_id,
             existingItems: rawExistingItemsNotInPlan,
             proposedPlan,
             businessDescription: businessDescription || undefined,
@@ -1139,6 +1140,7 @@ export function useSetup(): UseSetupReturn {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          workspace_id,
           conversation_id: liveConversationId,
           businessProfile: {
             businessDescription: liveDescription,

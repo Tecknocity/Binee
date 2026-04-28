@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
+import { assertSufficientCredits } from '@/lib/credits/guard';
 import { persistAttachment } from '@/lib/setup/attachments';
+
+// Attachment uploads are not billed per-file (intentional: bundling the
+// cost into the chat turn that follows is the user-friendly default),
+// but the Haiku digest call still costs us. Gate on the workspace
+// having ANY credits left so a depleted workspace cannot burn Haiku
+// budget. 0.01 is chosen to be smaller than every MESSAGE_CREDIT_TIERS
+// value so it acts purely as a "must have credits" check, not a charge.
+const UPLOAD_MIN_CREDITS = 0.01;
 
 // Haiku digest generation usually returns inside ~2-4s; image vision can
 // stretch a little. 30s gives comfortable headroom for both, well under
@@ -121,6 +130,12 @@ export async function POST(request: NextRequest) {
     if (!membership) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    // Platform-wide credit guard. We do not deduct here (uploads are
+    // bundled into the chat turn that follows), but we refuse uploads
+    // for a workspace that has run out of credits.
+    const creditCheck = await assertSufficientCredits(supabase, convoRow.workspace_id, UPLOAD_MIN_CREDITS);
+    if (!creditCheck.ok) return creditCheck.response;
 
     const persisted = await persistAttachment(adminClient, {
       workspace_id: convoRow.workspace_id,

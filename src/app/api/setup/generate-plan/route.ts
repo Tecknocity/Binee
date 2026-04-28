@@ -3,6 +3,8 @@ import { generateSetupPlan } from '@/lib/setup/planner';
 import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
+import { assertSufficientCredits } from '@/lib/credits/guard';
+import { MESSAGE_CREDIT_TIERS } from '@/billing/config';
 import type { BusinessProfile } from '@/lib/setup/types';
 
 export const maxDuration = 60;
@@ -11,6 +13,12 @@ export const maxDuration = 60;
 // context. Keeps the chat agreement and the generated plan in sync without
 // requiring the client to bundle the history into the request.
 const HISTORY_TOKEN_BUDGET = 30_000;
+
+// generate-plan does the same shape of Sonnet call as /api/setup/chat (one
+// turn, max_tokens 4096), so it's billed at the premium tier the chat
+// route uses. Keeps the user experience predictable: a chat turn and a
+// "Generate Structure" click cost the same.
+const GENERATE_PLAN_CREDIT_COST = MESSAGE_CREDIT_TIERS.premium;
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -38,6 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const {
+      workspace_id,
       businessProfile,
       workspaceAnalysis,
       conversationContext,
@@ -45,6 +54,7 @@ export async function POST(request: NextRequest) {
       planHistorySummary,
       conversation_id,
     } = await request.json() as {
+      workspace_id?: string;
       businessProfile: BusinessProfile;
       workspaceAnalysis?: string;
       conversationContext?: string;
@@ -56,6 +66,9 @@ export async function POST(request: NextRequest) {
     if (!businessProfile?.businessDescription) {
       return NextResponse.json({ error: 'Missing business description' }, { status: 400 });
     }
+    if (!workspace_id) {
+      return NextResponse.json({ error: 'Missing workspace_id' }, { status: 400 });
+    }
     // Same UUID guard as the chat route. conversation_id is optional here
     // (callers without one only get the planner's stateless behaviour) but
     // when provided it MUST be a UUID; otherwise both the SELECT for
@@ -66,6 +79,12 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Platform-wide credit guard: refuse the request before paying
+    // Anthropic when the workspace is over its credit limit. Same
+    // pattern every billable route now uses.
+    const creditCheck = await assertSufficientCredits(supabase, workspace_id, GENERATE_PLAN_CREDIT_COST);
+    if (!creditCheck.ok) return creditCheck.response;
 
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -183,6 +202,50 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
+    // Bill the request at the premium tier (same shape of Sonnet call as
+    // a chat turn). Fire-and-forget after the plan has shipped to the
+    // client - the credit guard above already refused the request when
+    // the workspace was over its limit, so the deduction is the
+    // accounting tail, not the gate. credit_usage gets a corresponding
+    // row so analytics can split chat vs generate-plan spend.
+    (async () => {
+      try {
+        await adminClient.rpc('deduct_credits', {
+          p_workspace_id: workspace_id,
+          p_user_id: user.id,
+          p_amount: GENERATE_PLAN_CREDIT_COST,
+          p_description: 'Setup: generate plan',
+          p_message_id: null,
+          p_metadata: {
+            credit_tier: 'premium',
+            source: 'setup_generate_plan',
+          },
+        });
+      } catch (err) {
+        console.error('[setup/generate-plan] Credit deduction failed:', err);
+      }
+
+      try {
+        await adminClient.from('credit_usage').insert({
+          user_id: user.id,
+          workspace_id,
+          action_type: 'setup',
+          session_id: conversation_id ?? null,
+          model_used: 'sonnet',
+          // Planner does not currently surface input/output token counts;
+          // those come from the Anthropic SDK response inside the planner
+          // module. Wiring that through is a follow-up - for now we log
+          // the row so analytics can count generate-plan invocations.
+          input_tokens: 0,
+          output_tokens: 0,
+          anthropic_cost_cents: 0,
+          credits_deducted: GENERATE_PLAN_CREDIT_COST,
+        });
+      } catch (err) {
+        console.error('[setup/generate-plan] credit_usage insert failed:', err);
+      }
+    })();
 
     return NextResponse.json({ plan });
   } catch (error) {
