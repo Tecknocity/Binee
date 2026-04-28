@@ -88,20 +88,53 @@ export async function POST(request: NextRequest) {
         { onConflict: 'id' },
       );
 
-    // Save user message to DB immediately — before the AI call
+    // Save user message to DB immediately — before the AI call.
+    // Stash a small metadata marker when the turn included image attachments
+    // so future turns know an image was in scope here, even though the image
+    // bytes themselves are not re-sent. Without this, the model loses all
+    // memory of past uploads and tells the user "I don't see any screenshot"
+    // when they refer back to one.
+    const hasImages = Array.isArray(image_attachments) && image_attachments.length > 0;
+    const userMessageMetadata: Record<string, unknown> = {};
+    if (hasImages) {
+      userMessageMetadata.image_count = image_attachments.length;
+      const names = (image_attachments as Array<{ name?: unknown }>)
+        .map((img) => (typeof img?.name === 'string' ? img.name : null))
+        .filter((n): n is string => !!n);
+      if (names.length > 0) userMessageMetadata.image_names = names;
+    }
+    // Stash parsed file content so subsequent turns can still see what the
+    // user uploaded (e.g. an Excel of goals). Capped at FILE_CONTEXT_CAP to
+    // keep the message row and downstream conversation-history tokens
+    // bounded; longer content is preserved as head + tail with a truncation
+    // marker, which is enough for the model to remember structure and key
+    // values without duplicating the full file every turn.
+    const FILE_CONTEXT_CAP = 8_000;
+    if (typeof file_context === 'string' && file_context.trim().length > 0) {
+      const fc = file_context.trim();
+      if (fc.length <= FILE_CONTEXT_CAP) {
+        userMessageMetadata.file_context = fc;
+      } else {
+        const head = fc.slice(0, Math.floor(FILE_CONTEXT_CAP * 0.7));
+        const tail = fc.slice(-Math.floor(FILE_CONTEXT_CAP * 0.25));
+        const omitted = fc.length - head.length - tail.length;
+        userMessageMetadata.file_context = `${head}\n...[file content truncated, ${omitted} chars omitted]...\n${tail}`;
+      }
+    }
     await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
       role: 'user',
       content: message.trim(),
       credits_used: 0,
+      ...(Object.keys(userMessageMetadata).length > 0 ? { metadata: userMessageMetadata } : {}),
     });
 
     // Load context in parallel
-    const [workspaceResult, historyResult, conversationResult] = await Promise.all([
+    const [workspaceResult, historyResult, conversationResult, draftResult] = await Promise.all([
       adminClient
         .from('workspaces')
-        .select('clickup_plan_tier')
+        .select('clickup_plan_tier, clickup_team_id')
         .eq('id', workspace_id)
         .single(),
       // Load full conversation history (up to 200 messages safety cap).
@@ -110,7 +143,7 @@ export async function POST(request: NextRequest) {
       // very long conversations that exceed the budget.
       adminClient
         .from('messages')
-        .select('role, content')
+        .select('role, content, metadata')
         .eq('conversation_id', conversation_id)
         .order('created_at', { ascending: false })
         .limit(200),
@@ -120,9 +153,24 @@ export async function POST(request: NextRequest) {
         .select('summary')
         .eq('id', conversation_id)
         .single(),
+      // The canonical workspace draft for this conversation. This is the
+      // single source of truth - chat, generate-plan, the Review screen, and
+      // the build executor all read/write this row. We deliberately ignore
+      // the client-sent chat_structure_snapshot here; it can drift from the
+      // server (manual edits in Review, switched device, cleared
+      // localStorage) and we never want chat to start from a stale draft.
+      adminClient
+        .from('setup_drafts')
+        .select('draft, version, updated_by, updated_at')
+        .eq('conversation_id', conversation_id)
+        .maybeSingle(),
     ]);
 
     const planTier = workspaceResult.data?.clickup_plan_tier || 'free';
+    const clickupTeamId = workspaceResult.data?.clickup_team_id ?? null;
+    const serverDraft = (draftResult.data?.draft && typeof draftResult.data.draft === 'object')
+      ? draftResult.data.draft as Record<string, unknown>
+      : null;
 
     // Build conversation history with token-budget approach:
     // - Send full history when it fits within the budget (most conversations)
@@ -132,11 +180,40 @@ export async function POST(request: NextRequest) {
     const allMessages = (historyResult.data || []).reverse();
     const summary = conversationResult.data?.summary;
 
+    // Render each persisted row to the exact text that goes to the model, so
+    // image-attachment markers from past turns are visible in conversation
+    // history. The model's prior reply (which describes what it saw) is also
+    // in history, giving it full memory of earlier uploads even though the
+    // raw image bytes are only sent on the turn they were attached to.
+    const renderHistoryContent = (row: { role: string; content: string; metadata?: unknown }): string => {
+      if (row.role !== 'user') return row.content;
+      const meta = (row.metadata && typeof row.metadata === 'object') ? row.metadata as Record<string, unknown> : null;
+      if (!meta) return row.content;
+
+      const imageCount = typeof meta.image_count === 'number' ? meta.image_count : 0;
+      const fileContext = typeof meta.file_context === 'string' ? meta.file_context : null;
+      if (imageCount <= 0 && !fileContext) return row.content;
+
+      let prefix = '';
+      if (imageCount > 0) {
+        const names = Array.isArray(meta.image_names)
+          ? (meta.image_names as unknown[]).filter((n): n is string => typeof n === 'string')
+          : [];
+        const namesPart = names.length > 0 ? `: ${names.join(', ')}` : '';
+        const noun = imageCount === 1 ? 'image' : 'images';
+        prefix = `[Earlier in this chat the user attached ${imageCount} ${noun}${namesPart}. The image bytes are not re-attached on this turn, but your description of what they contained is in your reply that follows; treat that as your memory of the upload.]\n\n`;
+      }
+      const suffix = fileContext
+        ? `\n\n--- ATTACHED FILE CONTENT ---\n${fileContext}\n--- END ATTACHED FILE CONTENT ---`
+        : '';
+      return `${prefix}${row.content}${suffix}`;
+    };
+
     // Count tokens from newest to oldest, keeping messages that fit the budget
     let tokenCount = 0;
     let cutoffIndex = 0; // Index where we start including messages
     for (let i = allMessages.length - 1; i >= 0; i--) {
-      const msgTokens = estimateTokens(allMessages[i].content as string);
+      const msgTokens = estimateTokens(renderHistoryContent(allMessages[i]));
       if (tokenCount + msgTokens > HISTORY_TOKEN_BUDGET) {
         cutoffIndex = i + 1;
         break;
@@ -166,7 +243,7 @@ export async function POST(request: NextRequest) {
     for (let i = startIdx; i < recentMessages.length; i++) {
       conversationHistory.push({
         role: recentMessages[i].role as 'user' | 'assistant',
-        content: recentMessages[i].content,
+        content: renderHistoryContent(recentMessages[i]),
       });
     }
 
@@ -224,7 +301,12 @@ export async function POST(request: NextRequest) {
       precomputedAnalysis: workspace_analysis || undefined,
       planTier,
       proposedPlan: proposed_plan || undefined,
-      chatStructureSnapshot: chat_structure_snapshot || undefined,
+      // The chat_structure_snapshot field on the request body is now legacy;
+      // we read the canonical draft from setup_drafts.draft above. We still
+      // accept the client value as a fallback in case setup_drafts has not
+      // been populated yet (first message in a brand-new conversation,
+      // before this migration ran in production), but server state wins.
+      chatStructureSnapshot: serverDraft ?? (chat_structure_snapshot || undefined),
       profileData: profile_data || undefined,
       imageAttachments: Array.isArray(image_attachments) && image_attachments.length > 0 ? image_attachments : undefined,
     });
@@ -235,8 +317,10 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
 
     // Save assistant message right away (don't wait for billing).
-    // Persist the structure_snapshot (when the AI emitted one) so generate-plan
-    // can read the latest agreed structure directly from the DB.
+    // We still mirror structure_snapshot into messages.metadata for legacy
+    // consumers and audit trail, but the canonical store is setup_drafts
+    // below. Phase 5 will drop the metadata mirror once the migration has
+    // been live long enough that no in-flight conversations rely on it.
     await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
@@ -250,6 +334,36 @@ export async function POST(request: NextRequest) {
         ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
       },
     });
+
+    // Persist the merged snapshot to setup_drafts. mergeSnapshot has already
+    // applied monotonicity (preserving user-named items the model dropped),
+    // the userAskedForRebuild downgrade (no unauthorized full_replace), and
+    // the truncation guard (parse failure leaves structureSnapshot
+    // undefined). When undefined, we leave the existing draft alone - that
+    // is the whole point of having a server-side source of truth: a
+    // mis-formatted or skipped snapshot from the model never destroys the
+    // approved draft.
+    if (result.structureSnapshot) {
+      const { error: draftError } = await adminClient
+        .from('setup_drafts')
+        .upsert(
+          {
+            conversation_id,
+            workspace_id,
+            clickup_team_id: clickupTeamId,
+            draft: result.structureSnapshot,
+            updated_by: 'chat',
+            // version is bumped by the upsert when the row already existed;
+            // we increment manually here so concurrent reads see the change
+            // even if the trigger ordering surprises us.
+            version: (draftResult.data?.version ?? 0) + 1,
+          },
+          { onConflict: 'conversation_id' },
+        );
+      if (draftError) {
+        console.error('[setup/chat] setup_drafts upsert failed:', draftError);
+      }
+    }
 
     // Fire-and-forget: billing, summarization, session updates.
     // These don't block the response to the client.
@@ -320,8 +434,17 @@ export async function POST(request: NextRequest) {
       content: result.content,
       credits_consumed: result.creditsToCharge,
       tool_calls: result.toolCalls,
-      // Return extracted structure snapshot so the client can persist it
-      ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
+      // Return the merged snapshot so the client cache (zustand) updates
+      // immediately, plus the new version stamp from setup_drafts so a
+      // future mount can detect that its cache is fresh. The draft itself
+      // is now authoritative on the server; this payload is for cache
+      // priming, not source of truth.
+      ...(result.structureSnapshot
+        ? {
+            structure_snapshot: result.structureSnapshot,
+            draft_version: (draftResult.data?.version ?? 0) + 1,
+          }
+        : {}),
     });
   } catch (error) {
     console.error('[POST /api/setup/chat] Error:', error);

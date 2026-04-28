@@ -64,21 +64,39 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
 
-    // Load conversation + latest snapshot from DB when conversation_id is
-    // provided. This is the single source of truth: whatever the chat AI
-    // wrote to the DB is what the planner sees. Client-sent values are used
-    // only as fallback (for legacy callers or when DB loading fails).
+    // Load conversation + latest draft. The setup_drafts row is the single
+    // source of truth for the snapshot - chat, manual edits in Review, and
+    // generate-plan all read/write the same row. Falling back to
+    // messages.metadata.structure_snapshot keeps us compatible with any
+    // conversation that started before setup_drafts existed; falling back
+    // to the client-sent value is a last resort for callers that pre-date
+    // both server stores.
     let resolvedContext = conversationContext;
     let resolvedSnapshot = chatStructureSnapshot;
 
     if (conversation_id) {
-      const { data: messages } = await adminClient
-        .from('messages')
-        .select('role, content, metadata, created_at')
-        .eq('conversation_id', conversation_id)
-        .order('created_at', { ascending: false })
-        .limit(200);
+      const [draftResult, messagesResult] = await Promise.all([
+        adminClient
+          .from('setup_drafts')
+          .select('draft')
+          .eq('conversation_id', conversation_id)
+          .maybeSingle(),
+        adminClient
+          .from('messages')
+          .select('role, content, metadata, created_at')
+          .eq('conversation_id', conversation_id)
+          .order('created_at', { ascending: false })
+          .limit(200),
+      ]);
 
+      if (draftResult.data?.draft && typeof draftResult.data.draft === 'object') {
+        const candidate = draftResult.data.draft as Record<string, unknown>;
+        if (candidate.spaces) {
+          resolvedSnapshot = candidate;
+        }
+      }
+
+      const messages = messagesResult.data;
       if (messages && messages.length > 0) {
         const ordered = [...messages].reverse();
 
@@ -99,15 +117,17 @@ export async function POST(request: NextRequest) {
           .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
           .join('\n\n');
 
-        // Extract the latest structure_snapshot from assistant message
-        // metadata. This is what the chat AI most recently agreed with the
-        // user on - the authoritative baseline for the plan.
-        for (let i = ordered.length - 1; i >= 0; i--) {
-          const meta = ordered[i].metadata as Record<string, unknown> | null;
-          const snap = meta?.structure_snapshot as Record<string, unknown> | undefined;
-          if (snap && typeof snap === 'object' && snap.spaces) {
-            resolvedSnapshot = snap;
-            break;
+        // Legacy fallback: messages.metadata.structure_snapshot. Only used
+        // when setup_drafts has no row for this conversation yet (e.g.
+        // conversations that started before this migration).
+        if (!resolvedSnapshot) {
+          for (let i = ordered.length - 1; i >= 0; i--) {
+            const meta = ordered[i].metadata as Record<string, unknown> | null;
+            const snap = meta?.structure_snapshot as Record<string, unknown> | undefined;
+            if (snap && typeof snap === 'object' && snap.spaces) {
+              resolvedSnapshot = snap;
+              break;
+            }
           }
         }
       }
@@ -127,6 +147,49 @@ export async function POST(request: NextRequest) {
       planHistorySummary,
       templates,
     });
+
+    // Write the freshly generated plan back to setup_drafts so the next
+    // chat turn (and the Review screen, and the build executor) all see
+    // the same canonical structure. We deliberately store the plan under
+    // the same `draft` JSONB column even though the shape is slightly
+    // richer than a chat snapshot - the Review screen and chat both
+    // tolerate the extra fields, and keeping one column avoids the dual-
+    // store drift this phase is fixing.
+    if (conversation_id && plan && typeof plan === 'object') {
+      const { data: convoRow } = await adminClient
+        .from('conversations')
+        .select('workspace_id')
+        .eq('id', conversation_id)
+        .maybeSingle();
+      if (convoRow?.workspace_id) {
+        const { data: existingDraft } = await adminClient
+          .from('setup_drafts')
+          .select('version')
+          .eq('conversation_id', conversation_id)
+          .maybeSingle();
+        const { data: workspaceRow } = await adminClient
+          .from('workspaces')
+          .select('clickup_team_id')
+          .eq('id', convoRow.workspace_id)
+          .maybeSingle();
+        const { error: draftError } = await adminClient
+          .from('setup_drafts')
+          .upsert(
+            {
+              conversation_id,
+              workspace_id: convoRow.workspace_id,
+              clickup_team_id: workspaceRow?.clickup_team_id ?? null,
+              draft: plan as unknown as Record<string, unknown>,
+              updated_by: 'generate_plan',
+              version: (existingDraft?.version ?? 0) + 1,
+            },
+            { onConflict: 'conversation_id' },
+          );
+        if (draftError) {
+          console.error('[setup/generate-plan] setup_drafts upsert failed:', draftError);
+        }
+      }
+    }
 
     return NextResponse.json({ plan });
   } catch (error) {

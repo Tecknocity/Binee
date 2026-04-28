@@ -116,7 +116,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   // post-Review plan and there is no fresher chat snapshot.
   const previousDraft = pickPreviousDraft(input.chatStructureSnapshot, input.proposedPlan);
   if (previousDraft) {
-    systemPrompt += `\n\nCURRENT WORKSPACE DRAFT (the user has seen this; modify in place, do not regenerate):\n${JSON.stringify(previousDraft)}`;
+    systemPrompt += `\n\nCHAT DRAFT (the proposed structure the user has been refining with you - this IS the deliverable; iterate on it, do not regenerate, never confuse it with EXISTING CLICKUP STRUCTURE above):\n${JSON.stringify(previousDraft)}`;
   }
 
   // Step 3: Single Sonnet call - no tools, no loop
@@ -156,7 +156,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
 
   const response = await anthropic.messages.create({
     model: SONNET_MODEL_ID,
-    max_tokens: 2500,
+    max_tokens: 4096,
     system: systemPrompt,
     messages,
   });
@@ -170,29 +170,49 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     .join('')
     .trim();
 
+  const wasTruncated = response.stop_reason === 'max_tokens';
+  if (wasTruncated) {
+    console.warn('[setupper-brain] Response hit max_tokens; snapshot may be truncated');
+  }
+
   // Step 3b: Extract structure snapshot from the AI response (if present).
-  // The AI outputs a JSON block between |||STRUCTURE_SNAPSHOT||| and |||END_STRUCTURE|||
-  // delimiters. We strip it from the visible content and return it separately.
+  // The AI outputs a JSON block between |||STRUCTURE_SNAPSHOT||| and
+  // |||END_STRUCTURE||| delimiters. We strip it from the visible content and
+  // return it separately. If the response was truncated mid-snapshot the
+  // closing delimiter will be missing - we still strip everything from the
+  // opening delimiter to the end so raw JSON never leaks into the chat UI.
   let finalContent = rawContent;
   let structureSnapshot: Record<string, unknown> | undefined;
 
-  const snapshotMatch = rawContent.match(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*([\s\S]*?)\s*\|\|\|END_STRUCTURE\|\|\|/);
-  if (snapshotMatch?.[1]) {
+  const closedSnapshot = rawContent.match(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*([\s\S]*?)\s*\|\|\|END_STRUCTURE\|\|\|/);
+  const openSnapshot = closedSnapshot ? null : rawContent.match(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*([\s\S]*)$/);
+  const snapshotBody = closedSnapshot?.[1] ?? openSnapshot?.[1];
+
+  if (snapshotBody) {
     try {
-      const parsed = JSON.parse(snapshotMatch[1].trim());
+      const parsed = JSON.parse(snapshotBody.trim());
       if (parsed && typeof parsed === 'object' && parsed.spaces) {
         // Server-side merge: enforce monotonicity. The model can intentionally
         // update properties of items, but it cannot accidentally drop nodes
         // the user explicitly named. Items present in the previous draft but
         // missing from this snapshot are preserved unless the model emitted
-        // _intent: "full_replace" (which the prompt only allows when the user
-        // explicitly asked to restructure).
-        structureSnapshot = mergeSnapshot(input.chatStructureSnapshot, parsed);
+        // _intent: "full_replace" AND the user actually asked to restructure
+        // (the merge applies an additional safety check on user phrasing).
+        structureSnapshot = mergeSnapshot(input.chatStructureSnapshot, parsed, input.userMessage);
       }
     } catch {
-      console.error('[setupper-brain] Failed to parse structure snapshot JSON');
+      // Truncated JSON is expected when stop_reason === max_tokens; in that
+      // case we silently drop the snapshot for this turn (the previous
+      // chatStructureSnapshot stays as the working draft) rather than
+      // surfacing parse errors. For non-truncated parse failures we log.
+      if (!wasTruncated) {
+        console.error('[setupper-brain] Failed to parse structure snapshot JSON');
+      }
     }
-    finalContent = rawContent.replace(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*[\s\S]*?\s*\|\|\|END_STRUCTURE\|\|\|/, '').trim();
+    finalContent = rawContent
+      .replace(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|\s*[\s\S]*?\s*\|\|\|END_STRUCTURE\|\|\|/, '')
+      .replace(/\|\|\|STRUCTURE_SNAPSHOT\|\|\|[\s\S]*$/, '')
+      .trim();
   }
 
   // Step 4: Calculate costs
@@ -322,14 +342,36 @@ function mergeSpace(prev: DraftSpace, next: DraftSpace): DraftSpace {
   return { ...prev, ...next, folders: mergedFolders, lists: mergedLists };
 }
 
+/**
+ * Heuristic: did the user actually authorize the model to throw out the
+ * working draft and start from scratch? Without this guard the model can
+ * unilaterally emit `_intent: "full_replace"` in response to an additive
+ * request like "add goals", which silently nukes user-approved structure.
+ */
+function userAskedForRebuild(userMessage: string | undefined): boolean {
+  if (!userMessage) return false;
+  const m = userMessage.toLowerCase();
+  return /\b(start over|from scratch|throw (this|it|them|everything) (out|away)|rebuild( this| it| everything| from)?|restart|wipe|reset|trash this|forget (everything|this)|clean slate|blank slate)\b/.test(m);
+}
+
 function mergeSnapshot(
   prev: Record<string, unknown> | undefined,
   next: Record<string, unknown>,
+  userMessage?: string,
 ): Record<string, unknown> {
   // The _intent flag is set by the model when the user explicitly asked to
   // restructure. In that case we honor a clean replace (and strip the flag
-  // before persisting so downstream consumers do not see it).
-  const intent = next._intent;
+  // before persisting so downstream consumers do not see it). If the model
+  // claimed full_replace but the user message does not actually authorize a
+  // rebuild, downgrade to update so an additive request like "add goals"
+  // never silently drops the rest of the draft.
+  let intent = next._intent;
+  if (intent === 'full_replace' && !userAskedForRebuild(userMessage)) {
+    console.warn(
+      '[setupper-brain] Model emitted _intent: "full_replace" but user message does not authorize a rebuild; downgrading to "update" to preserve the existing draft.',
+    );
+    intent = 'update';
+  }
   const cleaned: Record<string, unknown> = { ...next };
   delete cleaned._intent;
 

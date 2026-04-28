@@ -305,8 +305,12 @@ export function useSetup(): UseSetupReturn {
   const clickUp = useClickUpStatus();
   const { workspace_id, workspace } = useWorkspace();
 
-  // Get the zustand store for this workspace — auto-persists to localStorage
-  const store = workspace_id ? getSetupStore(workspace_id) : null;
+  // Get the zustand store for this workspace + currently connected ClickUp
+  // team. Switching ClickUp teams (consultant managing multiple clients)
+  // re-keys the store, so the new team starts with a fresh wizard instead
+  // of inheriting the previous client's chat, profile, draft, or plan tier.
+  const clickUpTeamId = workspace?.clickup_team_id ?? null;
+  const store = workspace_id ? getSetupStore(workspace_id, clickUpTeamId) : null;
   const storeState = store?.getState();
 
   // Read persisted state from store (or defaults if no store yet)
@@ -347,6 +351,56 @@ export function useSetup(): UseSetupReturn {
     if (!store) return;
     return store.subscribe(() => forceUpdate((n) => n + 1));
   }, [store]);
+
+  // Load the canonical setup draft from setup_drafts on mount and whenever
+  // the conversation changes. Zustand's chatStructureSnapshot becomes a
+  // cache: the server is the source of truth, this just primes the cache
+  // so the UI renders the right state immediately. Without this, manual
+  // edits made in the Review screen (which write through to setup_drafts)
+  // would not be visible in the chat tab on the next mount.
+  const draftLoadedForConvoRef = useRef<string | null>(null);
+  const loadDraftFromServer = useCallback(async (convoId: string) => {
+    try {
+      const res = await fetchWithTimeout(
+        `/api/setup/draft?conversation_id=${encodeURIComponent(convoId)}`,
+        { method: 'GET' },
+        15_000,
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const serverDraft = data?.draft;
+      if (serverDraft && typeof serverDraft === 'object') {
+        const setSnapshot = store?.getState().setChatStructureSnapshot;
+        if (setSnapshot) setSnapshot(serverDraft as Record<string, unknown>);
+      }
+    } catch (err) {
+      // Non-fatal: a missing or stale cache just means the user starts with
+      // whatever localStorage has, which is the previous behavior.
+      console.warn('[useSetup] Failed to load setup draft from server:', err);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (!store || !conversationId) return;
+    if (draftLoadedForConvoRef.current === conversationId) return;
+    draftLoadedForConvoRef.current = conversationId;
+    void loadDraftFromServer(conversationId);
+  }, [store, conversationId, loadDraftFromServer]);
+
+  // Re-pull the draft when the tab returns to the foreground. A common
+  // failure mode without this: user goes Chat -> Review -> manually edits
+  // a list -> switches back to Chat tab. The chat zustand cache is stale
+  // unless we refresh on visibility.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && conversationId) {
+        void loadDraftFromServer(conversationId);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [conversationId, loadDraftFromServer]);
 
   // Convert stored messages to UI format (with Date objects)
   const chatMessages = useMemo(() => {
@@ -1599,7 +1653,34 @@ export function useSetup(): UseSetupReturn {
   );
 
   const updatePlan = useCallback((newPlan: SetupPlan) => {
+    // Optimistic local update so the Review screen feels instant.
     store?.getState().setPlan(newPlan);
+    store?.getState().setChatStructureSnapshot(newPlan as unknown as Record<string, unknown>);
+
+    // Write through to setup_drafts so the chat AI sees the manual edits
+    // on the next turn, and the build executor reads the current plan
+    // from the canonical store. Fire-and-forget: a network blip leaves
+    // the user with optimistic state that will reconcile on next visit
+    // (the visibility-change effect re-pulls the server draft).
+    const liveConversationId = store?.getState().conversationId;
+    if (!liveConversationId) return;
+    (async () => {
+      try {
+        const res = await fetchWithTimeout('/api/setup/draft', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversation_id: liveConversationId,
+            draft: newPlan as unknown as Record<string, unknown>,
+          }),
+        }, 15_000);
+        if (!res.ok) {
+          console.error('[useSetup] PATCH /api/setup/draft failed:', res.status);
+        }
+      } catch (err) {
+        console.error('[useSetup] PATCH /api/setup/draft error:', err);
+      }
+    })();
   }, [store]);
 
   const goToDashboard = useCallback(() => {

@@ -260,6 +260,22 @@ export interface Message {
   created_at: string;
 }
 
+/**
+ * The canonical workspace structure being built in a setup conversation.
+ * Single source of truth: chat, generate-plan, the Review screen, and the
+ * build executor all read/write this row. Frontend zustand becomes a cache.
+ */
+export interface SetupDraft {
+  conversation_id: string;
+  workspace_id: string;
+  clickup_team_id: string | null;
+  draft: Record<string, unknown>;
+  version: number;
+  updated_by: 'chat' | 'review' | 'manual_edit' | 'generate_plan';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CreditTransaction {
   id: string;
   workspace_id: string;
@@ -399,6 +415,7 @@ export interface Tables {
   webhook_events: WebhookEvent;
   conversations: Conversation;
   messages: Message;
+  setup_drafts: SetupDraft;
   credit_transactions: CreditTransaction;
   setup_sessions: SetupSession;
   user_credit_accounts: UserCreditAccount;

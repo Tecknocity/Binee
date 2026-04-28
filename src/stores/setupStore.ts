@@ -231,12 +231,19 @@ export function buildDescriptionFromForm(
 }
 
 // ---------------------------------------------------------------------------
-// Store factory — keyed by workspace ID
+// Store factory — keyed by Binee workspace ID + connected ClickUp team ID
+//
+// Including the ClickUp team ID in the key isolates wizard state per
+// connected ClickUp workspace. A consultant who connects PrintGeek, then
+// switches to ShowcaseAgency, then back to PrintGeek gets a clean slate
+// for each team and the previous team's chat / draft / plan tier never
+// bleed through. Old keys remain in localStorage (data is archived, not
+// destroyed), so reconnecting a team restores its earlier wizard state.
 // ---------------------------------------------------------------------------
 
 const stores = new Map<string, ReturnType<typeof createSetupStore>>();
 
-function createSetupStore(workspaceId: string) {
+function createSetupStore(storeKey: string) {
   return create<SetupState>()(
     persist(
       (set) => ({
@@ -407,7 +414,7 @@ function createSetupStore(workspaceId: string) {
           }),
       }),
       {
-        name: `binee-setup-${workspaceId}`,
+        name: `binee-setup-${storeKey}`,
         // Only persist resumable data, not the action functions
         partialize: (state) => ({
           currentStep: state.currentStep,
@@ -446,15 +453,39 @@ function createSetupStore(workspaceId: string) {
 }
 
 /**
- * Get or create a setup store for a specific workspace.
- * Each workspace gets its own localStorage key.
+ * Get or create a setup store for a specific Binee workspace + connected
+ * ClickUp team. Pass `clickUpTeamId` whenever it is known so the wizard
+ * state is scoped to that team. When no team is connected yet (Connect
+ * step), pass null and the bare workspace key is used; once OAuth completes
+ * and a team_id is available, the caller naturally re-keys to a fresh,
+ * team-scoped store.
  */
-export function getSetupStore(workspaceId: string) {
+export function getSetupStore(workspaceId: string, clickUpTeamId: string | null = null) {
   if (!workspaceId) return null;
-  let store = stores.get(workspaceId);
+  const storeKey = clickUpTeamId ? `${workspaceId}::${clickUpTeamId}` : workspaceId;
+  let store = stores.get(storeKey);
   if (!store) {
-    store = createSetupStore(workspaceId);
-    stores.set(workspaceId, store);
+    // One-time migration for users who were mid-wizard before the store key
+    // included clickup_team_id. Without this, the key change would orphan
+    // their state and force them to restart. Only fires when the new key has
+    // never been written.
+    if (typeof window !== 'undefined' && clickUpTeamId) {
+      const newName = `binee-setup-${storeKey}`;
+      const legacyName = `binee-setup-${workspaceId}`;
+      if (!window.localStorage.getItem(newName)) {
+        const legacy = window.localStorage.getItem(legacyName);
+        if (legacy) {
+          try {
+            window.localStorage.setItem(newName, legacy);
+          } catch {
+            // localStorage write can fail (quota / private mode); not fatal,
+            // user just starts fresh on the new key.
+          }
+        }
+      }
+    }
+    store = createSetupStore(storeKey);
+    stores.set(storeKey, store);
   }
   return store;
 }

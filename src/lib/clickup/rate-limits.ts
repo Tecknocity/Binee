@@ -40,9 +40,16 @@ export function shouldThrottle(requestCount: number, planTier: string): boolean 
 /**
  * Normalise a plan name string from the ClickUp API into our canonical tier.
  * The API returns values like "Free", "Business", "Business Plus", "Enterprise", etc.
+ *
+ * Returns null when the input is missing or unrecognised. Callers must decide
+ * what to do with that, rather than silently treating an unknown plan as Free
+ * (which leads to false "Free plan limit reached" warnings on paid plans where
+ * ClickUp's /team response omits the optional plan field).
  */
-export function normalizePlanTier(rawPlan: string): ClickUpPlanTier {
+export function normalizePlanTier(rawPlan: string | null | undefined): ClickUpPlanTier | null {
+  if (!rawPlan || typeof rawPlan !== "string") return null;
   const cleaned = rawPlan.trim().toLowerCase().replace(/\s+/g, "_");
+  if (!cleaned) return null;
 
   if (cleaned in RATE_LIMITS) {
     return cleaned as ClickUpPlanTier;
@@ -53,6 +60,7 @@ export function normalizePlanTier(rawPlan: string): ClickUpPlanTier {
   if (cleaned.startsWith("business_plus") || cleaned === "businessplus") return "business_plus";
   if (cleaned.startsWith("business")) return "business";
   if (cleaned === "unlimited" || cleaned === "team") return "unlimited";
+  if (cleaned === "free" || cleaned.startsWith("free_forever")) return "free";
 
-  return "free";
+  return null;
 }
