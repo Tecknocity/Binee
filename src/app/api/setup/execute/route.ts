@@ -5,8 +5,15 @@ import { executeSetupPlan, type ExecutionItem } from '@/lib/setup/executor';
 import { syncWorkspaceStructure } from '@/lib/clickup/sync';
 import { getExistingStructure } from '@/lib/setup/snapshots';
 import { estimateBuildTime } from '@/lib/setup/eta';
+import { assertSufficientCredits } from '@/lib/credits/guard';
 import type { SetupPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
+
+// Build kicks off enrichment jobs that each spend Haiku per list / per
+// doc. We do not deduct here (enrichment is bundled into the setup
+// experience the user already paid for), but we refuse to start a build
+// for a workspace that has run out of credits.
+const EXECUTE_MIN_CREDITS = 0.01;
 
 // Structural creation fits well inside this. Enrichment is a separate
 // long-running job processed by /api/setup/run-enrichment.
@@ -56,6 +63,12 @@ export async function POST(request: NextRequest) {
     if (!membership) {
       return NextResponse.json({ error: 'Not a member of this workspace' }, { status: 403 });
     }
+
+    // Platform-wide credit guard: refuse to start a build for a
+    // workspace that has run out of credits. Enrichment fans out a lot
+    // of Haiku calls; we should not start when the workspace is depleted.
+    const creditCheck = await assertSufficientCredits(supabase, workspace_id, EXECUTE_MIN_CREDITS);
+    if (!creditCheck.ok) return creditCheck.response;
 
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

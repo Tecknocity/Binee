@@ -5,8 +5,15 @@ import { syncWorkspaceStructure } from '@/lib/clickup/sync';
 import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
+import { assertSufficientCredits } from '@/lib/credits/guard';
+import { MESSAGE_CREDIT_TIERS } from '@/billing/config';
 
 import { takeWorkspaceSnapshot } from '@/lib/setup/snapshots';
+
+// Analyze charges the light tier (matches the existing 0.55 deduction
+// later in the route). The guard at request entry uses the same value
+// so a workspace below 0.55 credits never reaches the Anthropic call.
+const ANALYZE_CREDIT_COST = MESSAGE_CREDIT_TIERS.light;
 
 export const maxDuration = 45;
 
@@ -44,6 +51,11 @@ export async function POST(request: NextRequest) {
     if (!workspace_id) {
       return NextResponse.json({ error: 'Missing workspace_id' }, { status: 400 });
     }
+
+    // Platform-wide credit guard: refuse before the Anthropic sub-agent
+    // call when the workspace is over its credit limit.
+    const creditCheck = await assertSufficientCredits(supabase, workspace_id, ANALYZE_CREDIT_COST);
+    if (!creditCheck.ok) return creditCheck.response;
 
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

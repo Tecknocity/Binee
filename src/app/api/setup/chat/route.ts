@@ -4,12 +4,19 @@ import { createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 import { summarizeOlderMessages } from '@/lib/ai/conversation-summary';
+import { assertSufficientCredits } from '@/lib/credits/guard';
+import { MESSAGE_CREDIT_TIERS } from '@/billing/config';
 import {
   loadConversationAttachments,
   attachAttachmentsToMessage,
   buildAttachmentDigestBlock,
   type ConversationAttachment,
 } from '@/lib/setup/attachments';
+
+// Setup chat charges the premium tier (matches classifyMessageCost for
+// isSetup === true). The credit guard at request entry uses the same
+// constant so the pre-check and the eventual deduct_credits agree.
+const SETUP_CHAT_CREDIT_COST = MESSAGE_CREDIT_TIERS.premium;
 
 // ---------------------------------------------------------------------------
 // Token budget for conversation history.
@@ -68,6 +75,14 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Platform-wide credit guard: refuse before paying Anthropic when the
+    // workspace is over its credit limit. The previous behaviour deducted
+    // AFTER the model call, which meant a user at 0 credits still got a
+    // free response (deduct_credits would correctly fail, but we'd
+    // already eaten the API cost).
+    const creditCheck = await assertSufficientCredits(supabase, workspace_id, SETUP_CHAT_CREDIT_COST);
+    if (!creditCheck.ok) return creditCheck.response;
 
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
