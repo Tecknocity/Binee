@@ -13,6 +13,7 @@ import {
   Upload,
   FileSpreadsheet,
   FileText,
+  CreditCard,
   X,
 } from 'lucide-react';
 import type { ProfileFormData } from '@/hooks/useSetup';
@@ -85,6 +86,18 @@ const TEAM_SIZES = [
   '50+ people',
 ] as const;
 
+// Phase 3: user picks the plan from this list. Values match the canonical
+// tier slugs in ClickUpPlanTier (lib/clickup/rate-limits) so the choice
+// flows directly into workspaces.clickup_plan_tier without any mapping
+// step. Labels mirror what ClickUp shows users in their billing UI.
+const CLICKUP_PLANS = [
+  { value: 'free', label: 'Free' },
+  { value: 'unlimited', label: 'Unlimited' },
+  { value: 'business', label: 'Business' },
+  { value: 'business_plus', label: 'Business Plus' },
+  { value: 'enterprise', label: 'Enterprise' },
+] as const;
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -99,6 +112,7 @@ export function BusinessProfileForm({
   const [workStyle, setWorkStyle] = useState(initialData?.workStyle ?? '');
   const [services, setServices] = useState(initialData?.services ?? '');
   const [teamSize, setTeamSize] = useState(initialData?.teamSize ?? '');
+  const [clickupPlan, setClickupPlan] = useState<ProfileFormData['clickupPlan']>(initialData?.clickupPlan ?? '');
 
   // File upload state
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -109,8 +123,8 @@ export function BusinessProfileForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const effectiveIndustry = industry === 'Other' ? industryCustom.trim() : industry;
-  const isValid = effectiveIndustry && workStyle && services.trim() && teamSize;
-  const filledCount = [effectiveIndustry, workStyle, services.trim(), teamSize].filter(Boolean).length;
+  const isValid = !!effectiveIndustry && !!workStyle && services.trim().length > 0 && !!teamSize && !!clickupPlan;
+  const filledCount = [effectiveIndustry, workStyle, services.trim(), teamSize, clickupPlan].filter(Boolean).length;
   const totalAttachmentCount = attachments.length + imageAttachments.length;
 
   const handleFiles = async (files: FileList | File[]) => {
@@ -212,6 +226,7 @@ export function BusinessProfileForm({
       workStyle,
       services: services.trim(),
       teamSize,
+      clickupPlan,
       fileContext: attachments.length > 0 ? formatAttachmentsForAI(attachments) : undefined,
       imageAttachments: imagePayloads,
     });
@@ -329,6 +344,32 @@ export function BusinessProfileForm({
                   {size}
                 </button>
               ))}
+            </div>
+          </FormField>
+
+          {/* ClickUp plan (Phase 3: replaces OAuth scrape) */}
+          <FormField
+            icon={<CreditCard className="w-4 h-4" />}
+            label="ClickUp plan"
+            hint="Pick the plan your ClickUp workspace is on. We use this to know which features (Goals, Automations, etc.) we can build for you. ClickUp's API does not expose this reliably, so we ask you directly."
+            required
+          >
+            <div className="relative">
+              <select
+                value={clickupPlan}
+                onChange={(e) => setClickupPlan(e.target.value as ProfileFormData['clickupPlan'])}
+                className={`w-full appearance-none bg-navy-light border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-all pr-10 ${clickupPlan ? 'text-text-primary' : 'text-text-muted'}`}
+              >
+                <option value="" disabled>
+                  Select your ClickUp plan...
+                </option>
+                {CLICKUP_PLANS.map((plan) => (
+                  <option key={plan.value} value={plan.value}>
+                    {plan.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
             </div>
           </FormField>
 
@@ -457,12 +498,12 @@ export function BusinessProfileForm({
           <div className="pt-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-text-muted">Profile completeness</span>
-              <span className="text-xs font-medium text-accent">{filledCount}/4</span>
+              <span className="text-xs font-medium text-accent">{filledCount}/5</span>
             </div>
             <div className="h-1.5 rounded-full bg-border overflow-hidden">
               <div
                 className="h-full rounded-full bg-accent transition-all duration-500 ease-out"
-                style={{ width: `${(filledCount / 4) * 100}%` }}
+                style={{ width: `${(filledCount / 5) * 100}%` }}
               />
             </div>
           </div>

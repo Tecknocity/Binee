@@ -52,6 +52,14 @@ export interface ProfileFormData {
   workStyle: string;
   services: string;
   teamSize: string;
+  /**
+   * Phase 3: the user's ClickUp plan, picked from a required dropdown.
+   * Replaces the OAuth scrape that often returned "free" for paid
+   * accounts because ClickUp's /team endpoint does not document a plan
+   * field. Source of truth flows from this field to
+   * workspaces.clickup_plan_tier with clickup_plan_tier_source = 'user'.
+   */
+  clickupPlan: 'free' | 'unlimited' | 'business' | 'business_plus' | 'enterprise' | '';
   /** Optional context from uploaded files (Excel, CSV, etc.) */
   fileContext?: string;
   /**
@@ -1794,8 +1802,35 @@ export function useSetup(): UseSetupReturn {
       if (pendingImages && pendingImages.length > 0) {
         store?.getState().setPendingImageAttachments(pendingImages);
       }
+
+      // Phase 3: persist the user-selected ClickUp plan to
+      // workspaces.clickup_plan_tier (with source='user') so the chat
+      // route, build executor, and Review limits all read the correct
+      // value. Fire-and-forget; a transient failure leaves the previous
+      // server value alone and the user can re-submit.
+      if (workspace_id && persistedData.clickupPlan) {
+        const planTier = persistedData.clickupPlan;
+        (async () => {
+          try {
+            const res = await fetchWithTimeout(
+              '/api/workspace/clickup-plan',
+              {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace_id, plan_tier: planTier }),
+              },
+              15_000,
+            );
+            if (!res.ok) {
+              console.error('[useSetup] PATCH /api/workspace/clickup-plan failed:', res.status);
+            }
+          } catch (err) {
+            console.error('[useSetup] PATCH /api/workspace/clickup-plan error:', err);
+          }
+        })();
+      }
     },
-    [store],
+    [store, workspace_id],
   );
 
   const updatePlan = useCallback((newPlan: SetupPlan) => {

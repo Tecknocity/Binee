@@ -16,6 +16,7 @@ import {
   X,
   FileSpreadsheet,
   FileText,
+  CreditCard,
 } from 'lucide-react';
 import type { SetupChatMessage, ProfileFormData } from '@/hooks/useSetup';
 import {
@@ -62,7 +63,7 @@ interface BusinessChatStepProps {
 // Profile progress items
 // ---------------------------------------------------------------------------
 
-type ProfileFieldKey = 'industry' | 'workStyle' | 'teamSize' | 'services';
+type ProfileFieldKey = 'industry' | 'workStyle' | 'teamSize' | 'services' | 'clickupPlan';
 
 const PROFILE_FORM_FIELDS: Array<{
   key: ProfileFieldKey;
@@ -93,6 +94,12 @@ const PROFILE_FORM_FIELDS: Array<{
     label: 'Services / Products',
     icon: Wrench,
     hint: 'What does your business offer?',
+  },
+  {
+    key: 'clickupPlan',
+    label: 'ClickUp plan',
+    icon: CreditCard,
+    hint: 'Which ClickUp plan are you on?',
   },
 ];
 
@@ -366,6 +373,16 @@ export function BusinessChatStep({
     const val = profileFormData[key];
     if (!val || !val.trim()) return null;
     if (key === 'workStyle') return WORK_STYLE_LABELS[val] || val;
+    if (key === 'clickupPlan') {
+      const labels: Record<string, string> = {
+        free: 'Free',
+        unlimited: 'Unlimited',
+        business: 'Business',
+        business_plus: 'Business Plus',
+        enterprise: 'Enterprise',
+      };
+      return labels[val] ?? val;
+    }
     return val;
   };
 

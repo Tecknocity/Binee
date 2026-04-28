@@ -202,7 +202,11 @@ export async function POST(request: NextRequest) {
       incomingAttachmentIds.includes(a.id),
     );
 
-    const planTier = workspaceResult.data?.clickup_plan_tier || 'free';
+    // Phase 3: planTier may legitimately be null when the user has not yet
+    // selected a plan in the profile form. Pass null through to the brain
+    // so it knows to skip the CLICKUP PLAN block in the system prompt
+    // rather than telling the model a fabricated default.
+    const planTier = workspaceResult.data?.clickup_plan_tier ?? null;
     const clickupTeamId = workspaceResult.data?.clickup_team_id ?? null;
     const serverDraft = (draftResult.data?.draft && typeof draftResult.data.draft === 'object')
       ? draftResult.data.draft as Record<string, unknown>

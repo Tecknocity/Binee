@@ -124,6 +124,8 @@ interface SetupState {
     workStyle: string;
     services: string;
     teamSize: string;
+    /** Phase 3: user-selected ClickUp plan (replaces OAuth scrape). */
+    clickupPlan: 'free' | 'unlimited' | 'business' | 'business_plus' | 'enterprise' | '';
   } | null;
   chatMessages: SetupChatMessage[];
   businessDescription: string;
@@ -174,7 +176,7 @@ interface SetupState {
   setConversationId: (id: string) => void;
   setAnalysis: (analysis: string | null, counts: WorkspaceCounts | null, findings: Finding[], recommendations: Recommendation[]) => void;
   setProfileFormCompleted: (completed: boolean) => void;
-  setProfileFormData: (data: { industry: string; industryCustom: string; workStyle: string; services: string; teamSize: string } | null) => void;
+  setProfileFormData: (data: SetupState['profileFormData']) => void;
   addMessage: (msg: SetupChatMessage) => void;
   setBusinessDescription: (desc: string) => void;
   setPendingImageAttachments: (images: ImageAttachmentPayload[]) => void;
@@ -217,7 +219,7 @@ const WORK_STYLE_LABELS: Record<string, string> = {
 
 /** Rebuild a business description from the saved profile form data. */
 export function buildDescriptionFromForm(
-  data: { industry: string; industryCustom: string; workStyle: string; services: string; teamSize: string } | null,
+  data: SetupState['profileFormData'],
   fileContext?: string,
 ): string {
   if (!data) return '';
