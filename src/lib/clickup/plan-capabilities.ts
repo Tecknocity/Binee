@@ -368,16 +368,22 @@ export function buildPlanContextForAI(planTier: string): string {
   const unsupported = getUnsupportedFeatures(planTier);
 
   if (unsupported.length === 0) {
-    return `CLICKUP PLAN: ${caps.label} - All features are available. You can recommend any ClickUp features.`;
+    return `CLICKUP PLAN (advisory hint, not authoritative): ${caps.label} - all features are available.`;
   }
 
+  // Advisory tone: ClickUp's API often does not expose plan info, so this hint
+  // can be wrong. The system prompt has a separate PLAN TIER block that tells
+  // the model to defer to the user's stated plan. This block must NOT contain
+  // hard "do not recommend" language - that contradicts the deference rule and
+  // produces the failure mode where the model keeps insisting "Goals are not
+  // available on Free" even after the user has corrected it.
   const lines = [
-    `CLICKUP PLAN: ${caps.label}`,
-    `Available: Spaces, Folders, Lists, Tags, Custom Fields, Statuses${caps.docs ? ', Docs' : ''}${caps.timeTracking ? ', Time Tracking' : ''}`,
-    `NOT available on this plan:`,
-    ...unsupported.map(u => `- ${u.feature} (requires ${u.requiredPlan}+ plan)`),
-    '',
-    `IMPORTANT: Do NOT recommend ${unsupported.map(u => u.feature).join(', ')} in the workspace structure. These features are not available on the user's ${caps.label} plan. Focus on what IS available. If the user asks about these features, explain they need to upgrade their ClickUp plan.`,
+    `CLICKUP PLAN (advisory hint, may be wrong - defer to anything the user states):`,
+    `Detected: ${caps.label}`,
+    `Documented for this tier:`,
+    `- Available: Spaces, Folders, Lists, Tags, Custom Fields, Statuses${caps.docs ? ', Docs' : ''}${caps.timeTracking ? ', Time Tracking' : ''}`,
+    `- Typically not available: ${unsupported.map(u => `${u.feature} (needs ${u.requiredPlan}+)`).join(', ')}`,
+    `If the user has stated a different plan in chat, trust them. Do not push back, do not keep telling them a feature is unavailable on a plan they have already said they do not have.`,
   ];
 
   return lines.join('\n');

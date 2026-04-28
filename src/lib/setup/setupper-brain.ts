@@ -116,7 +116,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   // post-Review plan and there is no fresher chat snapshot.
   const previousDraft = pickPreviousDraft(input.chatStructureSnapshot, input.proposedPlan);
   if (previousDraft) {
-    systemPrompt += `\n\nCURRENT WORKSPACE DRAFT (the user has seen this; modify in place, do not regenerate):\n${JSON.stringify(previousDraft)}`;
+    systemPrompt += `\n\nCHAT DRAFT (the proposed structure the user has been refining with you - this IS the deliverable; iterate on it, do not regenerate, never confuse it with EXISTING CLICKUP STRUCTURE above):\n${JSON.stringify(previousDraft)}`;
   }
 
   // Step 3: Single Sonnet call - no tools, no loop
