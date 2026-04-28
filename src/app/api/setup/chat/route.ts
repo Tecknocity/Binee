@@ -131,10 +131,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Load context in parallel
-    const [workspaceResult, historyResult, conversationResult] = await Promise.all([
+    const [workspaceResult, historyResult, conversationResult, draftResult] = await Promise.all([
       adminClient
         .from('workspaces')
-        .select('clickup_plan_tier')
+        .select('clickup_plan_tier, clickup_team_id')
         .eq('id', workspace_id)
         .single(),
       // Load full conversation history (up to 200 messages safety cap).
@@ -153,9 +153,24 @@ export async function POST(request: NextRequest) {
         .select('summary')
         .eq('id', conversation_id)
         .single(),
+      // The canonical workspace draft for this conversation. This is the
+      // single source of truth - chat, generate-plan, the Review screen, and
+      // the build executor all read/write this row. We deliberately ignore
+      // the client-sent chat_structure_snapshot here; it can drift from the
+      // server (manual edits in Review, switched device, cleared
+      // localStorage) and we never want chat to start from a stale draft.
+      adminClient
+        .from('setup_drafts')
+        .select('draft, version, updated_by, updated_at')
+        .eq('conversation_id', conversation_id)
+        .maybeSingle(),
     ]);
 
     const planTier = workspaceResult.data?.clickup_plan_tier || 'free';
+    const clickupTeamId = workspaceResult.data?.clickup_team_id ?? null;
+    const serverDraft = (draftResult.data?.draft && typeof draftResult.data.draft === 'object')
+      ? draftResult.data.draft as Record<string, unknown>
+      : null;
 
     // Build conversation history with token-budget approach:
     // - Send full history when it fits within the budget (most conversations)
@@ -286,7 +301,12 @@ export async function POST(request: NextRequest) {
       precomputedAnalysis: workspace_analysis || undefined,
       planTier,
       proposedPlan: proposed_plan || undefined,
-      chatStructureSnapshot: chat_structure_snapshot || undefined,
+      // The chat_structure_snapshot field on the request body is now legacy;
+      // we read the canonical draft from setup_drafts.draft above. We still
+      // accept the client value as a fallback in case setup_drafts has not
+      // been populated yet (first message in a brand-new conversation,
+      // before this migration ran in production), but server state wins.
+      chatStructureSnapshot: serverDraft ?? (chat_structure_snapshot || undefined),
       profileData: profile_data || undefined,
       imageAttachments: Array.isArray(image_attachments) && image_attachments.length > 0 ? image_attachments : undefined,
     });
@@ -297,8 +317,10 @@ export async function POST(request: NextRequest) {
     // -----------------------------------------------------------------------
 
     // Save assistant message right away (don't wait for billing).
-    // Persist the structure_snapshot (when the AI emitted one) so generate-plan
-    // can read the latest agreed structure directly from the DB.
+    // We still mirror structure_snapshot into messages.metadata for legacy
+    // consumers and audit trail, but the canonical store is setup_drafts
+    // below. Phase 5 will drop the metadata mirror once the migration has
+    // been live long enough that no in-flight conversations rely on it.
     await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
@@ -312,6 +334,36 @@ export async function POST(request: NextRequest) {
         ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
       },
     });
+
+    // Persist the merged snapshot to setup_drafts. mergeSnapshot has already
+    // applied monotonicity (preserving user-named items the model dropped),
+    // the userAskedForRebuild downgrade (no unauthorized full_replace), and
+    // the truncation guard (parse failure leaves structureSnapshot
+    // undefined). When undefined, we leave the existing draft alone - that
+    // is the whole point of having a server-side source of truth: a
+    // mis-formatted or skipped snapshot from the model never destroys the
+    // approved draft.
+    if (result.structureSnapshot) {
+      const { error: draftError } = await adminClient
+        .from('setup_drafts')
+        .upsert(
+          {
+            conversation_id,
+            workspace_id,
+            clickup_team_id: clickupTeamId,
+            draft: result.structureSnapshot,
+            updated_by: 'chat',
+            // version is bumped by the upsert when the row already existed;
+            // we increment manually here so concurrent reads see the change
+            // even if the trigger ordering surprises us.
+            version: (draftResult.data?.version ?? 0) + 1,
+          },
+          { onConflict: 'conversation_id' },
+        );
+      if (draftError) {
+        console.error('[setup/chat] setup_drafts upsert failed:', draftError);
+      }
+    }
 
     // Fire-and-forget: billing, summarization, session updates.
     // These don't block the response to the client.
@@ -382,8 +434,17 @@ export async function POST(request: NextRequest) {
       content: result.content,
       credits_consumed: result.creditsToCharge,
       tool_calls: result.toolCalls,
-      // Return extracted structure snapshot so the client can persist it
-      ...(result.structureSnapshot ? { structure_snapshot: result.structureSnapshot } : {}),
+      // Return the merged snapshot so the client cache (zustand) updates
+      // immediately, plus the new version stamp from setup_drafts so a
+      // future mount can detect that its cache is fresh. The draft itself
+      // is now authoritative on the server; this payload is for cache
+      // priming, not source of truth.
+      ...(result.structureSnapshot
+        ? {
+            structure_snapshot: result.structureSnapshot,
+            draft_version: (draftResult.data?.version ?? 0) + 1,
+          }
+        : {}),
     });
   } catch (error) {
     console.error('[POST /api/setup/chat] Error:', error);
