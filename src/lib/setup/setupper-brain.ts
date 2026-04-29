@@ -12,12 +12,14 @@ import type { ClarifierAsk, WorkspaceBrief } from './contracts';
 const SONNET_MODEL_ID = 'claude-sonnet-4-20250514';
 
 /**
- * Multi-agent feature flag. When enabled, the chat orchestrator routes:
- *   - Clarifier (Haiku) for discovery turns (no plan yet)
- *   - Reviser   (Sonnet) for post-generation refinement turns
- * When disabled, falls back to the legacy single-Sonnet handler unchanged.
+ * Multi-agent feature flag. ON by default; the legacy single-Sonnet
+ * handler stays as the explicit opt-out path.
+ *   - default / unset: multi-agent runs (Clarifier + Reviser + Generator)
+ *   - 'false':         legacy single-Sonnet path runs unchanged
+ * Use the env var only as an emergency rollback if multi-agent
+ * misbehaves in production.
  */
-const MULTI_AGENT_SETUP = process.env.MULTI_AGENT_SETUP === 'true';
+const MULTI_AGENT_SETUP = process.env.MULTI_AGENT_SETUP !== 'false';
 
 interface SetupperInput {
   userMessage: string;
