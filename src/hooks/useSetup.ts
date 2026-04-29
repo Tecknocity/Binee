@@ -97,6 +97,18 @@ export interface UseSetupReturn {
   workspaceCounts: { spaces: number; folders: number; lists: number; tasks: number; members: number } | null;
   workspaceFindings: Array<{ type: string; text: string }>;
   workspaceRecommendations: Array<{ action: string; text: string }>;
+  /** Multi-agent: latest Clarifier ask, rendered as a chip bubble in chat. */
+  lastClarifierAsk: {
+    topic: string;
+    question: string;
+    suggested_options: string[];
+  } | null;
+  /** Multi-agent: latest Clarifier brief, rendered as a checkpoint above the input. */
+  lastClarifierBrief: Record<string, unknown> | null;
+  /** Multi-agent: true once discovery is complete; powers Generate Structure highlight. */
+  isReadyForGenerate: boolean;
+  /** Status of the most recent Review-edit save to setup_drafts. */
+  draftSaveState: 'idle' | 'saving' | 'saved' | 'failed';
   handleClickUpConnect: () => void;
   refreshClickUpStatus: () => Promise<void>;
   isRefreshingClickUp: boolean;
@@ -385,6 +397,10 @@ export function useSetup(): UseSetupReturn {
   // the fallback index from actual chatMessages to avoid count drift.
   const proposedPlan = storeState?.proposedPlan ?? null;
   const existingStructure = storeState?.existingStructure ?? null;
+  const lastClarifierAsk = storeState?.lastClarifierAsk ?? null;
+  const lastClarifierBrief = storeState?.lastClarifierBrief ?? null;
+  const isReadyForGenerate = storeState?.isReadyForGenerate ?? false;
+  const draftSaveState = storeState?.draftSaveState ?? 'idle';
   const manualSteps = storeState?.manualSteps ?? [];
   const persistedExecutionResult = storeState?.executionResult ?? null;
   const persistedExecutionItems = storeState?.executionItems ?? [];
@@ -1041,6 +1057,32 @@ export function useSetup(): UseSetupReturn {
               // Save structure snapshot if the AI returned one
               if (data.structure_snapshot) {
                 store?.getState().setChatStructureSnapshot(data.structure_snapshot);
+              }
+              // Multi-agent: persist the latest Clarifier output to the store
+              // so BusinessChatStep can render the chip bubble + the
+              // "What I've gathered" checkpoint contextually. Each turn
+              // overwrites the previous values - we only render the latest.
+              const liveStore = store?.getState();
+              if (liveStore) {
+                liveStore.setLastClarifierAsk(
+                  data.ask && typeof data.ask === 'object' && data.ask.question
+                    ? {
+                        topic: String(data.ask.topic ?? ''),
+                        question: String(data.ask.question),
+                        suggested_options: Array.isArray(data.ask.suggested_options)
+                          ? data.ask.suggested_options.map(String)
+                          : [],
+                      }
+                    : null,
+                );
+                liveStore.setLastClarifierBrief(
+                  data.brief && typeof data.brief === 'object'
+                    ? (data.brief as Record<string, unknown>)
+                    : null,
+                );
+                if (typeof data.ready === 'boolean') {
+                  liveStore.setIsReadyForGenerate(data.ready);
+                }
               }
               setIsSending(false);
               return;
@@ -1842,12 +1884,17 @@ export function useSetup(): UseSetupReturn {
 
     // Write through to setup_drafts so the chat AI sees the manual edits
     // on the next turn, and the build executor reads the current plan
-    // from the canonical store. Fire-and-forget: a network blip leaves
-    // the user with optimistic state that will reconcile on next visit
-    // (the visibility-change effect re-pulls the server draft).
+    // from the canonical store. We previously fire-and-forgot the PATCH,
+    // which meant a network blip silently discarded the user's edit.
+    // Now we surface save state via the store and retry once on failure
+    // so the Review UI can show "saving / saved / failed" feedback.
     const liveConversationId = store?.getState().conversationId;
     if (!isUuid(liveConversationId)) return;
-    (async () => {
+
+    const setSaveState = store?.getState().setDraftSaveState;
+    setSaveState?.('saving');
+
+    const persist = async (attempt: number): Promise<boolean> => {
       try {
         const res = await fetchWithTimeout('/api/setup/draft', {
           method: 'PATCH',
@@ -1857,12 +1904,26 @@ export function useSetup(): UseSetupReturn {
             draft: newPlan as unknown as Record<string, unknown>,
           }),
         }, 15_000);
-        if (!res.ok) {
-          console.error('[useSetup] PATCH /api/setup/draft failed:', res.status);
-        }
+        if (res.ok) return true;
+        console.error(`[useSetup] PATCH /api/setup/draft failed (attempt ${attempt + 1}):`, res.status);
+        return false;
       } catch (err) {
-        console.error('[useSetup] PATCH /api/setup/draft error:', err);
+        console.error(`[useSetup] PATCH /api/setup/draft error (attempt ${attempt + 1}):`, err);
+        return false;
       }
+    };
+
+    (async () => {
+      const ok = await persist(0);
+      if (ok) {
+        setSaveState?.('saved');
+        return;
+      }
+      // Backoff and retry once. A second failure surfaces the failure
+      // state so the user sees the indicator and can react.
+      await new Promise((r) => setTimeout(r, 2000));
+      const okRetry = await persist(1);
+      setSaveState?.(okRetry ? 'saved' : 'failed');
     })();
   }, [store]);
 
@@ -1897,6 +1958,10 @@ export function useSetup(): UseSetupReturn {
     workspaceCounts,
     workspaceFindings,
     workspaceRecommendations,
+    lastClarifierAsk,
+    lastClarifierBrief,
+    isReadyForGenerate,
+    draftSaveState,
     handleClickUpConnect,
     refreshClickUpStatus,
     isRefreshingClickUp,

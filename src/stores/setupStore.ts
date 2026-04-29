@@ -141,6 +141,31 @@ interface SetupState {
   // Step 2-3: Chat structure snapshot (built incrementally during chat)
   chatStructureSnapshot: Record<string, unknown> | null;
 
+  /**
+   * Status of the most recent PATCH /api/setup/draft call (manual edits in
+   * Review). Surfaces in the Review UI as a small "Saving / Saved / Failed"
+   * indicator so the user has feedback that their edit reached the server.
+   * Previously the PATCH was fire-and-forget, which meant a network blip
+   * silently discarded edits.
+   */
+  draftSaveState: 'idle' | 'saving' | 'saved' | 'failed';
+
+  /**
+   * Multi-agent: the latest Clarifier output for the chat UI. `ask` powers
+   * the chip bubble next to the most recent assistant message; `brief`
+   * powers the "What I've gathered" pinned checkpoint above the input;
+   * `ready` decides whether to highlight the Generate Structure button.
+   * Overwritten each turn - we deliberately do not persist a history of
+   * asks because only the latest one is interactive.
+   */
+  lastClarifierAsk: {
+    topic: string;
+    question: string;
+    suggested_options: string[];
+  } | null;
+  lastClarifierBrief: Record<string, unknown> | null;
+  isReadyForGenerate: boolean;
+
   // Step 3: Plan
   proposedPlan: SetupPlan | null;
   planHistory: SetupPlan[]; // All previously generated plans (v1, v2, ...)
@@ -183,6 +208,10 @@ interface SetupState {
   clearPendingImageAttachments: () => void;
   incrementMessageCount: () => void;
   setChatStructureSnapshot: (snapshot: Record<string, unknown> | null) => void;
+  setDraftSaveState: (state: 'idle' | 'saving' | 'saved' | 'failed') => void;
+  setLastClarifierAsk: (ask: SetupState['lastClarifierAsk']) => void;
+  setLastClarifierBrief: (brief: Record<string, unknown> | null) => void;
+  setIsReadyForGenerate: (ready: boolean) => void;
   setPlan: (plan: SetupPlan | null) => void;
   pushPlanToHistory: (plan: SetupPlan) => void;
   setExistingStructure: (structure: ExistingWorkspaceStructure | null) => void;
@@ -275,6 +304,10 @@ function createSetupStore(storeKey: string) {
         pendingImageAttachments: [],
 
         chatStructureSnapshot: null,
+        draftSaveState: 'idle',
+        lastClarifierAsk: null,
+        lastClarifierBrief: null,
+        isReadyForGenerate: false,
         proposedPlan: null,
         planHistory: [],
         existingStructure: null,
@@ -316,6 +349,10 @@ function createSetupStore(storeKey: string) {
         incrementMessageCount: () => set((s) => ({ messageCount: s.messageCount + 1 })),
 
         setChatStructureSnapshot: (snapshot) => set({ chatStructureSnapshot: snapshot }),
+        setDraftSaveState: (state) => set({ draftSaveState: state }),
+        setLastClarifierAsk: (ask) => set({ lastClarifierAsk: ask }),
+        setLastClarifierBrief: (brief) => set({ lastClarifierBrief: brief }),
+        setIsReadyForGenerate: (ready) => set({ isReadyForGenerate: ready }),
         setPlan: (plan) => set({ proposedPlan: plan }),
         pushPlanToHistory: (plan) => set((s) => ({
           planHistory: [...s.planHistory.slice(-4), plan], // Keep last 5 max
@@ -365,6 +402,9 @@ function createSetupStore(storeKey: string) {
               updates.messageCount = 0; // Reset message count
               updates.chatStructureSnapshot = null; // Clear chat snapshot
               updates.pendingImageAttachments = []; // Clear pending images
+              updates.lastClarifierAsk = null; // Clear multi-agent chip
+              updates.lastClarifierBrief = null; // Clear multi-agent brief
+              updates.isReadyForGenerate = false; // Reset Generate gate
               // New conversation - must be a UUID (see comment in defaults).
               updates.conversationId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
                 ? crypto.randomUUID()
@@ -410,6 +450,10 @@ function createSetupStore(storeKey: string) {
             messageCount: 0,
             pendingImageAttachments: [],
             chatStructureSnapshot: null,
+            draftSaveState: 'idle',
+            lastClarifierAsk: null,
+            lastClarifierBrief: null,
+            isReadyForGenerate: false,
             proposedPlan: null,
             planHistory: [],
             existingStructure: null,

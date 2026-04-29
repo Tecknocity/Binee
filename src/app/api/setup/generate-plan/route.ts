@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       if (convoRow?.workspace_id) {
         const { data: existingDraft } = await adminClient
           .from('setup_drafts')
-          .select('version')
+          .select('version, draft')
           .eq('conversation_id', conversation_id)
           .maybeSingle();
         const { data: workspaceRow } = await adminClient
@@ -184,6 +184,34 @@ export async function POST(request: NextRequest) {
           .select('clickup_team_id')
           .eq('id', convoRow.workspace_id)
           .maybeSingle();
+
+        // Preserve multi-agent discovery state (coverage / ready / brief /
+        // questions_asked) when overwriting the draft with the freshly
+        // generated plan. Without this, the next chat turn would see
+        // ready=undefined and re-route to the Clarifier instead of the
+        // Reviser, restarting discovery from scratch. The fields live on
+        // the same JSONB row and are additive to whatever the planner
+        // emits.
+        const priorDraft = (existingDraft?.draft && typeof existingDraft.draft === 'object')
+          ? existingDraft.draft as Record<string, unknown>
+          : null;
+        const carryover: Record<string, unknown> = {};
+        if (priorDraft) {
+          if (priorDraft.coverage !== undefined) carryover.coverage = priorDraft.coverage;
+          if (priorDraft.brief !== undefined) carryover.brief = priorDraft.brief;
+          if (priorDraft.questions_asked !== undefined) carryover.questions_asked = priorDraft.questions_asked;
+          // Force ready=true on the post-generation draft so the chat route
+          // correctly routes the next turn to the Reviser, not the
+          // Clarifier. The user clicked Generate Structure - discovery is
+          // unambiguously over.
+          carryover.ready = true;
+        }
+
+        const draftToWrite = {
+          ...(plan as unknown as Record<string, unknown>),
+          ...carryover,
+        };
+
         const { error: draftError } = await adminClient
           .from('setup_drafts')
           .upsert(
@@ -191,7 +219,7 @@ export async function POST(request: NextRequest) {
               conversation_id,
               workspace_id: convoRow.workspace_id,
               clickup_team_id: workspaceRow?.clickup_team_id ?? null,
-              draft: plan as unknown as Record<string, unknown>,
+              draft: draftToWrite,
               updated_by: 'generate_plan',
               version: (existingDraft?.version ?? 0) + 1,
             },

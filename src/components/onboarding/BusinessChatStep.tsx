@@ -4,21 +4,14 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Send,
   Sparkles,
-  Briefcase,
   Loader2,
-  CheckCircle2,
-  Circle,
-  Users,
-  Wrench,
-  GitBranch,
   Pencil,
   Paperclip,
   X,
   FileSpreadsheet,
   FileText,
-  CreditCard,
 } from 'lucide-react';
-import type { SetupChatMessage, ProfileFormData } from '@/hooks/useSetup';
+import type { SetupChatMessage } from '@/hooks/useSetup';
 import {
   parseFile,
   parseImage,
@@ -38,7 +31,6 @@ interface BusinessChatStepProps {
   messages: SetupChatMessage[];
   isSending: boolean;
   messageCount: number;
-  profileFormData: ProfileFormData | null;
   /**
    * Phase 2: send the parsed attachments themselves rather than a flattened
    * fileContext blob. The hook layer uploads each one to
@@ -55,74 +47,46 @@ interface BusinessChatStepProps {
   pendingImageAttachments?: ImageAttachmentPayload[];
   /** Called once the pending images have been attached to a chat message. */
   onConsumePendingImages?: () => void;
+  /**
+   * Multi-agent: latest Clarifier ask. When present, render chip
+   * suggestions under the most recent assistant message so the user can
+   * tap a typical answer instead of typing it. Click on a chip sends the
+   * chip text as the next message.
+   */
+  clarifierAsk?: {
+    topic: string;
+    question: string;
+    suggested_options: string[];
+  } | null;
+  /**
+   * Multi-agent: discovery brief shown as a "What I've gathered" pinned
+   * checkpoint above the input once `isReadyForGenerate` is true.
+   */
+  clarifierBrief?: Record<string, unknown> | null;
+  /**
+   * Multi-agent: true once discovery is complete. Highlights Generate
+   * Structure so the user knows the next step.
+   */
+  isReadyForGenerate?: boolean;
 }
 
 // (Templates removed - profile form now collects business info directly)
 
 // ---------------------------------------------------------------------------
-// Profile progress items
-// ---------------------------------------------------------------------------
-
-type ProfileFieldKey = 'industry' | 'workStyle' | 'teamSize' | 'services' | 'clickupPlan';
-
-const PROFILE_FORM_FIELDS: Array<{
-  key: ProfileFieldKey;
-  label: string;
-  icon: typeof Briefcase;
-  hint: string;
-}> = [
-  {
-    key: 'industry',
-    label: 'Industry',
-    icon: Briefcase,
-    hint: 'What industry is your business in?',
-  },
-  {
-    key: 'workStyle',
-    label: 'Work style',
-    icon: GitBranch,
-    hint: 'How is your work structured?',
-  },
-  {
-    key: 'teamSize',
-    label: 'Team size',
-    icon: Users,
-    hint: 'How many team members?',
-  },
-  {
-    key: 'services',
-    label: 'Services / Products',
-    icon: Wrench,
-    hint: 'What does your business offer?',
-  },
-  {
-    key: 'clickupPlan',
-    label: 'ClickUp plan',
-    icon: CreditCard,
-    hint: 'Which ClickUp plan are you on?',
-  },
-];
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-
-const WORK_STYLE_LABELS: Record<string, string> = {
-  'client-based': 'Client-based',
-  'product-based': 'Product-based',
-  'project-based': 'Project-based',
-  'operations-based': 'Operations-based',
-};
 
 export function BusinessChatStep({
   messages,
   isSending,
   messageCount,
-  profileFormData,
   onSendMessage,
   onEditProfile,
   pendingImageAttachments,
   onConsumePendingImages,
+  clarifierAsk,
+  clarifierBrief,
+  isReadyForGenerate,
 }: BusinessChatStepProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -137,12 +101,22 @@ export function BusinessChatStep({
   const totalAttachmentCount = attachments.length + imageAttachments.length;
 
   const canGenerate = messageCount >= 1;
-  const completeness = profileFormData
-    ? PROFILE_FORM_FIELDS.filter((f) => {
-        const val = profileFormData[f.key];
-        return val && val.trim().length > 0;
-      }).length
-    : 0;
+
+  // Multi-agent: render chip suggestions only on the most recent assistant
+  // message. Older asks stay as plain text so the chat history doesn't
+  // become a wall of stale interactive elements.
+  const lastAssistantId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i].id;
+    }
+    return null;
+  })();
+  const showChipsForCurrentTurn =
+    !!clarifierAsk && !isSending && (clarifierAsk.suggested_options?.length ?? 0) > 0;
+  const briefSummary =
+    clarifierBrief && typeof clarifierBrief === 'object' && typeof (clarifierBrief as { summary?: unknown }).summary === 'string'
+      ? ((clarifierBrief as { summary: string }).summary)
+      : null;
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -362,30 +336,6 @@ export function BusinessChatStep({
     return FileText;
   };
 
-  const isFormFieldCollected = (key: ProfileFieldKey): boolean => {
-    if (!profileFormData) return false;
-    const val = profileFormData[key];
-    return !!val && val.trim().length > 0;
-  };
-
-  const getFormFieldValue = (key: ProfileFieldKey): string | null => {
-    if (!profileFormData) return null;
-    const val = profileFormData[key];
-    if (!val || !val.trim()) return null;
-    if (key === 'workStyle') return WORK_STYLE_LABELS[val] || val;
-    if (key === 'clickupPlan') {
-      const labels: Record<string, string> = {
-        free: 'Free',
-        unlimited: 'Unlimited',
-        business: 'Business',
-        business_plus: 'Business Plus',
-        enterprise: 'Enterprise',
-      };
-      return labels[val] ?? val;
-    }
-    return val;
-  };
-
   return (
     <div
       className={`flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
@@ -421,6 +371,25 @@ export function BusinessChatStep({
                   <div className="whitespace-pre-wrap text-[15px] leading-[1.7] text-text-primary">
                     {renderMarkdownLite(msg.content)}
                   </div>
+                  {showChipsForCurrentTurn && msg.id === lastAssistantId && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {clarifierAsk!.suggested_options.map((opt, idx) => (
+                        <button
+                          key={`${opt}-${idx}`}
+                          type="button"
+                          onClick={() => onSendMessage(opt)}
+                          disabled={isSending}
+                          className="px-3 py-1.5 text-xs font-medium text-text-secondary
+                            bg-surface border border-border rounded-full
+                            hover:border-accent/40 hover:text-accent hover:bg-accent/5
+                            disabled:opacity-50 disabled:cursor-not-allowed
+                            transition-colors whitespace-nowrap"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -447,63 +416,49 @@ export function BusinessChatStep({
           </div>
         </div>
 
-        {/* Input container - Claude Code style unified card */}
-        <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">
-          {/* Top bar - discovery progress + actions, visually distinct */}
-          <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-navy-dark/60">
-            {/* Left: Discovery progress */}
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="text-[11px] font-semibold text-text-secondary whitespace-nowrap">
-                Discovery {completeness}/{PROFILE_FORM_FIELDS.length}
-              </span>
-              <div className="flex items-center gap-2">
-                {PROFILE_FORM_FIELDS.map((field) => {
-                  const collected = isFormFieldCollected(field.key);
-                  const displayVal = getFormFieldValue(field.key);
-                  return (
-                    <div
-                      key={field.key}
-                      className="flex items-center gap-1"
-                      title={collected && displayVal ? `${field.label}: ${displayVal}` : field.hint}
-                    >
-                      {collected ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                      ) : (
-                        <Circle className="w-3.5 h-3.5 text-text-muted shrink-0" />
-                      )}
-                      <span className={`text-[11px] ${collected ? 'text-text-primary' : 'text-text-muted'} whitespace-nowrap`}>
-                        {field.label}
-                      </span>
-                    </div>
-                  );
-                })}
+        {/* Multi-agent: "What I've gathered" checkpoint pinned above the
+            input when discovery completes. Borrowed from the OpenAI Deep
+            Research "verification" pattern - a single quiet line of context
+            so the user can sanity-check what the model captured before
+            clicking Generate Structure. */}
+        {isReadyForGenerate && briefSummary && (
+          <div className="shrink-0 mb-2 px-4 py-2.5 rounded-xl bg-accent/5 border border-accent/20 text-xs text-text-secondary">
+            <div className="flex items-start gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold text-accent">What I&apos;ve gathered. </span>
+                <span>{briefSummary}</span>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Right: Action buttons */}
-            <div className="flex items-center gap-2.5 shrink-0">
+        {/* Input container - Claude Code style unified card */}
+        <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">
+          {/* Top bar - action buttons */}
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-navy-dark/60">
+            <button
+              type="button"
+              onClick={onEditProfile}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium
+                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
+                transition-colors whitespace-nowrap"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Update Info
+            </button>
+
+            {canGenerate && !isSending && (
               <button
-                type="button"
-                onClick={onEditProfile}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium
-                  text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
-                  transition-colors whitespace-nowrap"
+                onClick={() => onSendMessage('__generate_structure__')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
+                  hover:bg-accent-hover transition-colors whitespace-nowrap
+                  ${isReadyForGenerate ? 'shadow-md shadow-accent/40 ring-2 ring-accent/30' : 'shadow-sm shadow-accent/20'}`}
               >
-                <Pencil className="w-3.5 h-3.5" />
-                Update Info
+                <Sparkles className="w-3.5 h-3.5" />
+                Generate Structure
               </button>
-
-              {canGenerate && !isSending && (
-                <button
-                  onClick={() => onSendMessage('__generate_structure__')}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
-                    hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Generate Structure
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
           {/* File error */}
@@ -637,14 +592,25 @@ export function BusinessChatStep({
 
 function renderMarkdownLite(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
+  return parts.flatMap((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return (
+      return [
         <strong key={i} className="font-semibold">
           {part.slice(2, -2)}
-        </strong>
-      );
+        </strong>,
+      ];
     }
-    return <span key={i}>{part}</span>;
+    // Auto-bold "Generate Structure" inside plain-text segments so the user
+    // can spot the call to action even when the model forgets to format it.
+    return part.split(/(Generate Structure)/g).map((segment, j) => {
+      if (segment === 'Generate Structure') {
+        return (
+          <strong key={`${i}-${j}`} className="font-semibold">
+            {segment}
+          </strong>
+        );
+      }
+      return <span key={`${i}-${j}`}>{segment}</span>;
+    });
   });
 }

@@ -28,7 +28,7 @@ import {
 import type { SetupPlan, StatusPlan } from '@/lib/setup/types';
 import type { ExistingWorkspaceStructure } from '@/stores/setupStore';
 import type { ExecutionItem } from '@/lib/setup/executor';
-import { getUnsupportedFeatures, getPlanCapabilities, getPlanLimits } from '@/lib/clickup/plan-capabilities';
+import { getUnsupportedFeatures, getPlanCapabilities, getPlanLimits, getDefaultListViews } from '@/lib/clickup/plan-capabilities';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -63,13 +63,19 @@ interface StructurePreviewProps {
   onApproveWithDeletions?: (selectedItems: ExecutionItem[], opts?: ApproveOptions) => void;
   /** Approve but skip deletions (keep old items) */
   onApproveSkipDeletions?: (opts?: ApproveOptions) => void;
+  /**
+   * Status of the most recent PATCH /api/setup/draft from `onPlanChange`.
+   * Renders a small badge so the user knows their manual edits reached the
+   * server (or didn't). Previously the PATCH was fire-and-forget.
+   */
+  draftSaveState?: 'idle' | 'saving' | 'saved' | 'failed';
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, existingItemsNotInPlan, isLoadingRecommendations, onApproveWithDeletions, onApproveSkipDeletions }: StructurePreviewProps) {
+export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existingStructure, planTier, itemsToDelete, existingItemsNotInPlan, isLoadingRecommendations, onApproveWithDeletions, onApproveSkipDeletions, draftSaveState }: StructurePreviewProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [generateEnrichment, setGenerateEnrichment] = useState(true);
   const hasBineeDeletions = itemsToDelete && itemsToDelete.length > 0;
@@ -430,9 +436,28 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
     <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-6 overflow-hidden">
       {/* Header */}
       <div className="py-4 shrink-0">
-        <h2 className="text-xl font-semibold text-text-primary">
-          {editable ? 'Edit Workspace Structure' : 'Proposed Workspace Structure'}
-        </h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold text-text-primary">
+            {editable ? 'Edit Workspace Structure' : 'Proposed Workspace Structure'}
+          </h2>
+          {editable && draftSaveState && draftSaveState !== 'idle' && (
+            <span
+              className={`text-xs font-medium px-2 py-1 rounded-md whitespace-nowrap
+                ${draftSaveState === 'saving' ? 'bg-text-muted/15 text-text-muted' : ''}
+                ${draftSaveState === 'saved'  ? 'bg-green-500/10 text-green-400' : ''}
+                ${draftSaveState === 'failed' ? 'bg-red-500/10 text-red-400' : ''}`}
+              title={
+                draftSaveState === 'failed'
+                  ? 'Could not reach the server. Your last edit may not be saved. Make another change to retry.'
+                  : undefined
+              }
+            >
+              {draftSaveState === 'saving' && 'Saving...'}
+              {draftSaveState === 'saved'  && 'Saved'}
+              {draftSaveState === 'failed' && 'Save failed - retry by editing again'}
+            </span>
+          )}
+        </div>
         <p className="text-sm text-text-secondary mt-1">
           {plan.spaces.length} {plan.spaces.length === 1 ? 'space' : 'spaces'} &middot;{' '}
           {totalLists} {totalLists === 1 ? 'list' : 'lists'}
@@ -686,6 +711,41 @@ export function StructurePreview({ plan, onApprove, onEdit, onPlanChange, existi
             </div>
           </TreeNode>
         )}
+
+        {/* Recommended Views.
+            Views are auto-created on every list during Build (executor.ts);
+            previously they were silent. Surfacing them here so the user can
+            see what they're getting before they click Approve. List of view
+            types is plan-tier dependent - source of truth is plan-capabilities. */}
+        {planTier && (() => {
+          const views = getDefaultListViews(planTier);
+          if (!views || views.length === 0) return null;
+          return (
+            <TreeNode
+              icon={<Settings2 className="w-4 h-4 text-text-muted" />}
+              label="Recommended Views"
+              badge={`${views.length}`}
+              badgeColor="bg-text-muted/15 text-text-muted"
+              defaultOpen
+            >
+              <div className="py-1 pl-2">
+                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                  {views.map((v) => (
+                    <span
+                      key={v}
+                      className="text-xs font-medium px-2 py-1 rounded-md bg-text-muted/10 text-text-secondary border border-border capitalize"
+                    >
+                      {v}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  Binee creates these views on every list automatically during build.
+                </p>
+              </div>
+            </TreeNode>
+          );
+        })()}
 
         {/* Recommended Tags */}
         {(plan.recommended_tags?.length || editable) && (

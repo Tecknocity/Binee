@@ -5,8 +5,19 @@ import { classifyMessageCost } from '@/billing/engine/flat-credit-classifier';
 import { calculateAnthropicCost } from '@/billing/engine/token-converter';
 import { loadUserMemories } from '@/lib/ai/user-memory';
 import type { ImageAttachmentPayload } from '@/types/ai';
+import { runClarifier } from './clarifier';
+import { runReviser } from './reviser';
+import type { ClarifierAsk, WorkspaceBrief } from './contracts';
 
 const SONNET_MODEL_ID = 'claude-sonnet-4-20250514';
+
+/**
+ * Multi-agent feature flag. When enabled, the chat orchestrator routes:
+ *   - Clarifier (Haiku) for discovery turns (no plan yet)
+ *   - Reviser   (Sonnet) for post-generation refinement turns
+ * When disabled, falls back to the legacy single-Sonnet handler unchanged.
+ */
+const MULTI_AGENT_SETUP = process.env.MULTI_AGENT_SETUP === 'true';
 
 interface SetupperInput {
   userMessage: string;
@@ -90,6 +101,14 @@ interface SetupperResult {
   structureSnapshot?: Record<string, unknown>;
   /** Phase 4: emitted only when a snapshot was successfully merged this turn. */
   snapshotDiagnostics?: SnapshotDiagnostics;
+  /** Multi-agent: which role handled this turn (for telemetry). */
+  role?: 'clarifier' | 'generator-chat' | 'reviser';
+  /** Multi-agent: the next chip-ask for the UI when the Clarifier ran. */
+  ask?: ClarifierAsk;
+  /** Multi-agent: the discovery brief when ready=true. */
+  brief?: WorkspaceBrief;
+  /** Multi-agent: true once discovery is complete (Generate Structure can be highlighted). */
+  ready?: boolean;
 }
 
 let client: Anthropic | null = null;
@@ -109,6 +128,15 @@ function getClient(): Anthropic {
  * full context awareness.
  */
 export async function handleSetupMessage(input: SetupperInput): Promise<SetupperResult> {
+  // Multi-agent orchestrator. When the flag is on we route this turn to the
+  // Clarifier (Haiku) or the Reviser (Sonnet) based on whether a generated
+  // plan already exists. The legacy single-Sonnet path stays untouched as
+  // the fallback - flip the env var off and behavior reverts exactly.
+  if (MULTI_AGENT_SETUP) {
+    const routed = await routeMultiAgentTurn(input);
+    if (routed) return routed;
+  }
+
   const anthropic = getClient();
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -600,5 +628,98 @@ function mergeSnapshotWithDiagnostics(
       renameCount: renames.length,
       removeCount: removes.length,
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Multi-agent orchestrator
+//
+// Decides whether this chat turn is a discovery turn (Clarifier, Haiku) or
+// a post-generation refinement turn (Reviser, Sonnet). The decision is
+// based purely on whether the canonical draft has both `coverage.ready === true`
+// AND a non-empty spaces array - meaning discovery completed AND the user
+// has clicked Generate Structure at some point.
+// ---------------------------------------------------------------------------
+
+function isReadyDraft(snap: Record<string, unknown> | undefined): boolean {
+  if (!snap || typeof snap !== 'object') return false;
+  const ready = snap.ready;
+  const spaces = snap.spaces;
+  return ready === true && Array.isArray(spaces) && spaces.length > 0;
+}
+
+async function routeMultiAgentTurn(input: SetupperInput): Promise<SetupperResult | null> {
+  // We need the workspace analysis even on the multi-agent path so the
+  // Clarifier can speak intelligently about what the user already has.
+  // Reuse the same pre-computed analyzer output the legacy path uses.
+  let workspaceAnalysis = input.precomputedAnalysis || '';
+  if (!workspaceAnalysis && input.conversationHistory.length === 0) {
+    try {
+      const analysisResult = await executeSubAgent(
+        getClient(),
+        'workspace_analyst',
+        'Provide a complete snapshot of the current workspace structure: all spaces, folders, lists, statuses, custom fields, and team members.',
+        input.workspaceId,
+      );
+      workspaceAnalysis = analysisResult.summary;
+    } catch (error) {
+      console.error('[setupper-brain] Multi-agent analyzer failed:', error);
+      workspaceAnalysis = 'Unable to analyze workspace. It may be empty or not connected.';
+    }
+  }
+
+  const draft = input.chatStructureSnapshot;
+
+  // Reviser path: discovery already done AND a plan exists in the draft.
+  if (isReadyDraft(draft)) {
+    const result = await runReviser({
+      userMessage: input.userMessage,
+      conversationHistory: input.conversationHistory,
+      currentPlan: draft as Record<string, unknown>,
+      brief: (draft?.brief as Record<string, unknown> | undefined) ?? null,
+      planTier: input.planTier,
+      industry: input.profileData?.industry,
+    });
+    return {
+      content: result.content,
+      creditsToCharge: result.creditsToCharge,
+      totalInputTokens: result.totalInputTokens,
+      totalOutputTokens: result.totalOutputTokens,
+      anthropicCostCents: result.anthropicCostCents,
+      toolCalls: result.toolCalls,
+      structureSnapshot: result.structureSnapshot,
+      snapshotDiagnostics: result.snapshotDiagnostics,
+      role: 'reviser',
+      ready: true,
+    };
+  }
+
+  // Clarifier path: discovery in progress.
+  const result = await runClarifier({
+    userMessage: input.userMessage,
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    conversationId: input.conversationId,
+    conversationHistory: input.conversationHistory,
+    precomputedAnalysis: workspaceAnalysis,
+    planTier: input.planTier,
+    chatStructureSnapshot: draft,
+    profileData: input.profileData,
+    imageAttachments: input.imageAttachments,
+    attachmentDigestBlock: input.attachmentDigestBlock,
+  });
+  return {
+    content: result.content,
+    creditsToCharge: result.creditsToCharge,
+    totalInputTokens: result.totalInputTokens,
+    totalOutputTokens: result.totalOutputTokens,
+    anthropicCostCents: result.anthropicCostCents,
+    toolCalls: result.toolCalls,
+    structureSnapshot: result.structureSnapshot,
+    snapshotDiagnostics: result.snapshotDiagnostics,
+    role: 'clarifier',
+    ask: result.ask,
+    brief: result.brief,
+    ready: result.ready,
   };
 }

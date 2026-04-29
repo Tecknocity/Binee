@@ -148,11 +148,13 @@ export default function SetupWizard() {
             messages={setup.chatMessages}
             isSending={setup.isSending}
             messageCount={setup.chatMessages.filter((m) => m.role === 'user').length}
-            profileFormData={setup.profileFormData}
             onSendMessage={setup.sendMessage}
             onEditProfile={setup.editProfile}
             pendingImageAttachments={setup.pendingImageAttachments}
             onConsumePendingImages={setup.clearPendingImageAttachments}
+            clarifierAsk={setup.lastClarifierAsk}
+            clarifierBrief={setup.lastClarifierBrief}
+            isReadyForGenerate={setup.isReadyForGenerate}
           />
         )}
 
@@ -176,6 +178,7 @@ export default function SetupWizard() {
             isLoadingRecommendations={setup.isLoadingRecommendations}
             onApproveWithDeletions={setup.confirmDeletionsAndBuild}
             onApproveSkipDeletions={setup.skipDeletionsAndBuild}
+            draftSaveState={setup.draftSaveState}
           />
         )}
 

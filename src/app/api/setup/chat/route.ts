@@ -436,12 +436,16 @@ export async function POST(request: NextRequest) {
       // to log is non-fatal - the draft itself is already saved above.
       if (result.snapshotDiagnostics) {
         const d = result.snapshotDiagnostics;
+        // source: 'chat' when legacy single-Sonnet ran; 'clarifier' or
+        // 'reviser' when multi-agent routed. Helps us slice the audit
+        // trail by role without reading every row.
+        const auditSource: string = result.role ?? 'chat';
         const { error: auditError } = await adminClient
           .from('setup_draft_changes')
           .insert({
             workspace_id,
             conversation_id,
-            source: 'chat',
+            source: auditSource,
             intent: d.intent,
             intent_full_replace_downgraded: d.intentFullReplaceDowngraded,
             truncated_response: d.truncatedResponse,
@@ -482,12 +486,16 @@ export async function POST(request: NextRequest) {
       }
 
       try {
+        // Multi-agent: when role === 'clarifier' the call was Haiku, otherwise
+        // Sonnet (legacy generator-chat or Reviser). Logging the actual model
+        // matters for the cost analytics dashboards.
+        const modelUsed = result.role === 'clarifier' ? 'haiku' : 'sonnet';
         await adminClient.from('credit_usage').insert({
           user_id: authUser.id,
           workspace_id,
           action_type: 'chat',
           session_id: conversation_id,
-          model_used: 'sonnet',
+          model_used: modelUsed,
           input_tokens: result.totalInputTokens ?? 0,
           output_tokens: result.totalOutputTokens ?? 0,
           anthropic_cost_cents: result.anthropicCostCents ?? 0,
@@ -538,6 +546,15 @@ export async function POST(request: NextRequest) {
             draft_version: (draftResult.data?.version ?? 0) + 1,
           }
         : {}),
+      // Multi-agent: extra fields for the chat UI. `ask` powers the chip
+      // bubble, `brief` powers the "What I've gathered" checkpoint, `ready`
+      // tells the client whether to highlight Generate Structure. All fields
+      // are optional - the legacy single-Sonnet path returns none of them
+      // and the client treats their absence as "behave as before".
+      ...(result.role ? { role: result.role } : {}),
+      ...(result.ask ? { ask: result.ask } : {}),
+      ...(result.brief ? { brief: result.brief } : {}),
+      ...(typeof result.ready === 'boolean' ? { ready: result.ready } : {}),
     });
   } catch (error) {
     console.error('[POST /api/setup/chat] Error:', error);
