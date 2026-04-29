@@ -441,32 +441,17 @@ export function BusinessChatStep({
               />
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {canGenerate && !isSending && (
-                <button
-                  onClick={() => onSendMessage('__generate_structure__')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
-                    hover:bg-accent-hover transition-colors whitespace-nowrap
-                    ${isReadyForGenerate ? 'shadow-md shadow-accent/40 ring-2 ring-accent/30' : 'shadow-sm shadow-accent/20'}`}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Generate Structure
-                </button>
-              )}
+            {canGenerate && !isSending && (
               <button
-                onClick={handleSend}
-                disabled={(!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isSending}
-                className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
-                  hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Send message"
+                onClick={() => onSendMessage('__generate_structure__')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
+                  hover:bg-accent-hover transition-colors whitespace-nowrap shrink-0
+                  ${isReadyForGenerate ? 'shadow-md shadow-accent/40 ring-2 ring-accent/30' : 'shadow-sm shadow-accent/20'}`}
               >
-                {isSending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
+                <Sparkles className="w-3.5 h-3.5" />
+                Generate Structure
               </button>
-            </div>
+            )}
           </div>
 
           {/* File error */}
@@ -537,8 +522,10 @@ export function BusinessChatStep({
             </div>
           )}
 
-          {/* Textarea */}
-          <div className="px-4 py-3 border-t border-border">
+          {/* Textarea with Send button anchored to bottom-right (Claude
+              Code pattern). The textarea reserves right padding so long
+              text never slides under the button. */}
+          <div className="relative px-4 py-3 border-t border-border">
             <textarea
               ref={textareaRef}
               value={input}
@@ -552,8 +539,21 @@ export function BusinessChatStep({
               }
               disabled={isSending}
               rows={2}
-              className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
+              className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed pr-11"
             />
+            <button
+              onClick={handleSend}
+              disabled={(!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isSending}
+              className="absolute right-3 bottom-3 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
+                hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Send message"
+            >
+              {isSending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </button>
           </div>
         </div>
       </div>
