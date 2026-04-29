@@ -403,8 +403,12 @@ export function BusinessChatStep({
           </div>
         )}
 
-        {/* Input container - Claude Code style unified card */}
-        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+        {/* Input container - Claude Code style unified card. The card
+            itself shows the focus state (focus-within border) so the
+            textarea can drop its own outline; otherwise the textarea's
+            global :focus-visible outline overlaps the absolutely-
+            positioned Send button. */}
+        <div className="bg-surface border border-border focus-within:border-accent/50 rounded-2xl overflow-hidden transition-colors">
           {/* Single toolbar row: Update Info + paperclip on the left,
               Generate Structure + Send on the right. Consolidating these
               into one row removes the second row that used to live under
@@ -539,7 +543,7 @@ export function BusinessChatStep({
               }
               disabled={isSending}
               rows={2}
-              className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed pr-11"
+              className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none focus-visible:outline-none disabled:opacity-50 max-h-[200px] leading-relaxed pr-12"
             />
             <button
               onClick={handleSend}
