@@ -405,6 +405,10 @@ export function useSetup(): UseSetupReturn {
   const persistedExecutionResult = storeState?.executionResult ?? null;
   const persistedExecutionItems = storeState?.executionItems ?? [];
   const buildCompleted = storeState?.buildCompleted ?? false;
+  const persistedIsGeneratingPlan = storeState?.isGeneratingPlan ?? false;
+  const planGenerationStartedAt = storeState?.planGenerationStartedAt ?? null;
+  const persistedIsExecutingBuild = storeState?.isExecutingBuild ?? false;
+  const executionStartedAt = storeState?.executionStartedAt ?? null;
   const buildId = storeState?.buildId ?? null;
   const buildStatus = storeState?.buildStatus ?? null;
   const buildStartedAt = storeState?.buildStartedAt ?? null;
@@ -500,7 +504,6 @@ export function useSetup(): UseSetupReturn {
   const [executionProgress, setExecutionProgress] = useState<ExecutionProgress | null>(null);
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
   const [executionItems, setExecutionItems] = useState<ExecutionItem[]>([]);
-  const [isExecuting, setIsExecuting] = useState(false);
 
   // Restore execution state from persisted store (handles async Zustand hydration)
   const buildRestoredRef = useRef(false);
@@ -518,9 +521,42 @@ export function useSetup(): UseSetupReturn {
     });
   }, [buildCompleted, persistedExecutionItems, persistedExecutionResult]);
   const [isSending, setIsSending] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Plan generation and pre-queue execution flags live in the persisted
+  // store so the loading UI survives navigation: clicking Generate
+  // Structure (or Approve Plan) and then switching pages still picks the
+  // animation back up on return. The flags are paired with timestamps so
+  // a flag stuck "true" because of a closed tab can be recovered as stale
+  // on next hydration.
+  const PLAN_GEN_STALE_MS = 5 * 60 * 1000; // 5 min: server timeout is ~120s
+  const EXECUTION_STALE_MS = 5 * 60 * 1000; // 5 min: pre-queue phase only
+  const isPlanGenerationStale = useMemo(() => {
+    if (!persistedIsGeneratingPlan || !planGenerationStartedAt) return false;
+    return Date.now() - new Date(planGenerationStartedAt).getTime() > PLAN_GEN_STALE_MS;
+  }, [persistedIsGeneratingPlan, planGenerationStartedAt, PLAN_GEN_STALE_MS]);
+  const isExecutionStale = useMemo(() => {
+    if (!persistedIsExecutingBuild || !executionStartedAt) return false;
+    return Date.now() - new Date(executionStartedAt).getTime() > EXECUTION_STALE_MS;
+  }, [persistedIsExecutingBuild, executionStartedAt, EXECUTION_STALE_MS]);
+  const isGenerating = persistedIsGeneratingPlan && !isPlanGenerationStale;
+  const isExecuting = persistedIsExecutingBuild && !isExecutionStale;
+
+  // Recover stale flags on hydration. If a previous tab was closed mid-
+  // generation, the flag will be true but the work isn't actually running
+  // anymore - clear it so the UI doesn't sit on a fake loading screen.
+  const staleRecoveryRef = useRef(false);
+  useEffect(() => {
+    if (staleRecoveryRef.current || !store) return;
+    if (isPlanGenerationStale) {
+      store.getState().setIsGeneratingPlan(false);
+    }
+    if (isExecutionStale) {
+      store.getState().setIsExecutingBuild(false);
+    }
+    staleRecoveryRef.current = true;
+  }, [store, isPlanGenerationStale, isExecutionStale]);
 
   // Reconciliation: compute items to delete when rebuilding, enriched with
   // task counts from the existing workspace structure so the UI can warn
@@ -691,7 +727,7 @@ export function useSetup(): UseSetupReturn {
             setExecutionProgress(null);
             setExecutionResult(null);
             setExecutionItems([]);
-            setIsExecuting(false);
+            store?.getState().setIsExecutingBuild(false);
             setIsSending(false);
           }
           analysisStartedRef.current = false;
@@ -921,7 +957,7 @@ export function useSetup(): UseSetupReturn {
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);
-    setIsExecuting(false);
+    store?.getState().setIsExecutingBuild(false);
     setCurrentStep(1);
   }, [store, setCurrentStep]);
 
@@ -1122,11 +1158,11 @@ export function useSetup(): UseSetupReturn {
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);
-    setIsExecuting(false);
+    store?.getState().setIsExecutingBuild(false);
   }, [store]);
 
   const generateStructure = useCallback(async () => {
-    setIsGenerating(true);
+    store?.getState().setIsGeneratingPlan(true);
     setIsSending(true);
 
     // If rebuilding after a previous build, clear stale state
@@ -1224,7 +1260,7 @@ export function useSetup(): UseSetupReturn {
       // Go back to Describe step on failure
       setCurrentStep(2);
     }
-    setIsGenerating(false);
+    store?.getState().setIsGeneratingPlan(false);
     setIsSending(false);
   }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState, conversationId]);
 
@@ -1369,7 +1405,7 @@ export function useSetup(): UseSetupReturn {
         errors: [err instanceof Error ? err.message : 'Execution failed unexpectedly'],
       });
     } finally {
-      setIsExecuting(false);
+      store?.getState().setIsExecutingBuild(false);
     }
   }, [proposedPlan, workspace_id, store, setCurrentStep]);
 
@@ -1393,7 +1429,7 @@ export function useSetup(): UseSetupReturn {
   }) => {
     if (!proposedPlan || isExecuting) return;
     setCurrentStep(4);
-    setIsExecuting(true);
+    store?.getState().setIsExecutingBuild(true);
 
     // For retries, reset progress state so UI shows building animation
     if (options?.isRetry) {
@@ -1467,7 +1503,7 @@ export function useSetup(): UseSetupReturn {
               errors: [`Failed to delete old items from ClickUp: ${names}. Please delete them manually in ClickUp and retry.`],
             });
             setIsDeleting(false);
-            setIsExecuting(false);
+            store?.getState().setIsExecutingBuild(false);
             return;
           }
         } else {
@@ -1481,7 +1517,7 @@ export function useSetup(): UseSetupReturn {
             errors: [`Failed to remove old items from ClickUp: ${errData.error || 'Server error'}. Please try again.`],
           });
           setIsDeleting(false);
-          setIsExecuting(false);
+          store?.getState().setIsExecutingBuild(false);
           return;
         }
       } catch (err) {
@@ -1494,7 +1530,7 @@ export function useSetup(): UseSetupReturn {
           errors: [`Failed to remove old items from ClickUp: ${err instanceof Error ? err.message : 'Network error'}. Please try again.`],
         });
         setIsDeleting(false);
-        setIsExecuting(false);
+        store?.getState().setIsExecutingBuild(false);
         return;
       }
 
@@ -1794,7 +1830,7 @@ export function useSetup(): UseSetupReturn {
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);
-    setIsExecuting(false);
+    store?.getState().setIsExecutingBuild(false);
     setIsSending(false);
   }, [store]);
 
@@ -1809,7 +1845,7 @@ export function useSetup(): UseSetupReturn {
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);
-    setIsExecuting(false);
+    store?.getState().setIsExecutingBuild(false);
     setIsSending(false);
     setIsAnalyzing(false);
     // If ClickUp is connected, go to analysis (step 1), otherwise connect (step 0)

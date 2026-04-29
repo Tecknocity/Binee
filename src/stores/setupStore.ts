@@ -170,6 +170,17 @@ interface SetupState {
   proposedPlan: SetupPlan | null;
   planHistory: SetupPlan[]; // All previously generated plans (v1, v2, ...)
 
+  /**
+   * Plan generation in-flight flag. Persisted so the "Designing your
+   * workspace" animation survives navigation: if the user clicks Generate
+   * Structure and then switches to another page, coming back picks the
+   * loading state right back up. Paired with planGenerationStartedAt so
+   * stale flags from a closed tab can be recovered on hydration.
+   */
+  isGeneratingPlan: boolean;
+  /** ISO timestamp of when the current plan generation started, or null. */
+  planGenerationStartedAt: string | null;
+
   // Existing workspace structure (from cached tables)
   existingStructure: ExistingWorkspaceStructure | null;
 
@@ -179,6 +190,17 @@ interface SetupState {
   buildCompleted: boolean;
   /** Items successfully created by Binee in previous builds (for reconciliation/deletion) */
   previouslyBuiltItems: ExecutionItem[];
+
+  /**
+   * Pre-queue execution in-flight flag (deletion + structural creation).
+   * Persisted so the build progress UI survives navigation: once `buildId`
+   * is set the queue model takes over, but the synchronous structural-
+   * creation phase before that needs its own persisted flag. Paired with
+   * executionStartedAt for stale recovery on hydration.
+   */
+  isExecutingBuild: boolean;
+  /** ISO timestamp of when the current execution started, or null. */
+  executionStartedAt: string | null;
 
   // Step 4: Enrichment job tracking (the queue model). When a build is in
   // progress, buildId is set and the frontend polls /enrichment-status to
@@ -215,6 +237,8 @@ interface SetupState {
   setPlan: (plan: SetupPlan | null) => void;
   pushPlanToHistory: (plan: SetupPlan) => void;
   setExistingStructure: (structure: ExistingWorkspaceStructure | null) => void;
+  setIsGeneratingPlan: (generating: boolean) => void;
+  setIsExecutingBuild: (executing: boolean) => void;
   setExecutionResult: (result: ExecutionResult | null) => void;
   setExecutionItems: (items: ExecutionItem[]) => void;
   setBuildCompleted: (completed: boolean) => void;
@@ -311,11 +335,15 @@ function createSetupStore(storeKey: string) {
         proposedPlan: null,
         planHistory: [],
         existingStructure: null,
+        isGeneratingPlan: false,
+        planGenerationStartedAt: null,
 
         executionResult: null,
         executionItems: [],
         buildCompleted: false,
         previouslyBuiltItems: [],
+        isExecutingBuild: false,
+        executionStartedAt: null,
 
         buildId: null,
         buildStatus: null,
@@ -358,6 +386,17 @@ function createSetupStore(storeKey: string) {
           planHistory: [...s.planHistory.slice(-4), plan], // Keep last 5 max
         })),
         setExistingStructure: (structure) => set({ existingStructure: structure }),
+
+        setIsGeneratingPlan: (generating) =>
+          set({
+            isGeneratingPlan: generating,
+            planGenerationStartedAt: generating ? new Date().toISOString() : null,
+          }),
+        setIsExecutingBuild: (executing) =>
+          set({
+            isExecutingBuild: executing,
+            executionStartedAt: executing ? new Date().toISOString() : null,
+          }),
 
         setExecutionResult: (result) => set({ executionResult: result }),
         setExecutionItems: (items) => set({ executionItems: items }),
@@ -415,6 +454,8 @@ function createSetupStore(storeKey: string) {
               // planHistory intentionally preserved so user can reference earlier plans
               updates.proposedPlan = null;
               updates.existingStructure = null;
+              updates.isGeneratingPlan = false;
+              updates.planGenerationStartedAt = null;
             }
             if (step <= 4) {
               // Resetting from Build: clear build results + manual steps
@@ -422,6 +463,8 @@ function createSetupStore(storeKey: string) {
               updates.executionResult = null;
               updates.executionItems = [];
               updates.buildCompleted = false;
+              updates.isExecutingBuild = false;
+              updates.executionStartedAt = null;
               updates.buildId = null;
               updates.buildStatus = null;
               updates.buildStartedAt = null;
@@ -457,10 +500,14 @@ function createSetupStore(storeKey: string) {
             proposedPlan: null,
             planHistory: [],
             existingStructure: null,
+            isGeneratingPlan: false,
+            planGenerationStartedAt: null,
             executionResult: null,
             executionItems: [],
             buildCompleted: false,
             previouslyBuiltItems: [],
+            isExecutingBuild: false,
+            executionStartedAt: null,
             buildId: null,
             buildStatus: null,
             buildStartedAt: null,
@@ -492,10 +539,14 @@ function createSetupStore(storeKey: string) {
           proposedPlan: state.proposedPlan,
           planHistory: state.planHistory,
           existingStructure: state.existingStructure,
+          isGeneratingPlan: state.isGeneratingPlan,
+          planGenerationStartedAt: state.planGenerationStartedAt,
           executionResult: state.executionResult,
           executionItems: state.executionItems,
           buildCompleted: state.buildCompleted,
           previouslyBuiltItems: state.previouslyBuiltItems,
+          isExecutingBuild: state.isExecutingBuild,
+          executionStartedAt: state.executionStartedAt,
           buildId: state.buildId,
           buildStatus: state.buildStatus,
           buildStartedAt: state.buildStartedAt,
