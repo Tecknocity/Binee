@@ -152,7 +152,6 @@ export default function SetupWizard() {
             onEditProfile={setup.editProfile}
             pendingImageAttachments={setup.pendingImageAttachments}
             onConsumePendingImages={setup.clearPendingImageAttachments}
-            clarifierAsk={setup.lastClarifierAsk}
             clarifierBrief={setup.lastClarifierBrief}
             isReadyForGenerate={setup.isReadyForGenerate}
           />

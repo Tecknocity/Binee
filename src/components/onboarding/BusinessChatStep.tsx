@@ -48,17 +48,6 @@ interface BusinessChatStepProps {
   /** Called once the pending images have been attached to a chat message. */
   onConsumePendingImages?: () => void;
   /**
-   * Multi-agent: latest Clarifier ask. When present, render chip
-   * suggestions under the most recent assistant message so the user can
-   * tap a typical answer instead of typing it. Click on a chip sends the
-   * chip text as the next message.
-   */
-  clarifierAsk?: {
-    topic: string;
-    question: string;
-    suggested_options: string[];
-  } | null;
-  /**
    * Multi-agent: discovery brief shown as a "What I've gathered" pinned
    * checkpoint above the input once `isReadyForGenerate` is true.
    */
@@ -84,7 +73,6 @@ export function BusinessChatStep({
   onEditProfile,
   pendingImageAttachments,
   onConsumePendingImages,
-  clarifierAsk,
   clarifierBrief,
   isReadyForGenerate,
 }: BusinessChatStepProps) {
@@ -102,17 +90,6 @@ export function BusinessChatStep({
 
   const canGenerate = messageCount >= 1;
 
-  // Multi-agent: render chip suggestions only on the most recent assistant
-  // message. Older asks stay as plain text so the chat history doesn't
-  // become a wall of stale interactive elements.
-  const lastAssistantId = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') return messages[i].id;
-    }
-    return null;
-  })();
-  const showChipsForCurrentTurn =
-    !!clarifierAsk && !isSending && (clarifierAsk.suggested_options?.length ?? 0) > 0;
   const briefSummary =
     clarifierBrief && typeof clarifierBrief === 'object' && typeof (clarifierBrief as { summary?: unknown }).summary === 'string'
       ? ((clarifierBrief as { summary: string }).summary)
@@ -338,7 +315,7 @@ export function BusinessChatStep({
 
   return (
     <div
-      className={`flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
+      className={`flex-1 flex flex-col max-w-4xl mx-auto w-full px-4 sm:px-6 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -371,25 +348,6 @@ export function BusinessChatStep({
                   <div className="whitespace-pre-wrap text-[15px] leading-[1.7] text-text-primary">
                     {renderMarkdownLite(msg.content)}
                   </div>
-                  {showChipsForCurrentTurn && msg.id === lastAssistantId && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {clarifierAsk!.suggested_options.map((opt, idx) => (
-                        <button
-                          key={`${opt}-${idx}`}
-                          type="button"
-                          onClick={() => onSendMessage(opt)}
-                          disabled={isSending}
-                          className="px-3 py-1.5 text-xs font-medium text-text-secondary
-                            bg-surface border border-border rounded-full
-                            hover:border-accent/40 hover:text-accent hover:bg-accent/5
-                            disabled:opacity-50 disabled:cursor-not-allowed
-                            transition-colors whitespace-nowrap"
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
