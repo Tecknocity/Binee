@@ -313,16 +313,24 @@ export function BusinessChatStep({
     return FileText;
   };
 
+  // Layout note: the scroll container is full-width so the scrollbar sits at
+  // the page edge (Claude / ChatGPT pattern), while the chat content inside
+  // it is centered to a readable column. The input bar shares the same
+  // centered column so it lines up with the messages.
+  const columnClasses =
+    'mx-auto w-full max-w-3xl lg:max-w-[820px] xl:max-w-[860px] px-4 sm:px-6 lg:px-8';
+
   return (
     <div
-      className={`flex-1 flex flex-col mx-auto w-full max-w-3xl lg:max-w-[820px] xl:max-w-[860px] px-4 sm:px-6 lg:px-8 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
+      className={`flex-1 flex flex-col w-full min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Chat messages */}
-        <div className="flex-1 overflow-y-auto py-4 min-h-0 flex flex-col">
+      {/* Chat messages — full-width scroller (page-edge scrollbar), with
+          a centered content column inside. */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <div className={`${columnClasses} py-4 min-h-full flex flex-col`}>
           {/* Spacer pushes messages to bottom when few */}
           <div className="flex-1" />
           <div className="space-y-6">
@@ -373,14 +381,18 @@ export function BusinessChatStep({
           <div ref={messagesEndRef} />
           </div>
         </div>
+      </div>
 
+      {/* Footer column: brief checkpoint + input card. Same centered
+          column as the messages so they line up vertically. */}
+      <div className={`shrink-0 ${columnClasses} pb-4`}>
         {/* Multi-agent: "What I've gathered" checkpoint pinned above the
             input when discovery completes. Borrowed from the OpenAI Deep
             Research "verification" pattern - a single quiet line of context
             so the user can sanity-check what the model captured before
             clicking Generate Structure. */}
         {isReadyForGenerate && briefSummary && (
-          <div className="shrink-0 mb-2 px-4 py-2.5 rounded-xl bg-accent/5 border border-accent/20 text-xs text-text-secondary">
+          <div className="mb-2 px-4 py-2.5 rounded-xl bg-accent/5 border border-accent/20 text-xs text-text-secondary">
             <div className="flex items-start gap-2">
               <Sparkles className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
@@ -392,7 +404,7 @@ export function BusinessChatStep({
         )}
 
         {/* Input container - Claude Code style unified card */}
-        <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">
+        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
           {/* Top bar - action buttons */}
           <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-navy-dark/60">
             <button
