@@ -48,17 +48,6 @@ interface BusinessChatStepProps {
   /** Called once the pending images have been attached to a chat message. */
   onConsumePendingImages?: () => void;
   /**
-   * Multi-agent: latest Clarifier ask. When present, render chip
-   * suggestions under the most recent assistant message so the user can
-   * tap a typical answer instead of typing it. Click on a chip sends the
-   * chip text as the next message.
-   */
-  clarifierAsk?: {
-    topic: string;
-    question: string;
-    suggested_options: string[];
-  } | null;
-  /**
    * Multi-agent: discovery brief shown as a "What I've gathered" pinned
    * checkpoint above the input once `isReadyForGenerate` is true.
    */
@@ -84,7 +73,6 @@ export function BusinessChatStep({
   onEditProfile,
   pendingImageAttachments,
   onConsumePendingImages,
-  clarifierAsk,
   clarifierBrief,
   isReadyForGenerate,
 }: BusinessChatStepProps) {
@@ -102,17 +90,6 @@ export function BusinessChatStep({
 
   const canGenerate = messageCount >= 1;
 
-  // Multi-agent: render chip suggestions only on the most recent assistant
-  // message. Older asks stay as plain text so the chat history doesn't
-  // become a wall of stale interactive elements.
-  const lastAssistantId = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') return messages[i].id;
-    }
-    return null;
-  })();
-  const showChipsForCurrentTurn =
-    !!clarifierAsk && !isSending && (clarifierAsk.suggested_options?.length ?? 0) > 0;
   const briefSummary =
     clarifierBrief && typeof clarifierBrief === 'object' && typeof (clarifierBrief as { summary?: unknown }).summary === 'string'
       ? ((clarifierBrief as { summary: string }).summary)
@@ -336,16 +313,24 @@ export function BusinessChatStep({
     return FileText;
   };
 
+  // Layout note: the scroll container is full-width so the scrollbar sits at
+  // the page edge (Claude / ChatGPT pattern), while the chat content inside
+  // it is centered to a readable column. The input bar shares the same
+  // centered column so it lines up with the messages.
+  const columnClasses =
+    'mx-auto w-full max-w-3xl lg:max-w-[820px] xl:max-w-[860px] px-4 sm:px-6 lg:px-8';
+
   return (
     <div
-      className={`flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
+      className={`flex-1 flex flex-col w-full min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Chat messages */}
-        <div className="flex-1 overflow-y-auto py-4 min-h-0 flex flex-col">
+      {/* Chat messages — full-width scroller (page-edge scrollbar), with
+          a centered content column inside. */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <div className={`${columnClasses} py-4 min-h-full flex flex-col`}>
           {/* Spacer pushes messages to bottom when few */}
           <div className="flex-1" />
           <div className="space-y-6">
@@ -371,25 +356,6 @@ export function BusinessChatStep({
                   <div className="whitespace-pre-wrap text-[15px] leading-[1.7] text-text-primary">
                     {renderMarkdownLite(msg.content)}
                   </div>
-                  {showChipsForCurrentTurn && msg.id === lastAssistantId && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {clarifierAsk!.suggested_options.map((opt, idx) => (
-                        <button
-                          key={`${opt}-${idx}`}
-                          type="button"
-                          onClick={() => onSendMessage(opt)}
-                          disabled={isSending}
-                          className="px-3 py-1.5 text-xs font-medium text-text-secondary
-                            bg-surface border border-border rounded-full
-                            hover:border-accent/40 hover:text-accent hover:bg-accent/5
-                            disabled:opacity-50 disabled:cursor-not-allowed
-                            transition-colors whitespace-nowrap"
-                        >
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -415,14 +381,18 @@ export function BusinessChatStep({
           <div ref={messagesEndRef} />
           </div>
         </div>
+      </div>
 
+      {/* Footer column: brief checkpoint + input card. Same centered
+          column as the messages so they line up vertically. */}
+      <div className={`shrink-0 ${columnClasses} pb-4`}>
         {/* Multi-agent: "What I've gathered" checkpoint pinned above the
             input when discovery completes. Borrowed from the OpenAI Deep
             Research "verification" pattern - a single quiet line of context
             so the user can sanity-check what the model captured before
             clicking Generate Structure. */}
         {isReadyForGenerate && briefSummary && (
-          <div className="shrink-0 mb-2 px-4 py-2.5 rounded-xl bg-accent/5 border border-accent/20 text-xs text-text-secondary">
+          <div className="mb-2 px-4 py-2.5 rounded-xl bg-accent/5 border border-accent/20 text-xs text-text-secondary">
             <div className="flex items-start gap-2">
               <Sparkles className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
@@ -434,31 +404,69 @@ export function BusinessChatStep({
         )}
 
         {/* Input container - Claude Code style unified card */}
-        <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">
-          {/* Top bar - action buttons */}
-          <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-navy-dark/60">
-            <button
-              type="button"
-              onClick={onEditProfile}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium
-                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
-                transition-colors whitespace-nowrap"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-              Update Info
-            </button>
-
-            {canGenerate && !isSending && (
+        <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+          {/* Single toolbar row: Update Info + paperclip on the left,
+              Generate Structure + Send on the right. Consolidating these
+              into one row removes the second row that used to live under
+              the textarea, keeping the input feeling like one clean card. */}
+          <div className="flex items-center justify-between gap-3 px-3 py-2 bg-navy-dark/60">
+            <div className="flex items-center gap-2 min-w-0">
               <button
-                onClick={() => onSendMessage('__generate_structure__')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
-                  hover:bg-accent-hover transition-colors whitespace-nowrap
-                  ${isReadyForGenerate ? 'shadow-md shadow-accent/40 ring-2 ring-accent/30' : 'shadow-sm shadow-accent/20'}`}
+                type="button"
+                onClick={onEditProfile}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                  text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
+                  transition-colors whitespace-nowrap"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                Generate Structure
+                <Pencil className="w-3.5 h-3.5" />
+                Update Info
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSending || isParsing}
+                className="p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-navy-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Attach file or image (CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, WebP). You can also paste screenshots."
+                aria-label="Attach file"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv,.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp"
+                multiple
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {canGenerate && !isSending && (
+                <button
+                  onClick={() => onSendMessage('__generate_structure__')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
+                    hover:bg-accent-hover transition-colors whitespace-nowrap
+                    ${isReadyForGenerate ? 'shadow-md shadow-accent/40 ring-2 ring-accent/30' : 'shadow-sm shadow-accent/20'}`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Generate Structure
+                </button>
+              )}
+              <button
+                onClick={handleSend}
+                disabled={(!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isSending}
+                className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
+                  hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Send message"
+              >
+                {isSending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* File error */}
@@ -529,8 +537,8 @@ export function BusinessChatStep({
             </div>
           )}
 
-          {/* Textarea area */}
-          <div className="px-4 pt-3 pb-2 border-t border-border">
+          {/* Textarea */}
+          <div className="px-4 py-3 border-t border-border">
             <textarea
               ref={textareaRef}
               value={input}
@@ -546,38 +554,6 @@ export function BusinessChatStep({
               rows={2}
               className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
             />
-            <div className="flex items-center justify-between mt-1">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isSending || isParsing}
-                  className="p-1.5 rounded-md text-text-muted hover:text-accent hover:bg-navy-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Attach file or image (CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, WebP). You can also paste screenshots."
-                >
-                  <Paperclip className="w-4 h-4" />
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv,.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp"
-                  multiple
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
-              </div>
-              <button
-                onClick={handleSend}
-                disabled={(!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isSending}
-                className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
-                  hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                {isSending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </button>
-            </div>
           </div>
         </div>
       </div>
