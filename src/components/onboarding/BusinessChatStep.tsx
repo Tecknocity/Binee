@@ -47,6 +47,27 @@ interface BusinessChatStepProps {
   pendingImageAttachments?: ImageAttachmentPayload[];
   /** Called once the pending images have been attached to a chat message. */
   onConsumePendingImages?: () => void;
+  /**
+   * Multi-agent: latest Clarifier ask. When present, render chip
+   * suggestions under the most recent assistant message so the user can
+   * tap a typical answer instead of typing it. Click on a chip sends the
+   * chip text as the next message.
+   */
+  clarifierAsk?: {
+    topic: string;
+    question: string;
+    suggested_options: string[];
+  } | null;
+  /**
+   * Multi-agent: discovery brief shown as a "What I've gathered" pinned
+   * checkpoint above the input once `isReadyForGenerate` is true.
+   */
+  clarifierBrief?: Record<string, unknown> | null;
+  /**
+   * Multi-agent: true once discovery is complete. Highlights Generate
+   * Structure so the user knows the next step.
+   */
+  isReadyForGenerate?: boolean;
 }
 
 // (Templates removed - profile form now collects business info directly)
@@ -63,6 +84,9 @@ export function BusinessChatStep({
   onEditProfile,
   pendingImageAttachments,
   onConsumePendingImages,
+  clarifierAsk,
+  clarifierBrief,
+  isReadyForGenerate,
 }: BusinessChatStepProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -77,6 +101,22 @@ export function BusinessChatStep({
   const totalAttachmentCount = attachments.length + imageAttachments.length;
 
   const canGenerate = messageCount >= 1;
+
+  // Multi-agent: render chip suggestions only on the most recent assistant
+  // message. Older asks stay as plain text so the chat history doesn't
+  // become a wall of stale interactive elements.
+  const lastAssistantId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i].id;
+    }
+    return null;
+  })();
+  const showChipsForCurrentTurn =
+    !!clarifierAsk && !isSending && (clarifierAsk.suggested_options?.length ?? 0) > 0;
+  const briefSummary =
+    clarifierBrief && typeof clarifierBrief === 'object' && typeof (clarifierBrief as { summary?: unknown }).summary === 'string'
+      ? ((clarifierBrief as { summary: string }).summary)
+      : null;
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -331,6 +371,25 @@ export function BusinessChatStep({
                   <div className="whitespace-pre-wrap text-[15px] leading-[1.7] text-text-primary">
                     {renderMarkdownLite(msg.content)}
                   </div>
+                  {showChipsForCurrentTurn && msg.id === lastAssistantId && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {clarifierAsk!.suggested_options.map((opt, idx) => (
+                        <button
+                          key={`${opt}-${idx}`}
+                          type="button"
+                          onClick={() => onSendMessage(opt)}
+                          disabled={isSending}
+                          className="px-3 py-1.5 text-xs font-medium text-text-secondary
+                            bg-surface border border-border rounded-full
+                            hover:border-accent/40 hover:text-accent hover:bg-accent/5
+                            disabled:opacity-50 disabled:cursor-not-allowed
+                            transition-colors whitespace-nowrap"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -357,6 +416,23 @@ export function BusinessChatStep({
           </div>
         </div>
 
+        {/* Multi-agent: "What I've gathered" checkpoint pinned above the
+            input when discovery completes. Borrowed from the OpenAI Deep
+            Research "verification" pattern - a single quiet line of context
+            so the user can sanity-check what the model captured before
+            clicking Generate Structure. */}
+        {isReadyForGenerate && briefSummary && (
+          <div className="shrink-0 mb-2 px-4 py-2.5 rounded-xl bg-accent/5 border border-accent/20 text-xs text-text-secondary">
+            <div className="flex items-start gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold text-accent">What I&apos;ve gathered. </span>
+                <span>{briefSummary}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Input container - Claude Code style unified card */}
         <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">
           {/* Top bar - action buttons */}
@@ -375,8 +451,9 @@ export function BusinessChatStep({
             {canGenerate && !isSending && (
               <button
                 onClick={() => onSendMessage('__generate_structure__')}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
-                  hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
+                  hover:bg-accent-hover transition-colors whitespace-nowrap
+                  ${isReadyForGenerate ? 'shadow-md shadow-accent/40 ring-2 ring-accent/30' : 'shadow-sm shadow-accent/20'}`}
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Generate Structure

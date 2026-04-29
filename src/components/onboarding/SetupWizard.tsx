@@ -152,6 +152,9 @@ export default function SetupWizard() {
             onEditProfile={setup.editProfile}
             pendingImageAttachments={setup.pendingImageAttachments}
             onConsumePendingImages={setup.clearPendingImageAttachments}
+            clarifierAsk={setup.lastClarifierAsk}
+            clarifierBrief={setup.lastClarifierBrief}
+            isReadyForGenerate={setup.isReadyForGenerate}
           />
         )}
 
@@ -175,6 +178,7 @@ export default function SetupWizard() {
             isLoadingRecommendations={setup.isLoadingRecommendations}
             onApproveWithDeletions={setup.confirmDeletionsAndBuild}
             onApproveSkipDeletions={setup.skipDeletionsAndBuild}
+            draftSaveState={setup.draftSaveState}
           />
         )}
 
