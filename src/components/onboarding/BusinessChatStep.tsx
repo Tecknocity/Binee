@@ -315,7 +315,7 @@ export function BusinessChatStep({
 
   return (
     <div
-      className={`flex-1 flex flex-col max-w-4xl mx-auto w-full px-4 sm:px-6 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
+      className={`flex-1 flex flex-col mx-auto w-full max-w-3xl lg:max-w-[820px] xl:max-w-[860px] px-4 sm:px-6 lg:px-8 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}

@@ -76,11 +76,17 @@ export function useConversations() {
   } = useQuery({
     queryKey: workspaceId && userId ? queryKeys.conversations(workspaceId, userId) : ['conversations', 'none'],
     queryFn: async ({ queryKey }) => {
+      // Sidebar is the general-chat surface only. Setup, health, and
+      // dashboard contexts each own their own UI and must NOT pollute
+      // this list. Filter to context_type='general' (and null for legacy
+      // rows created before context_type was tracked) so a setup chat
+      // turn never appears as "New conversation" in the sidebar.
       const { data, error } = await supabase
         .from('conversations')
-        .select('id, title, summary, updated_at, created_at')
+        .select('id, title, summary, updated_at, created_at, context_type')
         .eq('workspace_id', workspaceId!)
         .eq('user_id', userId!)
+        .or('context_type.eq.general,context_type.is.null')
         .order('updated_at', { ascending: false })
         .limit(50);
 
@@ -133,7 +139,11 @@ export function useConversations() {
             summary: string | null;
             updated_at: string;
             created_at: string;
+            context_type: string | null;
           };
+          // Skip non-general contexts (setup, health, dashboard) - those
+          // own their own UI and must not appear in the chat sidebar.
+          if (row.context_type && row.context_type !== 'general') return;
           queryClient.setQueryData<Conversation[]>(key, (prev = []) => {
             if (prev.some((c) => c.id === row.id)) return prev;
             return [mapRow(row), ...prev];
@@ -155,7 +165,9 @@ export function useConversations() {
             summary: string | null;
             updated_at: string;
             created_at: string;
+            context_type: string | null;
           };
+          if (row.context_type && row.context_type !== 'general') return;
           queryClient.setQueryData<Conversation[]>(key, (prev = []) => {
             const updated = prev.map((c) => (c.id === row.id ? mapRow(row) : c));
             return updated.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
