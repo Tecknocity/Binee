@@ -157,15 +157,18 @@ ${priorQuestionsAsked >= QUESTION_HARD_CAP ? 'HARD CAP REACHED. You MUST set rea
   let brief = decoded.brief;
 
   // Loop killer: a topic in priorCoverage that was already filled or
-  // user_skipped cannot be re-asked. If the model tried, ignore the ask
-  // and either pick the next unfilled topic or close discovery.
+  // user_skipped cannot be re-asked. If the model tried, drop the ask and
+  // pick the next still-unfilled topic so discovery doesn't stall.
   if (ask) {
     const priorState = priorCoverage[ask.topic];
     if (priorState !== 'unfilled') {
       console.warn(
-        `[clarifier] Model tried to re-ask closed topic "${ask.topic}" (state: ${priorState}); dropping ask.`,
+        `[clarifier] Model tried to re-ask closed topic "${ask.topic}" (state: ${priorState}); rerouting to next unfilled topic.`,
       );
-      ask = undefined;
+      const nextTopic = COVERAGE_KEYS.find((k) => coverage[k] === 'unfilled');
+      ask = nextTopic
+        ? { topic: nextTopic, question: openQuestionFor(nextTopic), suggested_options: [] }
+        : undefined;
     }
   }
 

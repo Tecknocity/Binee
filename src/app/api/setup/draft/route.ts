@@ -158,7 +158,7 @@ export async function PATCH(request: NextRequest) {
     // layer); the Review screen does.
     const { data: existing } = await adminClient
       .from('setup_drafts')
-      .select('version, clickup_team_id')
+      .select('version, clickup_team_id, draft')
       .eq('conversation_id', conversation_id)
       .maybeSingle();
 
@@ -182,6 +182,28 @@ export async function PATCH(request: NextRequest) {
       .eq('id', convoRow.workspace_id)
       .maybeSingle();
 
+    // Preserve multi-agent discovery state (coverage / ready / brief /
+    // questions_asked) when the Review screen overwrites the draft with
+    // a manually edited SetupPlan. Without this, the next "Revise with AI"
+    // turn would see ready=undefined and re-route to the Clarifier
+    // instead of the Reviser, restarting discovery from scratch. Any of
+    // these fields the caller explicitly sent in `draft` win - this only
+    // fills in fields that are missing from the incoming draft.
+    const priorDraft = existing?.draft && typeof existing.draft === 'object'
+      ? (existing.draft as Record<string, unknown>)
+      : null;
+    const incomingDraft = (draft && typeof draft === 'object')
+      ? (draft as Record<string, unknown>)
+      : {};
+    const draftToWrite: Record<string, unknown> = { ...incomingDraft };
+    if (priorDraft) {
+      for (const key of ['coverage', 'ready', 'brief', 'questions_asked'] as const) {
+        if (draftToWrite[key] === undefined && priorDraft[key] !== undefined) {
+          draftToWrite[key] = priorDraft[key];
+        }
+      }
+    }
+
     const { data: upserted, error: upsertError } = await adminClient
       .from('setup_drafts')
       .upsert(
@@ -189,7 +211,7 @@ export async function PATCH(request: NextRequest) {
           conversation_id,
           workspace_id: convoRow.workspace_id,
           clickup_team_id: existing?.clickup_team_id ?? workspaceRow?.clickup_team_id ?? null,
-          draft,
+          draft: draftToWrite,
           updated_by: 'manual_edit',
           version: (existing?.version ?? 0) + 1,
         },
