@@ -4,21 +4,14 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Send,
   Sparkles,
-  Briefcase,
   Loader2,
-  CheckCircle2,
-  Circle,
-  Users,
-  Wrench,
-  GitBranch,
   Pencil,
   Paperclip,
   X,
   FileSpreadsheet,
   FileText,
-  CreditCard,
 } from 'lucide-react';
-import type { SetupChatMessage, ProfileFormData } from '@/hooks/useSetup';
+import type { SetupChatMessage } from '@/hooks/useSetup';
 import {
   parseFile,
   parseImage,
@@ -38,7 +31,6 @@ interface BusinessChatStepProps {
   messages: SetupChatMessage[];
   isSending: boolean;
   messageCount: number;
-  profileFormData: ProfileFormData | null;
   /**
    * Phase 2: send the parsed attachments themselves rather than a flattened
    * fileContext blob. The hook layer uploads each one to
@@ -60,65 +52,13 @@ interface BusinessChatStepProps {
 // (Templates removed - profile form now collects business info directly)
 
 // ---------------------------------------------------------------------------
-// Profile progress items
-// ---------------------------------------------------------------------------
-
-type ProfileFieldKey = 'industry' | 'workStyle' | 'teamSize' | 'services' | 'clickupPlan';
-
-const PROFILE_FORM_FIELDS: Array<{
-  key: ProfileFieldKey;
-  label: string;
-  icon: typeof Briefcase;
-  hint: string;
-}> = [
-  {
-    key: 'industry',
-    label: 'Industry',
-    icon: Briefcase,
-    hint: 'What industry is your business in?',
-  },
-  {
-    key: 'workStyle',
-    label: 'Work style',
-    icon: GitBranch,
-    hint: 'How is your work structured?',
-  },
-  {
-    key: 'teamSize',
-    label: 'Team size',
-    icon: Users,
-    hint: 'How many team members?',
-  },
-  {
-    key: 'services',
-    label: 'Services / Products',
-    icon: Wrench,
-    hint: 'What does your business offer?',
-  },
-  {
-    key: 'clickupPlan',
-    label: 'ClickUp plan',
-    icon: CreditCard,
-    hint: 'Which ClickUp plan are you on?',
-  },
-];
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-
-const WORK_STYLE_LABELS: Record<string, string> = {
-  'client-based': 'Client-based',
-  'product-based': 'Product-based',
-  'project-based': 'Project-based',
-  'operations-based': 'Operations-based',
-};
 
 export function BusinessChatStep({
   messages,
   isSending,
   messageCount,
-  profileFormData,
   onSendMessage,
   onEditProfile,
   pendingImageAttachments,
@@ -137,12 +77,6 @@ export function BusinessChatStep({
   const totalAttachmentCount = attachments.length + imageAttachments.length;
 
   const canGenerate = messageCount >= 1;
-  const completeness = profileFormData
-    ? PROFILE_FORM_FIELDS.filter((f) => {
-        const val = profileFormData[f.key];
-        return val && val.trim().length > 0;
-      }).length
-    : 0;
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -362,30 +296,6 @@ export function BusinessChatStep({
     return FileText;
   };
 
-  const isFormFieldCollected = (key: ProfileFieldKey): boolean => {
-    if (!profileFormData) return false;
-    const val = profileFormData[key];
-    return !!val && val.trim().length > 0;
-  };
-
-  const getFormFieldValue = (key: ProfileFieldKey): string | null => {
-    if (!profileFormData) return null;
-    const val = profileFormData[key];
-    if (!val || !val.trim()) return null;
-    if (key === 'workStyle') return WORK_STYLE_LABELS[val] || val;
-    if (key === 'clickupPlan') {
-      const labels: Record<string, string> = {
-        free: 'Free',
-        unlimited: 'Unlimited',
-        business: 'Business',
-        business_plus: 'Business Plus',
-        enterprise: 'Enterprise',
-      };
-      return labels[val] ?? val;
-    }
-    return val;
-  };
-
   return (
     <div
       className={`flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pb-4 min-h-0 overflow-hidden transition-colors ${isDragOver ? 'ring-1 ring-accent/30 rounded-2xl' : ''}`}
@@ -449,61 +359,29 @@ export function BusinessChatStep({
 
         {/* Input container - Claude Code style unified card */}
         <div className="shrink-0 bg-surface border border-border rounded-2xl overflow-hidden mb-1">
-          {/* Top bar - discovery progress + actions, visually distinct */}
+          {/* Top bar - action buttons */}
           <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-navy-dark/60">
-            {/* Left: Discovery progress */}
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="text-[11px] font-semibold text-text-secondary whitespace-nowrap">
-                Discovery {completeness}/{PROFILE_FORM_FIELDS.length}
-              </span>
-              <div className="flex items-center gap-2">
-                {PROFILE_FORM_FIELDS.map((field) => {
-                  const collected = isFormFieldCollected(field.key);
-                  const displayVal = getFormFieldValue(field.key);
-                  return (
-                    <div
-                      key={field.key}
-                      className="flex items-center gap-1"
-                      title={collected && displayVal ? `${field.label}: ${displayVal}` : field.hint}
-                    >
-                      {collected ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                      ) : (
-                        <Circle className="w-3.5 h-3.5 text-text-muted shrink-0" />
-                      )}
-                      <span className={`text-[11px] ${collected ? 'text-text-primary' : 'text-text-muted'} whitespace-nowrap`}>
-                        {field.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={onEditProfile}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium
+                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
+                transition-colors whitespace-nowrap"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Update Info
+            </button>
 
-            {/* Right: Action buttons */}
-            <div className="flex items-center gap-2.5 shrink-0">
+            {canGenerate && !isSending && (
               <button
-                type="button"
-                onClick={onEditProfile}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium
-                  text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
-                  transition-colors whitespace-nowrap"
+                onClick={() => onSendMessage('__generate_structure__')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
+                  hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
               >
-                <Pencil className="w-3.5 h-3.5" />
-                Update Info
+                <Sparkles className="w-3.5 h-3.5" />
+                Generate Structure
               </button>
-
-              {canGenerate && !isSending && (
-                <button
-                  onClick={() => onSendMessage('__generate_structure__')}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
-                    hover:bg-accent-hover transition-colors shadow-sm shadow-accent/20 whitespace-nowrap"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Generate Structure
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
           {/* File error */}
@@ -637,14 +515,25 @@ export function BusinessChatStep({
 
 function renderMarkdownLite(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
+  return parts.flatMap((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return (
+      return [
         <strong key={i} className="font-semibold">
           {part.slice(2, -2)}
-        </strong>
-      );
+        </strong>,
+      ];
     }
-    return <span key={i}>{part}</span>;
+    // Auto-bold "Generate Structure" inside plain-text segments so the user
+    // can spot the call to action even when the model forgets to format it.
+    return part.split(/(Generate Structure)/g).map((segment, j) => {
+      if (segment === 'Generate Structure') {
+        return (
+          <strong key={`${i}-${j}`} className="font-semibold">
+            {segment}
+          </strong>
+        );
+      }
+      return <span key={`${i}-${j}`}>{segment}</span>;
+    });
   });
 }

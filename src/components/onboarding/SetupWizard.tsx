@@ -148,7 +148,6 @@ export default function SetupWizard() {
             messages={setup.chatMessages}
             isSending={setup.isSending}
             messageCount={setup.chatMessages.filter((m) => m.role === 'user').length}
-            profileFormData={setup.profileFormData}
             onSendMessage={setup.sendMessage}
             onEditProfile={setup.editProfile}
             pendingImageAttachments={setup.pendingImageAttachments}
