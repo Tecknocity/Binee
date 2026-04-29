@@ -405,30 +405,68 @@ export function BusinessChatStep({
 
         {/* Input container - Claude Code style unified card */}
         <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-          {/* Top bar - action buttons */}
-          <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-navy-dark/60">
-            <button
-              type="button"
-              onClick={onEditProfile}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium
-                text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
-                transition-colors whitespace-nowrap"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-              Update Info
-            </button>
-
-            {canGenerate && !isSending && (
+          {/* Single toolbar row: Update Info + paperclip on the left,
+              Generate Structure + Send on the right. Consolidating these
+              into one row removes the second row that used to live under
+              the textarea, keeping the input feeling like one clean card. */}
+          <div className="flex items-center justify-between gap-3 px-3 py-2 bg-navy-dark/60">
+            <div className="flex items-center gap-2 min-w-0">
               <button
-                onClick={() => onSendMessage('__generate_structure__')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
-                  hover:bg-accent-hover transition-colors whitespace-nowrap
-                  ${isReadyForGenerate ? 'shadow-md shadow-accent/40 ring-2 ring-accent/30' : 'shadow-sm shadow-accent/20'}`}
+                type="button"
+                onClick={onEditProfile}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium
+                  text-text-secondary border border-border rounded-lg hover:border-accent/30 hover:text-accent
+                  transition-colors whitespace-nowrap"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                Generate Structure
+                <Pencil className="w-3.5 h-3.5" />
+                Update Info
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSending || isParsing}
+                className="p-1.5 rounded-lg text-text-muted hover:text-accent hover:bg-navy-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Attach file or image (CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, WebP). You can also paste screenshots."
+                aria-label="Attach file"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv,.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp"
+                multiple
+                onChange={handleFileInputChange}
+                className="hidden"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {canGenerate && !isSending && (
+                <button
+                  onClick={() => onSendMessage('__generate_structure__')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white font-medium text-xs
+                    hover:bg-accent-hover transition-colors whitespace-nowrap
+                    ${isReadyForGenerate ? 'shadow-md shadow-accent/40 ring-2 ring-accent/30' : 'shadow-sm shadow-accent/20'}`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Generate Structure
+                </button>
+              )}
+              <button
+                onClick={handleSend}
+                disabled={(!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isSending}
+                className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
+                  hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Send message"
+              >
+                {isSending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* File error */}
@@ -499,8 +537,8 @@ export function BusinessChatStep({
             </div>
           )}
 
-          {/* Textarea area */}
-          <div className="px-4 pt-3 pb-2 border-t border-border">
+          {/* Textarea */}
+          <div className="px-4 py-3 border-t border-border">
             <textarea
               ref={textareaRef}
               value={input}
@@ -516,38 +554,6 @@ export function BusinessChatStep({
               rows={2}
               className="w-full resize-none bg-transparent text-[15px] text-text-primary placeholder:text-text-muted outline-none disabled:opacity-50 max-h-[200px] leading-relaxed"
             />
-            <div className="flex items-center justify-between mt-1">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isSending || isParsing}
-                  className="p-1.5 rounded-md text-text-muted hover:text-accent hover:bg-navy-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Attach file or image (CSV, XLSX, TXT, MD, JSON, PNG, JPG, GIF, WebP). You can also paste screenshots."
-                >
-                  <Paperclip className="w-4 h-4" />
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.xlsx,.xls,.txt,.md,.json,.tsv,.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp"
-                  multiple
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
-              </div>
-              <button
-                onClick={handleSend}
-                disabled={(!input.trim() && attachments.length === 0 && imageAttachments.length === 0) || isSending}
-                className="shrink-0 w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white
-                  hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                {isSending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </button>
-            </div>
           </div>
         </div>
       </div>
