@@ -1,6 +1,12 @@
 /**
  * System prompt for the Reviser (Sonnet).
  *
+ * Split into two parts for Anthropic prompt caching:
+ *   REVISER_STATIC_RULES  - the golden rules, patterns, and output schema.
+ *     Never changes. Marked ephemeral so Anthropic caches it.
+ *   buildReviserContext() - the dynamic context: current plan JSON, brief,
+ *     plan tier, industry. Changes per user / per turn.
+ *
  * The Reviser interprets user feedback on a generated plan and emits a
  * PlanDelta - a list of operations (rename, add, remove, status changes)
  * that the merge logic applies to the existing draft.
@@ -20,20 +26,13 @@ interface ReviserPromptInput {
   industry?: string;
 }
 
-export function buildReviserPrompt(input: ReviserPromptInput): string {
-  const { currentPlan, brief, planTier, industry } = input;
+/**
+ * The static, never-changing portion of the Reviser system prompt.
+ * Pass as the FIRST system block with cache_control: { type: 'ephemeral' }.
+ */
+export const REVISER_STATIC_RULES = `You are Binee's Workspace Reviser, an expert ClickUp consultant. The user already has a generated plan and is asking you to refine it. Your job is to interpret their feedback and emit a structured PlanDelta - a list of changes - not a full regeneration.
 
-  const briefBlock = brief
-    ? `\nDISCOVERY BRIEF (what the Clarifier learned about the user):\n${JSON.stringify(brief)}\n`
-    : '';
-
-  return `You are Binee's Workspace Reviser, an expert ClickUp consultant. The user already has a generated plan and is asking you to refine it. Your job is to interpret their feedback and emit a structured PlanDelta - a list of changes - not a full regeneration.
-
-CURRENT PLAN (this IS the deliverable - never confuse it with what the user has in ClickUp):
-${JSON.stringify(currentPlan)}
-${briefBlock}
-${planTier ? `ClickUp plan tier: ${planTier}` : ''}
-${industry ? `Industry: ${industry}` : ''}
+The current plan, discovery brief, and user context are provided in a separate block below this one.
 
 =============================================================================
 THE GOLDEN RULES
@@ -113,6 +112,27 @@ Rules:
 - Empty arrays are fine ([]). Omit fields under "add" that have no content.
 - The first character of your reply MUST be { and the last must be }.
 - Do not wrap the JSON in markdown code fences.
-- Do not include the entire current plan in the response - emit deltas only.
-`;
+- Do not include the entire current plan in the response - emit deltas only.`;
+
+/**
+ * Builds the dynamic context block for the Reviser - the current plan JSON,
+ * brief, plan tier, and industry. This changes per user/turn and is never cached.
+ * Pass as the SECOND system block (no cache_control).
+ */
+export function buildReviserContext(input: ReviserPromptInput): string {
+  const { currentPlan, brief, planTier, industry } = input;
+
+  const briefBlock = brief
+    ? `\nDISCOVERY BRIEF (what the Clarifier learned about the user):\n${JSON.stringify(brief)}\n`
+    : '';
+
+  return `CURRENT PLAN (this IS the deliverable - never confuse it with what the user has in ClickUp):
+${JSON.stringify(currentPlan)}
+${briefBlock}${planTier ? `ClickUp plan tier: ${planTier}` : ''}
+${industry ? `Industry: ${industry}` : ''}`;
+}
+
+/** Legacy single-string builder kept for any callers that haven't switched yet. */
+export function buildReviserPrompt(input: ReviserPromptInput): string {
+  return `${REVISER_STATIC_RULES}\n\n${buildReviserContext(input)}`;
 }

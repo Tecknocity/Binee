@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { buildClarifierPrompt } from '@/lib/ai/prompts/clarifier-prompt';
+import { CLARIFIER_STATIC_PROMPT, buildClarifierContext } from '@/lib/ai/prompts/clarifier-prompt';
 import { calculateAnthropicCost } from '@/billing/engine/token-converter';
 import { classifyMessageCost } from '@/billing/engine/flat-credit-classifier';
 import {
@@ -60,6 +60,10 @@ export interface ClarifierResult {
   ask?: ClarifierAsk;
   brief?: WorkspaceBrief;
   ready: boolean;
+  /** Wall-clock for the Anthropic .messages.create() call (debug observability). */
+  modelCallMs: number;
+  /** stop_reason returned by the model for the same call. */
+  modelStopReason?: string;
 }
 
 /**
@@ -79,7 +83,7 @@ export async function runClarifier(input: ClarifierInput): Promise<ClarifierResu
   const priorCoverage = priorClarifier.coverage ?? autoSkipFromProfile(emptyCoverage(), { isSolo });
   const priorQuestionsAsked = priorClarifier.questions_asked ?? 0;
 
-  const systemPrompt = buildClarifierPrompt({
+  const dynamicContext = buildClarifierContext({
     industry: input.profileData?.industry,
     workStyle: input.profileData?.workStyle,
     services: input.profileData?.services,
@@ -126,12 +130,27 @@ ${priorQuestionsAsked >= QUESTION_HARD_CAP ? 'HARD CAP REACHED. You MUST set rea
       ]
     : [{ role: 'user' as const, content: latestUserContent }];
 
+  const modelStart = Date.now();
   const response = await anthropic.messages.create({
     model: HAIKU_MODEL_ID,
     max_tokens: 1500,
-    system: systemPrompt + stateReminder,
+    // Two-block system: static rules are cached after the first call
+    // (~1800 tokens, ~85% latency reduction on cache hits). Dynamic context
+    // (profile, workspace analysis, prior draft) is always sent fresh.
+    system: [
+      {
+        type: 'text',
+        text: CLARIFIER_STATIC_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+      {
+        type: 'text',
+        text: `${dynamicContext}\n${stateReminder}`,
+      },
+    ],
     messages,
   });
+  const modelCallMs = Date.now() - modelStart;
 
   const totalInputTokens = response.usage.input_tokens;
   const totalOutputTokens = response.usage.output_tokens;
@@ -233,6 +252,8 @@ ${priorQuestionsAsked >= QUESTION_HARD_CAP ? 'HARD CAP REACHED. You MUST set rea
     ask,
     brief,
     ready,
+    modelCallMs,
+    modelStopReason: response.stop_reason ?? undefined,
   };
 }
 

@@ -32,15 +32,34 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export const maxDuration = 90;
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
+  // Per-stage timing collector. We log a single structured perf line at the
+  // end of the request (and on the catch path) so a 504 in production can be
+  // diagnosed from logs without extra plumbing. Stage names match the actual
+  // code blocks below so a non-zero stage points at the offending block.
+  const t0 = Date.now();
+  const stages: Record<string, number> = {};
+  const mark = (name: string, since: number) => {
+    stages[name] = Date.now() - since;
+  };
+  const perfMeta: {
+    convoId?: string;
+    userId?: string;
+    historyMessages?: number;
+    historyTokens?: number;
+    aiTimings?: import('@/lib/setup/setupper-brain').SetupperTimings;
+  } = {};
+
   try {
+    const tAuth = Date.now();
     const supabase = await createServerClient();
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
     if (authError || !authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    mark('auth', tAuth);
 
     const rl = rateLimit(`setup:${authUser.id}`, 10, 60_000);
     if (!rl.allowed) {
@@ -81,8 +100,13 @@ export async function POST(request: NextRequest) {
     // AFTER the model call, which meant a user at 0 credits still got a
     // free response (deduct_credits would correctly fail, but we'd
     // already eaten the API cost).
+    const tCredit = Date.now();
     const creditCheck = await assertSufficientCredits(supabase, workspace_id, SETUP_CHAT_CREDIT_COST);
     if (!creditCheck.ok) return creditCheck.response;
+    mark('credit', tCredit);
+
+    perfMeta.convoId = conversation_id;
+    perfMeta.userId = authUser.id;
 
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -101,6 +125,7 @@ export async function POST(request: NextRequest) {
     // upsert silently fails and every downstream insert (messages,
     // setup_drafts) cascades into the same silent failure. Better to
     // refuse the request than to drop the user's data on the floor.
+    const tConvoUpsert = Date.now();
     const convoUpsert = await adminClient
       .from('conversations')
       .upsert(
@@ -123,12 +148,14 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
+    mark('convoUpsert', tConvoUpsert);
 
     // Save user message to DB immediately — before the AI call. Phase 2
     // moved attachment durability into chat_attachments (with Haiku
     // digests), so the metadata image_count / image_names / file_context
     // band-aids that used to live on this row are gone; the row carries
     // only the user's text now.
+    const tUserMsg = Date.now();
     const userInsert = await adminClient
       .from('messages')
       .insert({
@@ -168,8 +195,10 @@ export async function POST(request: NextRequest) {
     if (incomingAttachmentIds.length > 0) {
       await attachAttachmentsToMessage(adminClient, incomingAttachmentIds, userMessageId);
     }
+    mark('userMsg', tUserMsg);
 
     // Load context in parallel
+    const tCtxLoad = Date.now();
     const [workspaceResult, historyResult, conversationResult, draftResult, allAttachments] = await Promise.all([
       adminClient
         .from('workspaces')
@@ -211,6 +240,7 @@ export async function POST(request: NextRequest) {
       // order (matches the conversation timeline).
       loadConversationAttachments(adminClient, conversation_id),
     ]);
+    mark('ctxLoad', tCtxLoad);
 
     const conversationAttachments: ConversationAttachment[] = allAttachments;
     const currentTurnAttachments = conversationAttachments.filter((a) =>
@@ -348,6 +378,10 @@ export async function POST(request: NextRequest) {
     // the one the user just sent), so the AI always has full context.
     // -----------------------------------------------------------------------
 
+    perfMeta.historyMessages = conversationHistory.length;
+    perfMeta.historyTokens = tokenCount;
+
+    const tAI = Date.now();
     const result = await handleSetupMessage({
       userMessage: enrichedMessage,
       workspaceId: workspace_id,
@@ -369,6 +403,8 @@ export async function POST(request: NextRequest) {
       // reference earlier uploads without us re-sending bytes.
       attachmentDigestBlock,
     });
+    mark('ai', tAI);
+    perfMeta.aiTimings = result.timings;
 
     // -----------------------------------------------------------------------
     // PHASE 3: Save AI response immediately, then send response to client.
@@ -381,6 +417,7 @@ export async function POST(request: NextRequest) {
     // generate-plan reads from there directly. Keeping a duplicate copy
     // on every assistant message just bloated the messages table and
     // gave the impression of two sources of truth.
+    const tAsstSave = Date.now();
     const assistantInsert = await adminClient.from('messages').insert({
       workspace_id,
       conversation_id,
@@ -399,6 +436,7 @@ export async function POST(request: NextRequest) {
       // creeps back in.
       console.error('[setup/chat] assistant message insert failed:', assistantInsert.error);
     }
+    mark('asstSave', tAsstSave);
 
     // Persist the merged snapshot to setup_drafts. mergeSnapshot has already
     // applied monotonicity (preserving user-named items the model dropped),
@@ -408,6 +446,7 @@ export async function POST(request: NextRequest) {
     // is the whole point of having a server-side source of truth: a
     // mis-formatted or skipped snapshot from the model never destroys the
     // approved draft.
+    const tDraftSave = Date.now();
     if (result.structureSnapshot) {
       const { error: draftError } = await adminClient
         .from('setup_drafts')
@@ -461,6 +500,9 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+    mark('draftSave', tDraftSave);
+
+    logSetupChatPerf(t0, stages, perfMeta, 'ok');
 
     // Fire-and-forget: billing, summarization, session updates.
     // These don't block the response to the client.
@@ -558,9 +600,47 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[POST /api/setup/chat] Error:', error);
+    logSetupChatPerf(t0, stages, perfMeta, 'error');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Setup error' },
       { status: 500 },
     );
   }
+}
+
+/**
+ * Single structured perf log per request. We log unconditionally (success or
+ * error) so a 504 in production - which truncates the response but lets the
+ * function finish on Vercel's side - still tells us where the time went.
+ */
+function logSetupChatPerf(
+  t0: number,
+  stages: Record<string, number>,
+  meta: {
+    convoId?: string;
+    userId?: string;
+    historyMessages?: number;
+    historyTokens?: number;
+    aiTimings?: import('@/lib/setup/setupper-brain').SetupperTimings;
+  },
+  status: 'ok' | 'error',
+) {
+  const totalMs = Date.now() - t0;
+  // The slowest stage is almost always the AI call; surface it explicitly so
+  // we don't have to scroll through the JSON every time.
+  const slowest = Object.entries(stages).sort((a, b) => b[1] - a[1])[0];
+  console.log(
+    '[setup/chat:perf]',
+    JSON.stringify({
+      status,
+      totalMs,
+      slowest: slowest ? { stage: slowest[0], ms: slowest[1] } : null,
+      stages,
+      ai: meta.aiTimings,
+      convoId: meta.convoId,
+      userId: meta.userId,
+      historyMessages: meta.historyMessages,
+      historyTokens: meta.historyTokens,
+    }),
+  );
 }
