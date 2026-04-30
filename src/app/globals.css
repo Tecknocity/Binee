@@ -80,6 +80,15 @@ main {
   border-radius: 4px;
 }
 
+/* Form fields manage their own focus styling, so suppress the global
+   accent outline for them. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-radius: 0;
+}
+
 /* Scrollbar styling — dark mode */
 .dark ::-webkit-scrollbar {
   width: 6px;
