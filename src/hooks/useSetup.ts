@@ -1748,7 +1748,7 @@ export function useSetup(): UseSetupReturn {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-          });
+          }, 115_000);
 
           if (response.ok) {
             const data = await response.json();
@@ -1769,7 +1769,7 @@ export function useSetup(): UseSetupReturn {
         }
 
         if (attempt === 0) {
-          await new Promise((r) => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, 8000));
         }
       }
 
