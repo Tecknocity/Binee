@@ -1078,6 +1078,7 @@ export function useSetup(): UseSetupReturn {
       };
 
       // Try with one automatic retry on failure (handles transient 500s)
+      let outOfCredits = false;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const response = await fetchWithTimeout('/api/setup/chat', {
@@ -1085,6 +1086,11 @@ export function useSetup(): UseSetupReturn {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           }, 90_000);
+
+          if (response.status === 402) {
+            outOfCredits = true;
+            break;
+          }
 
           if (response.ok) {
             const data = await response.json();
@@ -1137,8 +1143,11 @@ export function useSetup(): UseSetupReturn {
         }
       }
 
-      // Both attempts failed — show honest error
-      addMessage('assistant', "Sorry, I wasn't able to process that. Please try sending your message again. Don't worry, our conversation history is saved.");
+      if (outOfCredits) {
+        addMessage('assistant', 'You have run out of credits. Please upgrade to be able to continue the conversation.');
+      } else {
+        addMessage('assistant', "Sorry, I wasn't able to process that. Please try sending your message again. Don't worry, our conversation history is saved.");
+      }
       setIsSending(false);
     },
     [addMessage, isSending, workspace_id, conversationId, fullAnalysisContext, store]
