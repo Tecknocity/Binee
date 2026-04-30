@@ -36,6 +36,10 @@ export interface ReviserResult {
   snapshotDiagnostics?: SnapshotDiagnostics;
   /** The raw delta the model produced, for telemetry/debugging. */
   delta?: PlanDelta;
+  /** Wall-clock for the Anthropic .messages.create() call (debug observability). */
+  modelCallMs: number;
+  /** stop_reason returned by the model for the same call. */
+  modelStopReason?: string;
 }
 
 /**
@@ -61,12 +65,14 @@ export async function runReviser(input: ReviserInput): Promise<ReviserResult> {
       ]
     : [{ role: 'user' as const, content: input.userMessage }];
 
+  const modelStart = Date.now();
   const response = await anthropic.messages.create({
     model: SONNET_MODEL_ID,
     max_tokens: 2500,
     system: systemPrompt,
     messages,
   });
+  const modelCallMs = Date.now() - modelStart;
 
   const totalInputTokens = response.usage.input_tokens;
   const totalOutputTokens = response.usage.output_tokens;
@@ -122,6 +128,8 @@ export async function runReviser(input: ReviserInput): Promise<ReviserResult> {
     structureSnapshot: snapshot,
     snapshotDiagnostics: diagnostics,
     delta: delta ?? undefined,
+    modelCallMs,
+    modelStopReason: response.stop_reason ?? undefined,
   };
 }
 

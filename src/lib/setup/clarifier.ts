@@ -60,6 +60,10 @@ export interface ClarifierResult {
   ask?: ClarifierAsk;
   brief?: WorkspaceBrief;
   ready: boolean;
+  /** Wall-clock for the Anthropic .messages.create() call (debug observability). */
+  modelCallMs: number;
+  /** stop_reason returned by the model for the same call. */
+  modelStopReason?: string;
 }
 
 /**
@@ -126,12 +130,14 @@ ${priorQuestionsAsked >= QUESTION_HARD_CAP ? 'HARD CAP REACHED. You MUST set rea
       ]
     : [{ role: 'user' as const, content: latestUserContent }];
 
+  const modelStart = Date.now();
   const response = await anthropic.messages.create({
     model: HAIKU_MODEL_ID,
     max_tokens: 1500,
     system: systemPrompt + stateReminder,
     messages,
   });
+  const modelCallMs = Date.now() - modelStart;
 
   const totalInputTokens = response.usage.input_tokens;
   const totalOutputTokens = response.usage.output_tokens;
@@ -233,6 +239,8 @@ ${priorQuestionsAsked >= QUESTION_HARD_CAP ? 'HARD CAP REACHED. You MUST set rea
     ask,
     brief,
     ready,
+    modelCallMs,
+    modelStopReason: response.stop_reason ?? undefined,
   };
 }
 

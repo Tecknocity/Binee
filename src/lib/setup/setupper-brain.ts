@@ -111,6 +111,31 @@ interface SetupperResult {
   brief?: WorkspaceBrief;
   /** Multi-agent: true once discovery is complete (Generate Structure can be highlighted). */
   ready?: boolean;
+  /** Per-stage timings for the AI portion of the turn (debug observability). */
+  timings?: SetupperTimings;
+}
+
+/**
+ * Debug observability: how long each piece of the AI turn took. The route
+ * combines this with its own DB / auth timings into a single perf log line so
+ * we can see where a 504-causing turn actually spent its time.
+ */
+export interface SetupperTimings {
+  /** Wall-clock for the whole handleSetupMessage invocation. */
+  totalMs: number;
+  /** Which path ran. Helps slice averages by role. */
+  path: 'multi-agent-clarifier' | 'multi-agent-reviser' | 'legacy-sonnet';
+  /** Workspace analyzer sub-agent (only on first turn / cold path). */
+  analyzerMs?: number;
+  /** The Anthropic .messages.create() call (the dominant cost). */
+  modelCallMs: number;
+  /** stop_reason returned by the model (max_tokens is a yellow flag for slow turns). */
+  modelStopReason?: string;
+  /** Everything after the model call returned, before we hand back to the route. */
+  postProcessMs: number;
+  /** Input / output tokens reported by the API for the main model call. */
+  inputTokens: number;
+  outputTokens: number;
 }
 
 let client: Anthropic | null = null;
@@ -130,12 +155,14 @@ function getClient(): Anthropic {
  * full context awareness.
  */
 export async function handleSetupMessage(input: SetupperInput): Promise<SetupperResult> {
+  const handleStart = Date.now();
+
   // Multi-agent orchestrator. When the flag is on we route this turn to the
   // Clarifier (Haiku) or the Reviser (Sonnet) based on whether a generated
   // plan already exists. The legacy single-Sonnet path stays untouched as
   // the fallback - flip the env var off and behavior reverts exactly.
   if (MULTI_AGENT_SETUP) {
-    const routed = await routeMultiAgentTurn(input);
+    const routed = await routeMultiAgentTurn(input, handleStart);
     if (routed) return routed;
   }
 
@@ -146,7 +173,9 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
   // Step 1: Use pre-computed analysis from the analyzer step if available.
   // Only run a fresh sub-agent call if no analysis was provided (edge case).
   let workspaceAnalysis = input.precomputedAnalysis || '';
+  let analyzerMs: number | undefined;
   if (!workspaceAnalysis && input.conversationHistory.length === 0) {
+    const analyzerStart = Date.now();
     try {
       const analysisResult = await executeSubAgent(
         anthropic,
@@ -161,6 +190,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
       console.error('[setupper-brain] Workspace analysis failed:', error);
       workspaceAnalysis = 'Unable to analyze workspace. It may be empty or not connected.';
     }
+    analyzerMs = Date.now() - analyzerStart;
   }
 
   // Step 2: Build system prompt with all context
@@ -227,12 +257,14 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
       ]
     : [{ role: 'user' as const, content: latestUserContent }];
 
+  const modelStart = Date.now();
   const response = await anthropic.messages.create({
     model: SONNET_MODEL_ID,
     max_tokens: 4096,
     system: systemPrompt,
     messages,
   });
+  const modelCallMs = Date.now() - modelStart;
 
   totalInputTokens += response.usage.input_tokens;
   totalOutputTokens += response.usage.output_tokens;
@@ -311,6 +343,18 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     isSetup: true,
   });
 
+  const totalMs = Date.now() - handleStart;
+  const timings: SetupperTimings = {
+    totalMs,
+    path: 'legacy-sonnet',
+    analyzerMs,
+    modelCallMs,
+    modelStopReason: response.stop_reason ?? undefined,
+    postProcessMs: Math.max(0, totalMs - modelCallMs - (analyzerMs ?? 0)),
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  };
+
   return {
     content: finalContent || 'I wasn\'t able to generate a response. Please try again.',
     creditsToCharge: classification.creditsToCharge,
@@ -320,6 +364,7 @@ export async function handleSetupMessage(input: SetupperInput): Promise<Setupper
     toolCalls: [],
     structureSnapshot,
     snapshotDiagnostics,
+    timings,
   };
 }
 
@@ -650,12 +695,17 @@ function isReadyDraft(snap: Record<string, unknown> | undefined): boolean {
   return ready === true && Array.isArray(spaces) && spaces.length > 0;
 }
 
-async function routeMultiAgentTurn(input: SetupperInput): Promise<SetupperResult | null> {
+async function routeMultiAgentTurn(
+  input: SetupperInput,
+  handleStart: number,
+): Promise<SetupperResult | null> {
   // We need the workspace analysis even on the multi-agent path so the
   // Clarifier can speak intelligently about what the user already has.
   // Reuse the same pre-computed analyzer output the legacy path uses.
   let workspaceAnalysis = input.precomputedAnalysis || '';
+  let analyzerMs: number | undefined;
   if (!workspaceAnalysis && input.conversationHistory.length === 0) {
+    const analyzerStart = Date.now();
     try {
       const analysisResult = await executeSubAgent(
         getClient(),
@@ -668,6 +718,7 @@ async function routeMultiAgentTurn(input: SetupperInput): Promise<SetupperResult
       console.error('[setupper-brain] Multi-agent analyzer failed:', error);
       workspaceAnalysis = 'Unable to analyze workspace. It may be empty or not connected.';
     }
+    analyzerMs = Date.now() - analyzerStart;
   }
 
   const draft = input.chatStructureSnapshot;
@@ -682,6 +733,17 @@ async function routeMultiAgentTurn(input: SetupperInput): Promise<SetupperResult
       planTier: input.planTier,
       industry: input.profileData?.industry,
     });
+    const totalMs = Date.now() - handleStart;
+    const timings: SetupperTimings = {
+      totalMs,
+      path: 'multi-agent-reviser',
+      analyzerMs,
+      modelCallMs: result.modelCallMs,
+      modelStopReason: result.modelStopReason,
+      postProcessMs: Math.max(0, totalMs - result.modelCallMs - (analyzerMs ?? 0)),
+      inputTokens: result.totalInputTokens,
+      outputTokens: result.totalOutputTokens,
+    };
     return {
       content: result.content,
       creditsToCharge: result.creditsToCharge,
@@ -693,6 +755,7 @@ async function routeMultiAgentTurn(input: SetupperInput): Promise<SetupperResult
       snapshotDiagnostics: result.snapshotDiagnostics,
       role: 'reviser',
       ready: true,
+      timings,
     };
   }
 
@@ -710,6 +773,17 @@ async function routeMultiAgentTurn(input: SetupperInput): Promise<SetupperResult
     imageAttachments: input.imageAttachments,
     attachmentDigestBlock: input.attachmentDigestBlock,
   });
+  const totalMs = Date.now() - handleStart;
+  const timings: SetupperTimings = {
+    totalMs,
+    path: 'multi-agent-clarifier',
+    analyzerMs,
+    modelCallMs: result.modelCallMs,
+    modelStopReason: result.modelStopReason,
+    postProcessMs: Math.max(0, totalMs - result.modelCallMs - (analyzerMs ?? 0)),
+    inputTokens: result.totalInputTokens,
+    outputTokens: result.totalOutputTokens,
+  };
   return {
     content: result.content,
     creditsToCharge: result.creditsToCharge,
@@ -723,5 +797,6 @@ async function routeMultiAgentTurn(input: SetupperInput): Promise<SetupperResult
     ask: result.ask,
     brief: result.brief,
     ready: result.ready,
+    timings,
   };
 }
