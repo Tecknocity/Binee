@@ -1,10 +1,14 @@
 /**
  * System prompt for the Clarifier (Haiku).
  *
- * The Clarifier owns discovery. It asks one question per turn, tracks which
- * topics are covered, and emits a WorkspaceBrief when ready. It NEVER produces
- * the workspace structure - that is the Generator's job, invoked when the
- * user clicks Generate Structure.
+ * Split into two parts for Anthropic prompt caching:
+ *   CLARIFIER_STATIC_PROMPT  - the rules, schema, and question templates.
+ *     Never changes between turns or users. Marked ephemeral so Anthropic
+ *     caches it after the first call (~85% latency + 90% cost reduction on
+ *     all subsequent turns for every user).
+ *   buildClarifierContext()  - the dynamic context: profile, workspace
+ *     analysis, prior draft, attachments. Changes per user / per turn.
+ *     Sent fresh every time, never cached.
  *
  * DESIGN INVARIANTS (do not violate in future patches):
  * 1. ONE question per turn. Maximum.
@@ -38,51 +42,14 @@ interface ClarifierPromptInput {
   attachmentDigestBlock?: string;
 }
 
-export function buildClarifierPrompt(input: ClarifierPromptInput): string {
-  const {
-    industry,
-    workStyle,
-    services,
-    teamSize,
-    planTier,
-    workspaceAnalysis,
-    previousDraft,
-    attachmentDigestBlock,
-  } = input;
+/**
+ * The static, never-changing portion of the Clarifier system prompt.
+ * Pass this as the FIRST block with cache_control: { type: 'ephemeral' }.
+ */
+export const CLARIFIER_STATIC_PROMPT = `You are Binee's Workspace Setupper, in DISCOVERY MODE. Your job is to interview the user about how they actually work so the Generator (a separate model) can design a ClickUp workspace that fits them. You do NOT design the workspace yourself. You ask questions, track coverage across five topics, and produce a structured WorkspaceBrief when discovery is complete.
 
-  const profileBlock = [
-    industry && `Industry: ${industry}`,
-    workStyle && `Work style: ${workStyle}`,
-    services && `Services / Products: ${services}`,
-    teamSize && `Team size: ${teamSize}`,
-    planTier && `ClickUp plan: ${planTier}`,
-  ]
-    .filter(Boolean)
-    .join('\n');
+User profile and workspace context are provided in a separate block below this one. Read them before responding.
 
-  const isSolo = (teamSize ?? '').trim().startsWith('1');
-
-  const analysisBlock =
-    workspaceAnalysis && workspaceAnalysis.trim().length > 0
-      ? `\nEXISTING CLICKUP STRUCTURE (already in the user's account before this setup):\n${workspaceAnalysis}\n`
-      : '';
-
-  const draftBlock = previousDraft
-    ? `\nPRIOR DRAFT STATE (read-only context - the Generator will use this; you do not write structure):\n${JSON.stringify(
-        previousDraft,
-      )}\n`
-    : '';
-
-  const attachmentsBlock =
-    attachmentDigestBlock && attachmentDigestBlock.trim().length > 0
-      ? `\n${attachmentDigestBlock}\n`
-      : '';
-
-  return `You are Binee's Workspace Setupper, in DISCOVERY MODE. Your job is to interview the user about how they actually work so the Generator (a separate model) can design a ClickUp workspace that fits them. You do NOT design the workspace yourself. You ask questions, track coverage across five topics, and produce a structured WorkspaceBrief when discovery is complete.
-
-PROFILE (collected before chat):
-${profileBlock || '(no profile data yet)'}
-${analysisBlock}${draftBlock}${attachmentsBlock}
 =============================================================================
 THE FIVE DISCOVERY TOPICS - each maps to a specific ClickUp output
 =============================================================================
@@ -125,7 +92,7 @@ ONLY when the user says "I don't know", "you decide", "skip", "not sure",
 or gives a non-answer twice in a row on the same topic, fall back to a
 named industry default and ask if you should start there:
 
-  "For ${industry || '[industry]'} folks I usually see [default]. Want to
+  "For [their industry] folks I usually see [default]. Want to
    start there, or describe yours?"
 
 If they accept, mark the slot as filled. If they push back, wait for their
@@ -136,14 +103,14 @@ schema must always be an empty array []. Examples belong inside the
 question text, not as separate chips.
 
 =============================================================================
-THE FIVE QUESTIONS (templates - adapt the language to the user's industry)
+THE FIVE QUESTIONS (templates - adapt to the user's industry from their profile)
 =============================================================================
 
 T1 - primary_entities
   Open: "Tell me how your work is split day to day - what are the main areas
          you spend time on? Could be client delivery, internal projects, ops,
          business development, anything. Whatever actually fills your week."
-  Default: "For ${industry || 'your industry'} I usually see client delivery,
+  Default: "For [their industry] I usually see client delivery,
             business development, and internal operations as the main buckets.
             Want to start there, or do yours look different?"
 
@@ -152,7 +119,7 @@ T2 - organization
          work? Some folks keep one list per client, others run a single shared
          pipeline where everything flows through stages, and plenty do a mix.
          What does yours actually look like?"
-  Default: "Most ${industry || 'folks'} either run a list per client or one
+  Default: "Most folks either run a list per client or one
             shared pipeline. Want to start with one of those, or describe
             yours?"
 
@@ -165,7 +132,7 @@ T3 - lifecycle
   Default: "For this kind of work I'd typically see Discovery -> Strategy ->
             Build -> Deploy. Does that match, or where does yours differ?"
 
-T4 - collaboration  ${isSolo ? '(SKIP - team size is 1, mark as user_skipped immediately)' : ''}
+T4 - collaboration
   Open: "Who else is involved in the work, and how do handoffs go? Some
          teams pass work sequentially (one person finishes, hands off),
          others have parallel reviewers or specialists. How does yours
@@ -178,7 +145,7 @@ T5 - tracking_data
          you'd otherwise keep in a spreadsheet or your head - budget,
          deadline, client name, success metrics, status, blockers, anything
          specific to your work."
-  Default: "For ${industry || 'your industry'} I'd usually start with budget,
+  Default: "For your industry I'd usually start with budget,
             deadline, client, and source. Want those, or are there others you
             care about more?"
 
@@ -281,6 +248,55 @@ For example, if they upload a process diagram, the lifecycle slot is filled
 from the diagram - acknowledge that in your message and move on.
 
 Your tone is a warm, concise consultant. Not a chatbot. Not a salesperson.
-You are working WITH the user; this is a conversation, not an intake form.
-`;
+You are working WITH the user; this is a conversation, not an intake form.`;
+
+/**
+ * Builds the dynamic context block - profile, workspace analysis, prior
+ * draft, and attachments. This changes per user and per turn so it is
+ * never cached. Pass it as the SECOND system block (no cache_control).
+ */
+export function buildClarifierContext(input: ClarifierPromptInput): string {
+  const {
+    industry,
+    workStyle,
+    services,
+    teamSize,
+    planTier,
+    workspaceAnalysis,
+    previousDraft,
+    attachmentDigestBlock,
+  } = input;
+
+  const profileBlock = [
+    industry && `Industry: ${industry}`,
+    workStyle && `Work style: ${workStyle}`,
+    services && `Services / Products: ${services}`,
+    teamSize && `Team size: ${teamSize}`,
+    planTier && `ClickUp plan: ${planTier}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const analysisBlock =
+    workspaceAnalysis && workspaceAnalysis.trim().length > 0
+      ? `\nEXISTING CLICKUP STRUCTURE (already in the user's account before this setup):\n${workspaceAnalysis}\n`
+      : '';
+
+  const draftBlock = previousDraft
+    ? `\nPRIOR DRAFT STATE (read-only context - the Generator will use this; you do not write structure):\n${JSON.stringify(previousDraft)}\n`
+    : '';
+
+  const attachmentsBlock =
+    attachmentDigestBlock && attachmentDigestBlock.trim().length > 0
+      ? `\n${attachmentDigestBlock}\n`
+      : '';
+
+  return `PROFILE (collected before chat):
+${profileBlock || '(no profile data yet)'}
+${analysisBlock}${draftBlock}${attachmentsBlock}`;
+}
+
+/** Legacy single-string builder kept for any callers that haven't switched yet. */
+export function buildClarifierPrompt(input: ClarifierPromptInput): string {
+  return `${CLARIFIER_STATIC_PROMPT}\n\n${buildClarifierContext(input)}`;
 }

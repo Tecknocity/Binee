@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { buildReviserPrompt } from '@/lib/ai/prompts/reviser-prompt';
+import { REVISER_STATIC_RULES, buildReviserContext } from '@/lib/ai/prompts/reviser-prompt';
 import { calculateAnthropicCost } from '@/billing/engine/token-converter';
 import { classifyMessageCost } from '@/billing/engine/flat-credit-classifier';
 import type { PlanDelta } from './contracts';
@@ -51,7 +51,7 @@ export interface ReviserResult {
 export async function runReviser(input: ReviserInput): Promise<ReviserResult> {
   const anthropic = getClient();
 
-  const systemPrompt = buildReviserPrompt({
+  const dynamicContext = buildReviserContext({
     currentPlan: input.currentPlan,
     brief: input.brief ?? null,
     planTier: input.planTier,
@@ -69,7 +69,20 @@ export async function runReviser(input: ReviserInput): Promise<ReviserResult> {
   const response = await anthropic.messages.create({
     model: SONNET_MODEL_ID,
     max_tokens: 2500,
-    system: systemPrompt,
+    // Two-block system: static rules are cached after the first call
+    // (~900 tokens, ~85% latency reduction on cache hits). The current plan
+    // JSON + brief change per user so they are always sent fresh.
+    system: [
+      {
+        type: 'text',
+        text: REVISER_STATIC_RULES,
+        cache_control: { type: 'ephemeral' },
+      },
+      {
+        type: 'text',
+        text: dynamicContext,
+      },
+    ],
     messages,
   });
   const modelCallMs = Date.now() - modelStart;

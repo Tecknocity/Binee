@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { buildClarifierPrompt } from '@/lib/ai/prompts/clarifier-prompt';
+import { CLARIFIER_STATIC_PROMPT, buildClarifierContext } from '@/lib/ai/prompts/clarifier-prompt';
 import { calculateAnthropicCost } from '@/billing/engine/token-converter';
 import { classifyMessageCost } from '@/billing/engine/flat-credit-classifier';
 import {
@@ -83,7 +83,7 @@ export async function runClarifier(input: ClarifierInput): Promise<ClarifierResu
   const priorCoverage = priorClarifier.coverage ?? autoSkipFromProfile(emptyCoverage(), { isSolo });
   const priorQuestionsAsked = priorClarifier.questions_asked ?? 0;
 
-  const systemPrompt = buildClarifierPrompt({
+  const dynamicContext = buildClarifierContext({
     industry: input.profileData?.industry,
     workStyle: input.profileData?.workStyle,
     services: input.profileData?.services,
@@ -134,7 +134,20 @@ ${priorQuestionsAsked >= QUESTION_HARD_CAP ? 'HARD CAP REACHED. You MUST set rea
   const response = await anthropic.messages.create({
     model: HAIKU_MODEL_ID,
     max_tokens: 1500,
-    system: systemPrompt + stateReminder,
+    // Two-block system: static rules are cached after the first call
+    // (~1800 tokens, ~85% latency reduction on cache hits). Dynamic context
+    // (profile, workspace analysis, prior draft) is always sent fresh.
+    system: [
+      {
+        type: 'text',
+        text: CLARIFIER_STATIC_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+      {
+        type: 'text',
+        text: `${dynamicContext}\n${stateReminder}`,
+      },
+    ],
     messages,
   });
   const modelCallMs = Date.now() - modelStart;

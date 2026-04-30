@@ -1084,7 +1084,7 @@ export function useSetup(): UseSetupReturn {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-          }, 90_000);
+          }, 115_000);
 
           if (response.ok) {
             const data = await response.json();
@@ -1131,9 +1131,11 @@ export function useSetup(): UseSetupReturn {
           console.error(`[setup/sendMessage] API call failed (attempt ${attempt + 1}):`, err);
         }
 
-        // Wait 1.5s before retrying
+        // Wait before retrying — long enough that a slow first attempt can
+        // finish without us firing a second parallel Anthropic call into the
+        // same account. 1.5s was too short and caused double-billing + extra load.
         if (attempt === 0) {
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, 8000));
         }
       }
 

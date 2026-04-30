@@ -32,7 +32,7 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export const maxDuration = 90;
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   // Per-stage timing collector. We log a single structured perf line at the

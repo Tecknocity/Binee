@@ -473,21 +473,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     );
 
-    // Industry standard: force-refresh session when tab becomes visible again.
-    // When a tab is backgrounded, the auth token may expire. Calling getSession()
-    // on visibility change ensures the token is refreshed before any data queries
-    // run. This is what Linear, Slack, and Claude.ai do.
+    // Force-refresh session when tab becomes visible. Debounced to 2s so
+    // rapidly switching to DevTools and back does not fire multiple parallel
+    // getSession() calls (each of which acquires the Supabase auth lock).
+    let visibilityTimer: ReturnType<typeof setTimeout> | null = null;
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && !cancelled) {
-        console.log('[binee:auth] Tab visible — refreshing session');
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        if (visibilityTimer) clearTimeout(visibilityTimer);
+        visibilityTimer = setTimeout(() => {
           if (cancelled) return;
-          if (session?.user) {
-            setUser(mapSupabaseUser(session.user));
-          }
-        }).catch(() => {
-          // Non-critical — next API call will trigger refresh anyway
-        });
+          console.log('[binee:auth] Tab visible - refreshing session');
+          supabase.auth.getSession().then(({ data: { session } }) => {
+            if (cancelled) return;
+            if (session?.user) {
+              setUser(mapSupabaseUser(session.user));
+            }
+          }).catch(() => {
+            // Non-critical - next API call will trigger refresh anyway
+          });
+        }, 2000);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -495,6 +499,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
       clearTimeout(timeout);
+      if (visibilityTimer) clearTimeout(visibilityTimer);
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
