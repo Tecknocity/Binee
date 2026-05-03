@@ -60,6 +60,10 @@ interface ExecutionProgressProps {
   enrichmentSummary?: EnrichmentSummary;
   onRetryEnrichmentJob?: (jobId: string) => void | Promise<void>;
   onRetryAllFailedEnrichment?: () => void | Promise<void>;
+  /** True while a retry request is in flight. Disables both retry paths and shows a spinner on the bulk button. */
+  isRetryingEnrichment?: boolean;
+  /** Surfaced error from the most recent retry attempt (e.g. network or 5xx). */
+  retryError?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +126,8 @@ export function ExecutionProgress({
   enrichmentSummary,
   onRetryEnrichmentJob,
   onRetryAllFailedEnrichment,
+  isRetryingEnrichment,
+  retryError,
 }: ExecutionProgressProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
@@ -687,18 +693,29 @@ export function ExecutionProgress({
                   key={job.id}
                   job={job}
                   onRetry={onRetryEnrichmentJob}
+                  retryDisabled={isRetryingEnrichment}
                 />
               ))}
             </div>
+          )}
+          {retryError && (
+            <p className="text-[11px] text-error/80 mt-2 break-words">
+              Retry failed: {retryError}
+            </p>
           )}
           {enrichFailed > 0 && onRetryAllFailedEnrichment && (
             <div className="mt-3 flex justify-end">
               <button
                 onClick={() => void onRetryAllFailedEnrichment()}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent border border-accent/30 hover:bg-accent/10 rounded-lg transition-colors"
+                disabled={isRetryingEnrichment}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent border border-accent/30 hover:bg-accent/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
-                <RefreshCw className="w-3 h-3" />
-                Retry all failed
+                {isRetryingEnrichment ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                {isRetryingEnrichment ? 'Retrying...' : 'Retry all failed'}
               </button>
             </div>
           )}
@@ -755,9 +772,11 @@ export function ExecutionProgress({
 interface EnrichmentRowProps {
   job: EnrichmentJobView;
   onRetry?: (jobId: string) => void | Promise<void>;
+  retryDisabled?: boolean;
 }
 
-function EnrichmentRow({ job, onRetry }: EnrichmentRowProps) {
+function EnrichmentRow({ job, onRetry, retryDisabled }: EnrichmentRowProps) {
+  const [showFullError, setShowFullError] = useState(false);
   const isList = job.type === 'list_tasks';
   const isDoc = job.type === 'doc_content';
   const isViews = job.type === 'list_views';
@@ -815,20 +834,25 @@ function EnrichmentRow({ job, onRetry }: EnrichmentRowProps) {
         </span>
       )}
       {job.status === 'failed' && (
-        <span
-          className="text-[11px] text-error/70 truncate max-w-[200px]"
-          title={job.last_error ?? undefined}
+        <button
+          type="button"
+          onClick={() => setShowFullError((v) => !v)}
+          className={`text-[11px] text-error/70 text-left underline-offset-2 hover:underline ${showFullError ? 'whitespace-pre-wrap break-words max-w-full' : 'truncate max-w-[200px]'}`}
+          title={showFullError ? 'Click to collapse' : (job.last_error ?? 'Click to view full error')}
         >
-          {job.last_error?.slice(0, 60) ?? 'failed'}
-        </span>
+          {showFullError
+            ? (job.last_error ?? 'failed')
+            : (job.last_error?.slice(0, 60) ?? 'failed')}
+        </button>
       )}
       {job.status === 'failed' && onRetry && (
         <button
           onClick={() => void onRetry(job.id)}
-          className="flex-shrink-0 p-1 text-accent hover:bg-accent/10 rounded transition-colors"
+          disabled={retryDisabled}
+          className="flex-shrink-0 p-1 text-accent hover:bg-accent/10 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           title="Retry this item"
         >
-          <RefreshCw className="w-3 h-3" />
+          <RefreshCw className={`w-3 h-3 ${retryDisabled ? 'animate-spin' : ''}`} />
         </button>
       )}
     </div>

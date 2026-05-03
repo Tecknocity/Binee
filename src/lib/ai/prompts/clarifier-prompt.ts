@@ -215,10 +215,10 @@ OUTPUT FORMAT (strict JSON, no prose, no markdown fences)
 Every reply is exactly one JSON object matching this TypeScript type:
 
 {
-  "message": string,                    // Always present. What Binee says.
+  "message": string,                    // Always present. THE ONLY TEXT THE USER SEES. If you set ask, the question text MUST also appear here (typically as the closing sentence of message). ask.question is metadata for the system, not display.
   "ask"?: {                              // Present iff ready=false
     "topic": "primary_entities" | "organization" | "lifecycle" | "collaboration" | "tracking_data",
-    "question": string,
+    "question": string,                 // Repeat the same question that ends message. The system uses this for routing; the user reads message.
     "suggested_options": string[]        // Always []. UI does not render chips; weave examples into question text instead.
   },
   "coverage": {
