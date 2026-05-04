@@ -166,6 +166,10 @@ export interface UseSetupReturn {
   retryEnrichmentJob: (jobId: string) => Promise<void>;
   /** Retry every failed enrichment job in the active build */
   retryAllFailedEnrichment: () => Promise<void>;
+  /** True while either retry path is in flight. Used to disable buttons + show a spinner. */
+  isRetryingEnrichment: boolean;
+  /** Surfaced error from the most recent retry click, null when none. Cleared on next retry. */
+  retryError: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1674,36 +1678,61 @@ export function useSetup(): UseSetupReturn {
     };
   }, [buildId, buildStatus, workspace_id, store]);
 
+  // Transient UI flag for the retry buttons. Local state is enough — this
+  // resets on navigation and shouldn't be persisted across sessions. The flag
+  // gates the bulk button's spinner and disables both retry paths in flight
+  // so a double-click doesn't fire two parallel retries.
+  const [isRetryingEnrichment, setIsRetryingEnrichment] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
   /** Retry a single failed enrichment job by id. */
   const retryEnrichmentJob = useCallback(async (jobId: string) => {
-    if (!buildId) return;
+    if (!buildId || isRetryingEnrichment) return;
+    setIsRetryingEnrichment(true);
+    setRetryError(null);
     try {
-      await fetchWithTimeout('/api/setup/retry-jobs', {
+      const res = await fetchWithTimeout('/api/setup/retry-jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ build_id: buildId, job_ids: [jobId] }),
       }, 15_000);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Retry request failed (${res.status})${text ? `: ${text.slice(0, 200)}` : ''}`);
+      }
       // Mark optimistic; polling will rehydrate.
       store?.getState().setBuildStatus('enriching');
     } catch (err) {
       console.error('[useSetup] retryEnrichmentJob failed:', err);
+      setRetryError(err instanceof Error ? err.message : 'Retry failed');
+    } finally {
+      setIsRetryingEnrichment(false);
     }
-  }, [buildId, store]);
+  }, [buildId, store, isRetryingEnrichment]);
 
   /** Retry every failed enrichment job in the current build. */
   const retryAllFailedEnrichment = useCallback(async () => {
-    if (!buildId) return;
+    if (!buildId || isRetryingEnrichment) return;
+    setIsRetryingEnrichment(true);
+    setRetryError(null);
     try {
-      await fetchWithTimeout('/api/setup/retry-jobs', {
+      const res = await fetchWithTimeout('/api/setup/retry-jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ build_id: buildId, all_failed: true }),
       }, 15_000);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Retry request failed (${res.status})${text ? `: ${text.slice(0, 200)}` : ''}`);
+      }
       store?.getState().setBuildStatus('enriching');
     } catch (err) {
       console.error('[useSetup] retryAllFailedEnrichment failed:', err);
+      setRetryError(err instanceof Error ? err.message : 'Retry failed');
+    } finally {
+      setIsRetryingEnrichment(false);
     }
-  }, [buildId, store]);
+  }, [buildId, store, isRetryingEnrichment]);
 
   const requestChanges = useCallback(
     async (feedback: string) => {
@@ -2044,5 +2073,7 @@ export function useSetup(): UseSetupReturn {
     enrichmentSummary,
     retryEnrichmentJob,
     retryAllFailedEnrichment,
+    isRetryingEnrichment,
+    retryError,
   };
 }

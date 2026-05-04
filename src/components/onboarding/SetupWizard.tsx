@@ -214,6 +214,8 @@ export default function SetupWizard() {
             enrichmentSummary={setup.enrichmentSummary}
             onRetryEnrichmentJob={setup.retryEnrichmentJob}
             onRetryAllFailedEnrichment={setup.retryAllFailedEnrichment}
+            isRetryingEnrichment={setup.isRetryingEnrichment}
+            retryError={setup.retryError}
           />
         )}
 

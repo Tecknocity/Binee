@@ -199,6 +199,25 @@ ${priorQuestionsAsked >= QUESTION_HARD_CAP ? 'HARD CAP REACHED. You MUST set rea
     if (!brief) brief = synthesizeBriefFallback(coverage, input.profileData);
   }
 
+  // Stall guard: model returned ready=false with no ask (e.g. acknowledged
+  // the user but forgot the follow-up question). Pick the next unfilled
+  // topic so the conversation never dead-ends. If nothing is unfilled,
+  // close discovery instead.
+  if (!ready && !ask) {
+    const nextTopic = COVERAGE_KEYS.find((k) => coverage[k] === 'unfilled');
+    if (nextTopic) {
+      ask = {
+        topic: nextTopic,
+        question: openQuestionFor(nextTopic),
+        suggested_options: [],
+      };
+    } else {
+      coverage = fillDefaultsForUnfilled(coverage);
+      ready = true;
+      if (!brief) brief = synthesizeBriefFallback(coverage, input.profileData);
+    }
+  }
+
   // Build the next snapshot: prior structure preserved + clarifier fields
   // updated. We deliberately do not call mergeSnapshotWithDiagnostics here
   // because the Clarifier never writes structure - the Generator does.
@@ -240,8 +259,21 @@ ${priorQuestionsAsked >= QUESTION_HARD_CAP ? 'HARD CAP REACHED. You MUST set rea
     isSetup: true,
   });
 
+  // The UI renders only `content`. If we have an ask but the model's message
+  // doesn't already end with a question, append the ask so the user always has
+  // something to respond to. Belt-and-suspenders for a small model that
+  // sometimes stuffs the question into ask.question and acknowledges-only in
+  // message, leaving the chat looking stalled.
+  let content = decoded.message?.trim() || 'Got it. Let me think about that for a moment.';
+  if (!ready && ask?.question) {
+    const endsWithQuestion = /\?["')\]]?\s*$/.test(content);
+    if (!endsWithQuestion) {
+      content = `${content}\n\n${ask.question}`;
+    }
+  }
+
   return {
-    content: decoded.message || 'Got it. Let me think about that for a moment.',
+    content,
     creditsToCharge: classification.creditsToCharge,
     totalInputTokens,
     totalOutputTokens,
