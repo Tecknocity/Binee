@@ -192,12 +192,20 @@ export class ClickUpClient {
           );
         }
 
-        // Some DELETE endpoints return 204 with no body
+        // Some DELETE endpoints return 204 with no body. v3 page PUT has
+        // also been observed returning an empty 200 on success.
         if (res.status === 204) {
           return undefined as T;
         }
-
-        return (await res.json()) as T;
+        const text = await res.text();
+        if (!text || text.trim().length === 0) {
+          return undefined as T;
+        }
+        try {
+          return JSON.parse(text) as T;
+        } catch {
+          return undefined as T;
+        }
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -469,27 +477,52 @@ export class ClickUpClient {
 
   // ---------------------------------------------------------------------------
   // Docs
+  //
+  // All v3 doc endpoints take the ClickUp `team_id` in the URL path slot
+  // ClickUp labels `{workspaceId}`. That is NOT the Binee Supabase workspace
+  // UUID. Every method below requires teamId as an explicit argument so the
+  // two ids cannot be conflated at a call site.
   // ---------------------------------------------------------------------------
 
   async createDoc(
-    workspaceId: string,
+    teamId: string,
     name: string,
-    content?: string
+    options?: {
+      parentId?: string;
+      parentType?: number;
+      createPage?: boolean;
+      visibility?: "PUBLIC" | "PRIVATE";
+    },
   ): Promise<ClickUpDoc> {
     const body: Record<string, unknown> = { name };
-    if (content) {
-      body.content = content;
+    if (options?.parentId && options?.parentType !== undefined) {
+      body.parent = { id: options.parentId, type: options.parentType };
     }
-    return this.request<ClickUpDoc>(`/team/${workspaceId}/doc`, {
-      method: "POST",
-      body,
-    });
+    if (options?.createPage) {
+      body.create_page = true;
+    }
+    if (options?.visibility) {
+      body.visibility = options.visibility;
+    }
+
+    try {
+      return await this.request<ClickUpDoc>(
+        `/workspaces/${teamId}/docs`,
+        { method: "POST", body },
+        BASE_URL_V3,
+      );
+    } catch {
+      // v2 fallback for plans without v3 Docs access. v2 does not support the
+      // parent/create_page options, so the caller must populate content via a
+      // separate page write.
+      return this.request<ClickUpDoc>(`/team/${teamId}/doc`, {
+        method: "POST",
+        body: { name },
+      });
+    }
   }
 
-  async searchDocs(
-    teamId: string
-  ): Promise<ClickUpDoc[]> {
-    // Try v3 endpoint first (more reliable across plans), fall back to v2
+  async searchDocs(teamId: string): Promise<ClickUpDoc[]> {
     try {
       const res = await this.request<{ docs: ClickUpDoc[] }>(
         `/workspaces/${teamId}/docs`,
@@ -498,73 +531,119 @@ export class ClickUpClient {
       );
       return res.docs ?? [];
     } catch {
-      // v3 not available, try v2 endpoint
       try {
         const res = await this.request<{ docs: ClickUpDoc[] }>(
-          `/team/${teamId}/doc`
+          `/team/${teamId}/doc`,
         );
         return res.docs ?? [];
       } catch {
-        // Docs search not available on this plan
         return [];
       }
     }
   }
 
-  async getDocPages(docId: string): Promise<ClickUpDocPage[]> {
-    const res = await this.request<{ pages: ClickUpDocPage[] }>(
-      `/doc/${docId}/page`
-    );
-    return res.pages ?? [];
+  async getDocPages(
+    teamId: string,
+    docId: string,
+  ): Promise<ClickUpDocPage[]> {
+    try {
+      const res = await this.request<ClickUpDocPage[] | { pages: ClickUpDocPage[] }>(
+        `/workspaces/${teamId}/docs/${docId}/pages`,
+        { method: "GET" },
+        BASE_URL_V3,
+      );
+      // v3 returns a flat array; older variants returned { pages: [...] }.
+      if (Array.isArray(res)) return res;
+      return res.pages ?? [];
+    } catch {
+      try {
+        const res = await this.request<{ pages: ClickUpDocPage[] }>(
+          `/doc/${docId}/page`,
+        );
+        return res.pages ?? [];
+      } catch {
+        return [];
+      }
+    }
   }
 
   async createDocPage(
+    teamId: string,
     docId: string,
     name: string,
     content?: string,
-    workspaceId?: string,
   ): Promise<ClickUpDocPage> {
-    // v3 is the current Docs API. Try it first when a workspaceId is available
-    // because docs created via POST /v3/workspaces/{wid}/docs cannot always be
-    // written to via the legacy v2 /doc/{docId}/page endpoint. Fall back to v2
-    // if v3 fails (e.g. plan without v3 Docs access).
-    const wid = workspaceId || this.workspaceId;
-    if (wid) {
+    const v3Body: Record<string, unknown> = { name };
+    if (content) {
+      v3Body.content = content;
+      v3Body.content_format = "text/md";
+    }
+    try {
+      // ClickUp v3 has been observed returning either a flat page object or
+      // `{ page: {...} }`. Normalise both shapes here.
+      const raw = await this.request<ClickUpDocPage | { page: ClickUpDocPage }>(
+        `/workspaces/${teamId}/docs/${docId}/pages`,
+        { method: "POST", body: v3Body },
+        BASE_URL_V3,
+      );
+      return unwrapPage(raw);
+    } catch (v3Err) {
+      // v2 fallback. Drops content_format because v2 ignores the field; some
+      // plans without v3 Docs access still accept this endpoint.
+      const v2Body: Record<string, unknown> = { name };
+      if (content) v2Body.content = content;
       try {
-        const body: Record<string, unknown> = { name };
-        if (content) {
-          body.content = content;
-          body.content_format = "text/md";
-        }
-        return await this.request<ClickUpDocPage>(
-          `/workspaces/${wid}/docs/${docId}/pages`,
-          { method: "POST", body },
-          BASE_URL_V3,
-        );
+        return await this.request<ClickUpDocPage>(`/doc/${docId}/page`, {
+          method: "POST",
+          body: v2Body,
+        });
       } catch {
-        // Fall through to v2
+        // Surface the v3 error - it carries the more informative message.
+        throw v3Err;
       }
     }
-
-    const body: Record<string, unknown> = { name };
-    if (content) {
-      body.content = content;
-    }
-    return this.request<ClickUpDocPage>(`/doc/${docId}/page`, {
-      method: "POST",
-      body,
-    });
   }
 
   async updateDocPage(
+    teamId: string,
     docId: string,
     pageId: string,
-    params: { name?: string; content?: string }
+    params: { name?: string; content?: string; sub_title?: string },
   ): Promise<ClickUpDocPage> {
-    return this.request<ClickUpDocPage>(`/doc/${docId}/page/${pageId}`, {
-      method: "PUT",
-      body: params as Record<string, unknown>,
-    });
+    const v3Body: Record<string, unknown> = { ...params };
+    if (params.content !== undefined) {
+      v3Body.content_format = "text/md";
+      // v3 supports replace / append / prepend. Default to replace so the
+      // page reflects exactly what we sent.
+      v3Body.content_edit_mode = "replace";
+    }
+    try {
+      const raw = await this.request<
+        ClickUpDocPage | { page: ClickUpDocPage } | undefined
+      >(
+        `/workspaces/${teamId}/docs/${docId}/pages/${pageId}`,
+        { method: "PUT", body: v3Body },
+        BASE_URL_V3,
+      );
+      // v3 PUT often returns an empty body on success. Synthesise a minimal
+      // page object in that case so callers don't crash on `.id` access.
+      if (raw === undefined || raw === null) {
+        return { id: pageId, name: params.name ?? "" } as ClickUpDocPage;
+      }
+      return unwrapPage(raw);
+    } catch (v3Err) {
+      const v2Body: Record<string, unknown> = {};
+      if (params.name !== undefined) v2Body.name = params.name;
+      if (params.content !== undefined) v2Body.content = params.content;
+      try {
+        return await this.request<ClickUpDocPage>(
+          `/doc/${docId}/page/${pageId}`,
+          { method: "PUT", body: v2Body },
+        );
+      } catch {
+        throw v3Err;
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -999,4 +1078,16 @@ export class ClickUpClient {
       resetAt: this.rateLimitResetAt,
     };
   }
+}
+
+// ClickUp v3 page endpoints have been observed returning either the page
+// object directly or wrapped as `{ page: {...} }`. Reference MCPs handle
+// both shapes, so we do too.
+function unwrapPage(
+  raw: ClickUpDocPage | { page: ClickUpDocPage },
+): ClickUpDocPage {
+  if (raw && typeof raw === "object" && "page" in raw && raw.page) {
+    return (raw as { page: ClickUpDocPage }).page;
+  }
+  return raw as ClickUpDocPage;
 }

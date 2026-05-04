@@ -11,6 +11,7 @@
 // or failed. Parallelism, leasing, and retry policy live in the caller.
 
 import { ClickUpClient } from "@/lib/clickup/client";
+import { getClickUpTeamId } from "@/lib/clickup/team";
 import { generateTasksForList } from "@/lib/ai/task-generator";
 import { generateDocContent } from "@/lib/ai/doc-generator";
 import { findReferenceSnippet } from "@/lib/setup/knowledge-base-context";
@@ -231,8 +232,30 @@ async function runDocContentJob(
     };
   }
 
+  let teamId: string;
   try {
-    await client.createDocPage(docId, docPlan.name, content, workspaceId);
+    teamId = await getClickUpTeamId(workspaceId);
+  } catch (err) {
+    return {
+      ok: false,
+      errorMessage: `Could not resolve ClickUp team id: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  // Prefer PUT into the doc's default page so the content shows up as the
+  // doc's body. Fall back to POSTing a new page if the doc has none.
+  try {
+    const pages = await client.getDocPages(teamId, docId);
+    const defaultPageId = pages[0]?.id;
+
+    if (defaultPageId) {
+      await client.updateDocPage(teamId, docId, defaultPageId, {
+        name: docPlan.name,
+        content,
+      });
+    } else {
+      await client.createDocPage(teamId, docId, docPlan.name, content);
+    }
   } catch (err) {
     return {
       ok: false,

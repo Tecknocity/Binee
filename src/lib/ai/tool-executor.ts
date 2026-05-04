@@ -1450,14 +1450,40 @@ async function handleCreateDoc(
     return { error: 'name is required', success: false };
   }
   const content = input.content as string | undefined;
-  const result = await clickupCreateDoc(workspaceId, name, content);
-  if (!result.success || !result.data) {
-    return { error: result.error ?? 'Failed to create doc', success: false };
+
+  // v3 createDoc does not accept inline content. Create the doc, then write
+  // the content as the first page. The user opens the doc and lands on it.
+  const docRes = await clickupCreateDoc(workspaceId, name, {
+    visibility: 'PRIVATE',
+    createPage: false,
+  });
+  if (!docRes.success || !docRes.data) {
+    return { error: docRes.error ?? 'Failed to create doc', success: false };
   }
+
+  if (content && content.trim().length > 0) {
+    const pageRes = await clickupCreateDocPage(
+      workspaceId,
+      docRes.data.id,
+      name,
+      content,
+    );
+    if (!pageRes.success) {
+      // Doc exists but content write failed - return partial success so the
+      // user knows the doc was created and can try again with the page.
+      return {
+        success: true,
+        doc: { id: docRes.data.id, name: docRes.data.name },
+        warning: `Document created but content write failed: ${pageRes.error}`,
+        message: `Document "${docRes.data.name}" created (without content).`,
+      };
+    }
+  }
+
   return {
     success: true,
-    doc: { id: result.data.id, name: result.data.name },
-    message: `Document "${result.data.name}" created successfully.`,
+    doc: { id: docRes.data.id, name: docRes.data.name },
+    message: `Document "${docRes.data.name}" created successfully.`,
   };
 }
 

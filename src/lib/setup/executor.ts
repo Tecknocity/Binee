@@ -401,6 +401,14 @@ export async function executeSetupPlan(
 
   // -------------------------------------------------------------------------
   // Phase 5: Create Docs (uses ClickUp API v3)
+  //
+  // Pattern (matches taazkareem/hauptsacheNet reference MCPs):
+  //   POST /v3/workspaces/{teamId}/docs with `create_page: false`, then let
+  //   the enrichment phase POST the first page with content. Doing it this
+  //   way avoids a third GET call (the v3 createDoc response does not
+  //   include the auto-created page id even when create_page: true) and
+  //   guarantees the doc opens directly to the AI-generated content.
+  //
   // Wrapped in outer try-catch so unexpected errors don't crash the build.
   // -------------------------------------------------------------------------
   if (plan.recommended_docs && plan.recommended_docs.length > 0) {
@@ -425,32 +433,39 @@ export async function executeSetupPlan(
           markSkipped(item);
         } else {
           try {
-            // Try ClickUp v3 Docs API first, fall back to v2 if unavailable
             let docId: string | undefined;
             try {
-              const body: Record<string, unknown> = {
+              const v3Body: Record<string, unknown> = {
                 name: doc.name,
                 parent: { id: firstSpaceId, type: 4 }, // 4 = space
+                visibility: "PRIVATE",
+                create_page: false,
               };
               const v3Result = await withRetry(() =>
-                client.postV3<{ id?: string }>(`/workspaces/${teamId}/docs`, body)
+                client.postV3<{ id?: string }>(
+                  `/workspaces/${teamId}/docs`,
+                  v3Body,
+                ),
               );
               docId = v3Result?.id;
             } catch {
-              // v3 failed (might not be available on this plan), try v2
-              try {
-                const v2Result = await withRetry(() =>
-                  client.post<{ id?: string }>(`/team/${teamId}/doc`, {
-                    name: doc.name,
-                    content: doc.description || '',
-                  })
-                );
-                docId = v2Result?.id;
-              } catch (v2Err) {
-                throw v2Err; // Let the outer per-item catch handle it
-              }
+              // v3 failed (plan might not have v3 Docs access). Fall back to v2.
+              const v2Result = await withRetry(() =>
+                client.post<{ id?: string }>(`/team/${teamId}/doc`, {
+                  name: doc.name,
+                  content: doc.description || '',
+                }),
+              );
+              docId = v2Result?.id;
             }
-            markSuccess(item, docId || firstSpaceId);
+
+            if (!docId) {
+              throw new Error(
+                'ClickUp createDoc returned no id - cannot attach pages',
+              );
+            }
+
+            markSuccess(item, docId);
           } catch (err) {
             markError(item, err, planTier);
             console.error(`[setup/executor] Failed to create doc "${doc.name}":`, err);
@@ -572,6 +587,7 @@ export async function executeSetupPlan(
         executionResult: result,
         client,
         workspaceId,
+        teamId,
         userId: options.userId,
       });
     } catch (enrichErr) {
