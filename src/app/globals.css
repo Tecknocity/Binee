@@ -1,5 +1,31 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ */
+/* 4px Baseline Grid                                                  */
+/*                                                                    */
+/* All heights, widths, padding, margins, gaps and line-heights must  */
+/* be multiples of 4 (4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96).  */
+/* The grid gives the UI consistent rhythm and renders cleanly on     */
+/* 1x / 1.5x / 2x / 3x screens (odd pixel values produce sub-pixel    */
+/* rounding and blurry edges on 1.5x displays).                       */
+/*                                                                    */
+/* Tailwind v4's --spacing default is 0.25rem (4px), so utilities     */
+/* like p-4 (16px), gap-3 (12px), h-12 (48px) are on-grid by default. */
+/*                                                                    */
+/* Banned: half-step utilities (-0.5, -1.5, -2.5, -3.5) because they  */
+/* produce 2 / 6 / 10 / 14 px values that break the grid. ESLint's    */
+/* no-restricted-syntax rule flags these; replace with the closest    */
+/* whole-step utility (e.g. py-2.5 -> py-2 or py-3, w-3.5 -> w-4).    */
+/*                                                                    */
+/* Typography: font-size can be any value that reads well, but        */
+/* line-height must be a multiple of 4. Tailwind's text-xs (12/16),   */
+/* text-sm (14/20), text-base (16/24), text-lg (18/28), text-xl       */
+/* (20/28), text-2xl (24/32) all comply.                              */
+/*                                                                    */
+/* Exception: 1px borders are allowed (hairlines, not layout).        */
+/* Border radius is a visual detail and is not enforced.              */
+/* ------------------------------------------------------------------ */
+
 @theme {
   --color-navy-base: #0A0A0F;
   --color-navy-light: #1A1A25;
