@@ -763,6 +763,10 @@ async function routeMultiAgentTurn(
   // 'info' (avoids "no overlap" errors below when classifier mode is on).
   type RoutedAgent = 'reviser' | 'clarifier' | 'info';
   let routedAgent: RoutedAgent = draftReady ? 'reviser' : 'clarifier';
+  // Snapshot what isReadyDraft would have picked, captured BEFORE the
+  // classifier rerouting decision so the log line can show both inputs and
+  // the final routedTo on a single line.
+  const legacyWouldHavePicked: RoutedAgent = routedAgent;
   let classification: IntentClassification | null = null;
 
   const classifierMode = readIntentClassifierMode();
@@ -778,23 +782,9 @@ async function routeMultiAgentTurn(
       },
     });
 
-    // Always log the decision so shadow-mode data is auditable in
-    // production. One JSON line per turn so logs grep cleanly.
-    // messagePreview is the first 120 chars of the user message so spot-checks
-    // can be done from the log line alone without a Supabase round-trip.
-    console.log('[setup-intent]', JSON.stringify({
-      mode: classifierMode,
-      conversationId: input.conversationId,
-      intent: classification.intent,
-      confidence: classification.confidence,
-      reasoning: classification.reasoning,
-      fallbackUsed: classification.fallbackUsed,
-      modelCallMs: classification.modelCallMs,
-      legacyWouldHavePicked: routedAgent,
-      messagePreview: input.userMessage.slice(0, 120),
-    }));
-
-    // Only act on a confident, non-fallback classification.
+    // Apply the routing decision FIRST so the log line below can include
+    // the final routedTo value. Only act on a confident, non-fallback
+    // classification.
     if (!classification.fallbackUsed && classification.confidence >= INTENT_CONFIDENCE_FLOOR) {
       const intentChoice: RoutedAgent =
         classification.intent === 'info' ? 'info'
@@ -814,6 +804,23 @@ async function routeMultiAgentTurn(
       }
       // 'shadow' mode: log only, never change routing.
     }
+
+    // Log the decision once, after routing has been finalized. One JSON
+    // line per turn so Phase 2 manual QA can verify any scenario from a
+    // single log entry. messagePreview is the first 120 chars of the user
+    // message so spot-checks don't require a Supabase round-trip.
+    console.log('[setup-intent]', JSON.stringify({
+      mode: classifierMode,
+      conversationId: input.conversationId,
+      intent: classification.intent,
+      confidence: classification.confidence,
+      reasoning: classification.reasoning,
+      fallbackUsed: classification.fallbackUsed,
+      modelCallMs: classification.modelCallMs,
+      legacyWouldHavePicked,
+      routedTo: routedAgent,
+      messagePreview: input.userMessage.slice(0, 120),
+    }));
   }
 
   // Helper: roll the classifier's Anthropic cost and tokens into the chosen
