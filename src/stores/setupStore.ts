@@ -116,6 +116,22 @@ interface SetupState {
   workspaceFindings: Finding[];
   workspaceRecommendations: Recommendation[];
 
+  /**
+   * Persisted "analysis in flight" flag, paired timestamp, and request id.
+   * These three together are the source of truth for the analyze loading
+   * state. Persisting them lets the wizard recover after tab hide / close,
+   * remount, or session refresh: the visibility / mount handlers in
+   * useSetup re-issue the analyze POST, which is idempotent server-side
+   * (cached on workspaces.last_analysis_*) so no AI call or credit charge
+   * is duplicated. The request id is the race-protection token: a fetch
+   * resolution only writes the result if the store still holds its id,
+   * so a late straggler from a previous attempt cannot overwrite a fresher
+   * one.
+   */
+  isAnalyzing: boolean;
+  analysisStartedAt: string | null;
+  analysisRequestId: string | null;
+
   // Step 2: Profile form + Chat
   profileFormCompleted: boolean;
   profileFormData: {
@@ -180,6 +196,14 @@ interface SetupState {
   isGeneratingPlan: boolean;
   /** ISO timestamp of when the current plan generation started, or null. */
   planGenerationStartedAt: string | null;
+  /**
+   * Race-protection token for plan generation. Set when a request starts;
+   * a fetch resolution only writes the resulting plan if this id still
+   * matches when the response arrives. Prevents a slow first attempt from
+   * overwriting a faster second attempt's result after the user clicked
+   * "Generate Structure" twice (or hit it during a recovery).
+   */
+  planGenerationRequestId: string | null;
 
   // Existing workspace structure (from cached tables)
   existingStructure: ExistingWorkspaceStructure | null;
@@ -201,6 +225,13 @@ interface SetupState {
   isExecutingBuild: boolean;
   /** ISO timestamp of when the current execution started, or null. */
   executionStartedAt: string | null;
+  /**
+   * Race-protection token for execution. Same idea as planGenerationRequestId:
+   * a structural-creation response only writes its result back into the store
+   * when the in-flight request id still matches. Lets us safely re-issue
+   * /api/setup/execute as a recovery action without risking stale writes.
+   */
+  executionRequestId: string | null;
 
   // Step 4: Enrichment job tracking (the queue model). When a build is in
   // progress, buildId is set and the frontend polls /enrichment-status to
@@ -239,6 +270,21 @@ interface SetupState {
   setExistingStructure: (structure: ExistingWorkspaceStructure | null) => void;
   setIsGeneratingPlan: (generating: boolean) => void;
   setIsExecutingBuild: (executing: boolean) => void;
+
+  /**
+   * Resilience helpers. Each `markXxxStarted` writes the in-flight flag,
+   * a fresh ISO timestamp, and the caller-provided request id atomically.
+   * Each `markXxxComplete` clears all three. The orchestration code in
+   * useSetup checks `xxxRequestId` against its own captured id before
+   * writing the result, so late responses from cancelled or superseded
+   * attempts cannot land in the store.
+   */
+  markAnalysisStarted: (requestId: string) => void;
+  markAnalysisComplete: () => void;
+  markPlanGenerationStarted: (requestId: string) => void;
+  markPlanGenerationComplete: () => void;
+  markExecutionStarted: (requestId: string) => void;
+  markExecutionComplete: () => void;
   setExecutionResult: (result: ExecutionResult | null) => void;
   setExecutionItems: (items: ExecutionItem[]) => void;
   setBuildCompleted: (completed: boolean) => void;
@@ -319,6 +365,9 @@ function createSetupStore(storeKey: string) {
         workspaceCounts: null,
         workspaceFindings: [],
         workspaceRecommendations: [],
+        isAnalyzing: false,
+        analysisStartedAt: null,
+        analysisRequestId: null,
 
         profileFormCompleted: false,
         profileFormData: null,
@@ -337,6 +386,7 @@ function createSetupStore(storeKey: string) {
         existingStructure: null,
         isGeneratingPlan: false,
         planGenerationStartedAt: null,
+        planGenerationRequestId: null,
 
         executionResult: null,
         executionItems: [],
@@ -344,6 +394,7 @@ function createSetupStore(storeKey: string) {
         previouslyBuiltItems: [],
         isExecutingBuild: false,
         executionStartedAt: null,
+        executionRequestId: null,
 
         buildId: null,
         buildStatus: null,
@@ -387,6 +438,12 @@ function createSetupStore(storeKey: string) {
         })),
         setExistingStructure: (structure) => set({ existingStructure: structure }),
 
+        // Legacy setters preserved verbatim. They toggle only the flag +
+        // timestamp pair (existing callers in resetStage / staleRecovery
+        // already do this). The race-protection token is owned exclusively
+        // by markPlanGenerationStarted / markExecutionStarted so a stale
+        // setIsGeneratingPlan(false) cannot blow away a freshly-minted id
+        // from a concurrent restart.
         setIsGeneratingPlan: (generating) =>
           set({
             isGeneratingPlan: generating,
@@ -396,6 +453,43 @@ function createSetupStore(storeKey: string) {
           set({
             isExecutingBuild: executing,
             executionStartedAt: executing ? new Date().toISOString() : null,
+          }),
+
+        markAnalysisStarted: (requestId) =>
+          set({
+            isAnalyzing: true,
+            analysisStartedAt: new Date().toISOString(),
+            analysisRequestId: requestId,
+          }),
+        markAnalysisComplete: () =>
+          set({
+            isAnalyzing: false,
+            analysisStartedAt: null,
+            analysisRequestId: null,
+          }),
+        markPlanGenerationStarted: (requestId) =>
+          set({
+            isGeneratingPlan: true,
+            planGenerationStartedAt: new Date().toISOString(),
+            planGenerationRequestId: requestId,
+          }),
+        markPlanGenerationComplete: () =>
+          set({
+            isGeneratingPlan: false,
+            planGenerationStartedAt: null,
+            planGenerationRequestId: null,
+          }),
+        markExecutionStarted: (requestId) =>
+          set({
+            isExecutingBuild: true,
+            executionStartedAt: new Date().toISOString(),
+            executionRequestId: requestId,
+          }),
+        markExecutionComplete: () =>
+          set({
+            isExecutingBuild: false,
+            executionStartedAt: null,
+            executionRequestId: null,
           }),
 
         setExecutionResult: (result) => set({ executionResult: result }),
@@ -427,6 +521,9 @@ function createSetupStore(storeKey: string) {
               updates.workspaceCounts = null;
               updates.workspaceFindings = [];
               updates.workspaceRecommendations = [];
+              updates.isAnalyzing = false;
+              updates.analysisStartedAt = null;
+              updates.analysisRequestId = null;
             }
             if (step <= 2) {
               // Resetting from Describe: clear chat and start fresh so AI
@@ -456,6 +553,7 @@ function createSetupStore(storeKey: string) {
               updates.existingStructure = null;
               updates.isGeneratingPlan = false;
               updates.planGenerationStartedAt = null;
+              updates.planGenerationRequestId = null;
             }
             if (step <= 4) {
               // Resetting from Build: clear build results + manual steps
@@ -465,6 +563,7 @@ function createSetupStore(storeKey: string) {
               updates.buildCompleted = false;
               updates.isExecutingBuild = false;
               updates.executionStartedAt = null;
+              updates.executionRequestId = null;
               updates.buildId = null;
               updates.buildStatus = null;
               updates.buildStartedAt = null;
@@ -486,6 +585,9 @@ function createSetupStore(storeKey: string) {
             workspaceCounts: null,
             workspaceFindings: [],
             workspaceRecommendations: [],
+            isAnalyzing: false,
+            analysisStartedAt: null,
+            analysisRequestId: null,
             profileFormCompleted: false,
             profileFormData: null,
             chatMessages: [],
@@ -502,12 +604,14 @@ function createSetupStore(storeKey: string) {
             existingStructure: null,
             isGeneratingPlan: false,
             planGenerationStartedAt: null,
+            planGenerationRequestId: null,
             executionResult: null,
             executionItems: [],
             buildCompleted: false,
             previouslyBuiltItems: [],
             isExecutingBuild: false,
             executionStartedAt: null,
+            executionRequestId: null,
             buildId: null,
             buildStatus: null,
             buildStartedAt: null,
@@ -529,6 +633,9 @@ function createSetupStore(storeKey: string) {
           workspaceCounts: state.workspaceCounts,
           workspaceFindings: state.workspaceFindings,
           workspaceRecommendations: state.workspaceRecommendations,
+          isAnalyzing: state.isAnalyzing,
+          analysisStartedAt: state.analysisStartedAt,
+          analysisRequestId: state.analysisRequestId,
           profileFormCompleted: state.profileFormCompleted,
           profileFormData: state.profileFormData,
           chatMessages: state.chatMessages,
@@ -541,12 +648,14 @@ function createSetupStore(storeKey: string) {
           existingStructure: state.existingStructure,
           isGeneratingPlan: state.isGeneratingPlan,
           planGenerationStartedAt: state.planGenerationStartedAt,
+          planGenerationRequestId: state.planGenerationRequestId,
           executionResult: state.executionResult,
           executionItems: state.executionItems,
           buildCompleted: state.buildCompleted,
           previouslyBuiltItems: state.previouslyBuiltItems,
           isExecutingBuild: state.isExecutingBuild,
           executionStartedAt: state.executionStartedAt,
+          executionRequestId: state.executionRequestId,
           buildId: state.buildId,
           buildStatus: state.buildStatus,
           buildStartedAt: state.buildStartedAt,
