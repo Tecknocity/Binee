@@ -1,4 +1,5 @@
 import { ClickUpClient } from "@/lib/clickup/client";
+import { getClickUpTeamId } from "@/lib/clickup/team";
 import { upsertCachedTasks, upsertCachedLists, upsertCachedFolders } from "@/lib/clickup/sync";
 import type {
   ClickUpTask,
@@ -333,6 +334,11 @@ export async function createFolder(
 
 // ---------------------------------------------------------------------------
 // Docs
+//
+// Public wrappers take the Binee workspace UUID and resolve the ClickUp
+// team_id internally so callers (AI tool executor, route handlers) never
+// have to know that distinction. The underlying client methods take teamId
+// explicitly to keep the boundary clear.
 // ---------------------------------------------------------------------------
 
 export async function searchDocs(
@@ -340,8 +346,9 @@ export async function searchDocs(
 ): Promise<OperationResult<ClickUpDoc[]>> {
   try {
     validateRequired(workspaceId, "workspaceId");
+    const teamId = await getClickUpTeamId(workspaceId);
     const client = new ClickUpClient(workspaceId);
-    const docs = await client.searchDocs(workspaceId);
+    const docs = await client.searchDocs(teamId);
     return { success: true, data: docs };
   } catch (err) {
     return {
@@ -354,13 +361,19 @@ export async function searchDocs(
 export async function createDoc(
   workspaceId: string,
   name: string,
-  content?: string
+  options?: {
+    parentId?: string;
+    parentType?: number;
+    createPage?: boolean;
+    visibility?: "PUBLIC" | "PRIVATE";
+  }
 ): Promise<OperationResult<ClickUpDoc>> {
   try {
     validateRequired(workspaceId, "workspaceId");
     validateRequired(name, "name");
+    const teamId = await getClickUpTeamId(workspaceId);
     const client = new ClickUpClient(workspaceId);
-    const doc = await client.createDoc(workspaceId, name, content);
+    const doc = await client.createDoc(teamId, name, options);
     return { success: true, data: doc };
   } catch (err) {
     return {
@@ -377,8 +390,9 @@ export async function getDocPages(
   try {
     validateRequired(workspaceId, "workspaceId");
     validateRequired(docId, "docId");
+    const teamId = await getClickUpTeamId(workspaceId);
     const client = new ClickUpClient(workspaceId);
-    const pages = await client.getDocPages(docId);
+    const pages = await client.getDocPages(teamId, docId);
     return { success: true, data: pages };
   } catch (err) {
     return {
@@ -398,8 +412,9 @@ export async function createDocPage(
     validateRequired(workspaceId, "workspaceId");
     validateRequired(docId, "docId");
     validateRequired(name, "name");
+    const teamId = await getClickUpTeamId(workspaceId);
     const client = new ClickUpClient(workspaceId);
-    const page = await client.createDocPage(docId, name, content);
+    const page = await client.createDocPage(teamId, docId, name, content);
     return { success: true, data: page };
   } catch (err) {
     return {
@@ -413,14 +428,15 @@ export async function updateDocPage(
   workspaceId: string,
   docId: string,
   pageId: string,
-  params: { name?: string; content?: string }
+  params: { name?: string; content?: string; sub_title?: string }
 ): Promise<OperationResult<ClickUpDocPage>> {
   try {
     validateRequired(workspaceId, "workspaceId");
     validateRequired(docId, "docId");
     validateRequired(pageId, "pageId");
+    const teamId = await getClickUpTeamId(workspaceId);
     const client = new ClickUpClient(workspaceId);
-    const page = await client.updateDocPage(docId, pageId, params);
+    const page = await client.updateDocPage(teamId, docId, pageId, params);
     return { success: true, data: page };
   } catch (err) {
     return {

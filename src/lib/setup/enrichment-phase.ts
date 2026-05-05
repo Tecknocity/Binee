@@ -32,7 +32,10 @@ export interface EnrichmentInput {
   plan: SetupPlan;
   executionResult: ExecutionResult;
   client: ClickUpClient;
+  /** Binee Supabase workspace UUID (for error logging + cache writes). */
   workspaceId: string;
+  /** ClickUp team_id (required for v3 Docs API URLs). */
+  teamId: string;
   userId?: string;
 }
 
@@ -54,7 +57,7 @@ const DOC_WRITE_CONCURRENCY = 3;
 export async function runEnrichmentPhase(
   input: EnrichmentInput,
 ): Promise<EnrichmentResult> {
-  const { plan, executionResult, client, workspaceId, userId } = input;
+  const { plan, executionResult, client, workspaceId, teamId, userId } = input;
 
   const result: EnrichmentResult = {
     listsEnriched: 0,
@@ -272,31 +275,53 @@ export async function runEnrichmentPhase(
 
   await runPool(docWriteJobs, DOC_WRITE_CONCURRENCY, async ({ job, content }) => {
     const contentLength = content.length;
-    try {
-      const page = await client.createDocPage(
-        job.docId,
-        job.docPlan.name,
-        content,
-        workspaceId,
-      );
+    let pageId: string | null = null;
 
-      // Verify the page actually got content. ClickUp's doc page endpoints
-      // can silently accept a request and persist nothing (seen on plans
-      // where the v2 endpoint is a partial no-op, or when the doc id format
-      // mismatches the API version). If we can't find the content after the
-      // write, log it so we can diagnose empty-doc reports.
-      const pageId = page?.id;
+    try {
+      // The executor lets ClickUp auto-create a default first page. We PUT
+      // content into that page so the user opens the doc and lands on the
+      // generated body. Only fall back to POSTing a fresh page if the GET
+      // came back empty (rare; e.g. v2 fallback path or plan limitation).
+      let targetPageId: string | undefined;
+      try {
+        const pages = await client.getDocPages(teamId, job.docId);
+        targetPageId = pages[0]?.id;
+      } catch {
+        // Non-fatal; fall through to create a new page below.
+      }
+
+      if (targetPageId) {
+        const updated = await client.updateDocPage(
+          teamId,
+          job.docId,
+          targetPageId,
+          { name: job.docPlan.name, content },
+        );
+        pageId = updated?.id ?? targetPageId;
+      } else {
+        const created = await client.createDocPage(
+          teamId,
+          job.docId,
+          job.docPlan.name,
+          content,
+        );
+        pageId = created?.id ?? null;
+      }
+
+      // Verify the page actually got content. v3 has been seen to accept a
+      // request and persist nothing (e.g. when content_format trips a
+      // server-side parse). Read back and log when we can't find the
+      // content - this is the diagnostic that flagged the original bug.
       let verified = false;
       try {
-        const pages = await client.getDocPages(job.docId);
+        const pages = await client.getDocPages(teamId, job.docId);
         const match = pageId
           ? pages.find((p) => p.id === pageId)
           : pages.find((p) => p.name === job.docPlan.name);
         const written = match?.content ?? '';
         verified = written.trim().length > 0;
       } catch {
-        // Verification is best-effort; lack of read access should not
-        // escalate to an error state.
+        // Lack of read access should not escalate to an error state.
         verified = true;
       }
 
@@ -304,7 +329,7 @@ export async function runEnrichmentPhase(
         await logError({
           source: 'setup.enrichment.doc_write',
           errorCode: 'content_not_persisted',
-          message: 'createDocPage returned success but the page has no content when read back',
+          message: 'doc page write returned success but readback shows no content',
           workspaceId,
           userId,
           metadata: {
@@ -324,7 +349,12 @@ export async function runEnrichmentPhase(
         message: errorToMessage(err),
         workspaceId,
         userId,
-        metadata: { docId: job.docId, docName: job.docPlan.name, contentLength },
+        metadata: {
+          docId: job.docId,
+          docName: job.docPlan.name,
+          pageId: pageId ?? null,
+          contentLength,
+        },
       });
     }
   });
