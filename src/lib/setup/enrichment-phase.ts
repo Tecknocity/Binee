@@ -278,16 +278,35 @@ export async function runEnrichmentPhase(
     let pageId: string | null = null;
 
     try {
-      // The executor creates docs with `create_page: false`, so this is the
-      // first (and only) page on the doc. The user opens the doc and lands
-      // directly on this page.
-      const created = await client.createDocPage(
-        teamId,
-        job.docId,
-        job.docPlan.name,
-        content,
-      );
-      pageId = created?.id ?? null;
+      // The executor lets ClickUp auto-create a default first page. We PUT
+      // content into that page so the user opens the doc and lands on the
+      // generated body. Only fall back to POSTing a fresh page if the GET
+      // came back empty (rare; e.g. v2 fallback path or plan limitation).
+      let targetPageId: string | undefined;
+      try {
+        const pages = await client.getDocPages(teamId, job.docId);
+        targetPageId = pages[0]?.id;
+      } catch {
+        // Non-fatal; fall through to create a new page below.
+      }
+
+      if (targetPageId) {
+        const updated = await client.updateDocPage(
+          teamId,
+          job.docId,
+          targetPageId,
+          { name: job.docPlan.name, content },
+        );
+        pageId = updated?.id ?? targetPageId;
+      } else {
+        const created = await client.createDocPage(
+          teamId,
+          job.docId,
+          job.docPlan.name,
+          content,
+        );
+        pageId = created?.id ?? null;
+      }
 
       // Verify the page actually got content. v3 has been seen to accept a
       // request and persist nothing (e.g. when content_format trips a

@@ -193,7 +193,9 @@ export class ClickUpClient {
         }
 
         // Some DELETE endpoints return 204 with no body. v3 page PUT has
-        // also been observed returning an empty 200 on success.
+        // also been observed returning an empty 200 on success. We only
+        // tolerate an EMPTY body here; malformed JSON still throws so we
+        // don't silently mask real bugs.
         if (res.status === 204) {
           return undefined as T;
         }
@@ -201,11 +203,7 @@ export class ClickUpClient {
         if (!text || text.trim().length === 0) {
           return undefined as T;
         }
-        try {
-          return JSON.parse(text) as T;
-        } catch {
-          return undefined as T;
-        }
+        return JSON.parse(text) as T;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 

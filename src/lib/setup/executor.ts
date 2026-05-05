@@ -402,12 +402,11 @@ export async function executeSetupPlan(
   // -------------------------------------------------------------------------
   // Phase 5: Create Docs (uses ClickUp API v3)
   //
-  // Pattern (matches taazkareem/hauptsacheNet reference MCPs):
-  //   POST /v3/workspaces/{teamId}/docs with `create_page: false`, then let
-  //   the enrichment phase POST the first page with content. Doing it this
-  //   way avoids a third GET call (the v3 createDoc response does not
-  //   include the auto-created page id even when create_page: true) and
-  //   guarantees the doc opens directly to the AI-generated content.
+  // We let ClickUp create the default first page (the v3 default behaviour
+  // when `create_page` is omitted). The enrichment phase then PUTs content
+  // into that page rather than POSTing a sibling - which is why doc bodies
+  // were coming out empty: we were writing to a second page the user
+  // never opened.
   //
   // Wrapped in outer try-catch so unexpected errors don't crash the build.
   // -------------------------------------------------------------------------
@@ -439,7 +438,6 @@ export async function executeSetupPlan(
                 name: doc.name,
                 parent: { id: firstSpaceId, type: 4 }, // 4 = space
                 visibility: "PRIVATE",
-                create_page: false,
               };
               const v3Result = await withRetry(() =>
                 client.postV3<{ id?: string }>(
