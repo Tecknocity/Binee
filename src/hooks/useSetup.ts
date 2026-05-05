@@ -392,6 +392,8 @@ export function useSetup(): UseSetupReturn {
   const workspaceCounts = storeState?.workspaceCounts ?? null;
   const workspaceFindings = storeState?.workspaceFindings ?? [];
   const workspaceRecommendations = storeState?.workspaceRecommendations ?? [];
+  const isAnalyzing = storeState?.isAnalyzing ?? false;
+  const analysisStartedAt = storeState?.analysisStartedAt ?? null;
   const profileFormCompleted = storeState?.profileFormCompleted ?? false;
   const profileFormData = storeState?.profileFormData ?? null;
   const storedMessages = storeState?.chatMessages ?? [];
@@ -525,7 +527,11 @@ export function useSetup(): UseSetupReturn {
     });
   }, [buildCompleted, persistedExecutionItems, persistedExecutionResult]);
   const [isSending, setIsSending] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // isAnalyzing is sourced from the persisted store (storeState.isAnalyzing
+  // below) rather than React state so the loading screen survives tab close,
+  // remount, and session refresh. The `markAnalysisStarted` /
+  // `markAnalysisComplete` actions atomically toggle it together with the
+  // startedAt timestamp and the race-protection request id.
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Plan generation and pre-queue execution flags live in the persisted
@@ -550,14 +556,16 @@ export function useSetup(): UseSetupReturn {
   // Recover stale flags on hydration. If a previous tab was closed mid-
   // generation, the flag will be true but the work isn't actually running
   // anymore - clear it so the UI doesn't sit on a fake loading screen.
+  // (For non-stale flags we go further and try a real DB recovery; see
+  // the plan/build recovery effects below.)
   const staleRecoveryRef = useRef(false);
   useEffect(() => {
     if (staleRecoveryRef.current || !store) return;
     if (isPlanGenerationStale) {
-      store.getState().setIsGeneratingPlan(false);
+      store.getState().markPlanGenerationComplete();
     }
     if (isExecutionStale) {
-      store.getState().setIsExecutingBuild(false);
+      store.getState().markExecutionComplete();
     }
     staleRecoveryRef.current = true;
   }, [store, isPlanGenerationStale, isExecutionStale]);
@@ -734,7 +742,7 @@ export function useSetup(): UseSetupReturn {
             store?.getState().setIsExecutingBuild(false);
             setIsSending(false);
           }
-          analysisStartedRef.current = false;
+          analysisInFlightRef.current = false;
           setCurrentStep(1);
         }, 800);
         return () => clearTimeout(timer);
@@ -742,52 +750,319 @@ export function useSetup(): UseSetupReturn {
     }
   }, [clickUp.connected, clickUp.loading, currentStep, furthestStep, setCurrentStep, store]);
 
-  // Run workspace analysis when we arrive at step 1 and haven't analyzed yet
-  const analysisStartedRef = useRef(false);
-  useEffect(() => {
-    if (currentStep !== 1 || workspaceAnalysis || analysisStartedRef.current) return;
-    analysisStartedRef.current = true;
+  // Workspace analysis: resilient launcher + recovery.
+  //
+  // The fetch itself runs server-side (`/api/setup/analyze`) and is idempotent
+  // within ANALYSIS_CACHE_TTL_MS thanks to the workspaces.last_analysis_*
+  // cache. This hook is responsible only for kicking it off at the right
+  // moments and for reconciling the persisted "in flight" flag with reality.
+  //
+  // Why store-persisted instead of local React state: a tab that goes hidden
+  // mid-fetch can have its JS handler throttled, its setTimeout deferred, or
+  // (in the worst case) its connection silently aborted. If the loading flag
+  // and the result are both held only in component state, the spinner can
+  // get stuck forever after the fetch is dead. By storing the flag,
+  // timestamp, and request id in zustand we let any later mount/visibility
+  // event re-issue the fetch and have the server return the cached result
+  // for free.
+  const analysisInFlightRef = useRef(false);
+  // In-flight guards for plan generation and execution in this component
+  // instance. Hoisted here so the recovery effects below can reference
+  // them; the matching persisted request ids in zustand provide
+  // cross-instance / cross-tab race protection.
+  const planGenerationInFlightRef = useRef(false);
+  const executionInFlightRef = useRef(false);
 
-    let cancelled = false;
-    setIsAnalyzing(true);
+  const startAnalysis = useCallback(
+    async (opts?: { forceRefresh?: boolean }) => {
+      if (!workspace_id || !store) return;
+      // Guard against double-launch within the same component instance
+      // (strict-mode double-invoke, or visibility + effect firing close
+      // together). The store-level requestId protects across instances.
+      if (analysisInFlightRef.current) return;
+      analysisInFlightRef.current = true;
 
-    (async () => {
+      const myRequestId = newConversationId();
+      store.getState().markAnalysisStarted(myRequestId);
+
       try {
-        if (workspace_id) {
-          const res = await fetchWithTimeout('/api/setup/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workspace_id }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (!cancelled) {
-              store?.getState().setAnalysis(
-                data.summary || 'No workspace data yet.',
-                data.counts || null,
-                data.findings || [],
-                data.recommendations || [],
-              );
-            }
-          } else if (!cancelled) {
-            store?.getState().setAnalysis('Unable to analyze workspace.', null, [], []);
+        const res = await fetchWithTimeout('/api/setup/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspace_id,
+            force_refresh: opts?.forceRefresh === true,
+          }),
+        });
+
+        const stillLatest = () =>
+          store.getState().analysisRequestId === myRequestId;
+
+        if (!res.ok) {
+          if (stillLatest()) {
+            store.getState().setAnalysis('Unable to analyze workspace.', null, [], []);
+            store.getState().markAnalysisComplete();
           }
-        } else if (!cancelled) {
-          store?.getState().setAnalysis('No workspace data yet. Fresh workspace.', null, [], []);
+          return;
+        }
+
+        const data = await res.json();
+        if (stillLatest()) {
+          store.getState().setAnalysis(
+            data.summary || 'No workspace data yet.',
+            data.counts || null,
+            data.findings || [],
+            data.recommendations || [],
+          );
+          store.getState().markAnalysisComplete();
         }
       } catch (err) {
         console.error('[useSetup] Workspace analysis failed:', err);
-        if (!cancelled) {
-          store?.getState().setAnalysis('Unable to analyze workspace.', null, [], []);
+        if (store.getState().analysisRequestId === myRequestId) {
+          store.getState().setAnalysis('Unable to analyze workspace.', null, [], []);
+          store.getState().markAnalysisComplete();
         }
+      } finally {
+        analysisInFlightRef.current = false;
       }
-      if (!cancelled) {
-        setIsAnalyzing(false);
-      }
-    })();
+    },
+    [workspace_id, store],
+  );
 
-    return () => { cancelled = true; };
-  }, [currentStep, workspaceAnalysis, workspace_id, store]);
+  // Kick analysis whenever we land on step 1 without a result. Three paths
+  // converge here:
+  //   - Fresh: no flag, no result → start a new fetch.
+  //   - In-flight from this instance: analysisInFlightRef short-circuits.
+  //   - Orphaned: the flag is set in the store but no fetch is alive in
+  //     this instance (previous mount's fetch is gone). Start a recovery
+  //     POST; the server returns the cached result for free if it has one.
+  useEffect(() => {
+    if (currentStep !== 1) return;
+    if (workspaceAnalysis) return;
+    if (analysisInFlightRef.current) return;
+
+    if (!workspace_id) {
+      // Defensive fallback: should not happen in normal flow (the wizard is
+      // only reached after a workspace is loaded), but if it does, fill in a
+      // safe default so the UI doesn't sit on a spinner forever.
+      store?.getState().setAnalysis('No workspace data yet. Fresh workspace.', null, [], []);
+      store?.getState().markAnalysisComplete();
+      return;
+    }
+
+    void startAnalysis();
+    // analysisStartedAt and isAnalyzing are read-only feedback from the
+    // store; they're listed as deps so a remount that picks them up from
+    // localStorage will re-run this effect (and recover if needed).
+  }, [currentStep, workspaceAnalysis, workspace_id, isAnalyzing, analysisStartedAt, store, startAnalysis]);
+
+  // Visibility recovery. When the tab returns to the foreground while we
+  // believe an analysis is in flight but no fetch is alive in this
+  // component, re-issue. The server's idempotency cache absorbs the cost
+  // when the original fetch already completed and persisted its result.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (currentStep !== 1) return;
+      if (workspaceAnalysis) return;
+      if (!workspace_id) return;
+      if (analysisInFlightRef.current) return;
+      if (!isAnalyzing) return;
+      void startAnalysis();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [currentStep, workspaceAnalysis, workspace_id, isAnalyzing, startAnalysis]);
+
+  // ---------------------------------------------------------------------------
+  // Plan-generation recovery
+  //
+  // The /api/setup/generate-plan endpoint upserts the resulting plan into
+  // setup_drafts BEFORE returning, with `updated_by = 'generate_plan'`.
+  // That means even if the client never receives the response (tab close,
+  // network drop, Vercel cold-finish past the 60s client timeout), the
+  // result is recoverable by GETing /api/setup/draft. This effect runs on
+  // mount and on tab visibility return: when the persisted "in flight"
+  // flag is set but no proposedPlan exists locally, we ask the server
+  // whether a generated plan landed and adopt it if so.
+  //
+  // We deliberately do NOT re-call POST /api/setup/generate-plan as a
+  // recovery: that endpoint is not server-side idempotent and re-running
+  // it would re-charge 2 credits. The DB row IS the recovery.
+  // ---------------------------------------------------------------------------
+  const planRecoveryAttemptedRef = useRef<string | null>(null);
+  const recoverPlanFromServer = useCallback(async (): Promise<boolean> => {
+    if (!conversationId || !store) return false;
+    try {
+      const res = await fetchWithTimeout(
+        `/api/setup/draft?conversation_id=${encodeURIComponent(conversationId)}`,
+        { method: 'GET' },
+        15_000,
+      );
+      if (!res.ok) return false;
+      const data = await res.json();
+      const draft = data?.draft as Record<string, unknown> | null | undefined;
+      // Only adopt the draft as a proposed plan when it was last written by
+      // the generate-plan route (the chat route also writes to this row,
+      // but those snapshots may not be a complete plan). The shape check is
+      // a defensive belt-and-suspenders: a SetupPlan always has spaces[].
+      if (
+        draft &&
+        typeof draft === 'object' &&
+        Array.isArray((draft as { spaces?: unknown }).spaces) &&
+        data?.updated_by === 'generate_plan'
+      ) {
+        store.getState().setPlan(draft as unknown as SetupPlan);
+        store.getState().markPlanGenerationComplete();
+        return true;
+      }
+    } catch (err) {
+      console.warn('[useSetup] plan recovery failed:', err);
+    }
+    return false;
+  }, [conversationId, store]);
+
+  // Mount-time recovery: if we land on step 3 with isGeneratingPlan=true
+  // but no plan in the local store, try once to fetch it from the server.
+  useEffect(() => {
+    if (currentStep !== 3) return;
+    if (proposedPlan) return;
+    if (!persistedIsGeneratingPlan) return;
+    if (!conversationId) return;
+    if (planGenerationInFlightRef.current) return;
+    if (planRecoveryAttemptedRef.current === conversationId) return;
+    planRecoveryAttemptedRef.current = conversationId;
+    void recoverPlanFromServer();
+  }, [currentStep, proposedPlan, persistedIsGeneratingPlan, conversationId, recoverPlanFromServer]);
+
+  // Visibility recovery for plan generation. Same logic as mount but
+  // re-armed every time the tab returns to the foreground.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (currentStep !== 3) return;
+      if (proposedPlan) return;
+      if (!persistedIsGeneratingPlan) return;
+      if (planGenerationInFlightRef.current) return;
+      void recoverPlanFromServer();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [currentStep, proposedPlan, persistedIsGeneratingPlan, recoverPlanFromServer]);
+
+  // ---------------------------------------------------------------------------
+  // Execution-build recovery
+  //
+  // /api/setup/execute INSERTs the setup_builds row (and all
+  // setup_enrichment_jobs rows) BEFORE returning. If the client never
+  // received the response, the build still exists in the DB and the cron
+  // worker is already draining its enrichment jobs. This effect adopts
+  // that orphaned build by querying GET /api/setup/enrichment-status
+  // (which without a build_id returns the most recent build for the
+  // workspace) and hydrating the local store with its structural result
+  // and queue state. From there the existing enrichment-polling effect
+  // takes over.
+  //
+  // Same as plan recovery: we deliberately do NOT re-POST /api/setup/execute,
+  // because that endpoint is not idempotent and would attempt to create
+  // duplicate ClickUp items.
+  // ---------------------------------------------------------------------------
+  const executionRecoveryAttemptedRef = useRef(false);
+  const recoverExecutionFromServer = useCallback(async (): Promise<boolean> => {
+    if (!workspace_id || !store) return false;
+    try {
+      const res = await fetchWithTimeout(
+        `/api/setup/enrichment-status?workspace_id=${encodeURIComponent(workspace_id)}`,
+        { method: 'GET' },
+        15_000,
+      );
+      if (!res.ok) return false;
+      const data = await res.json() as {
+        build: {
+          id: string;
+          status: 'enriching' | 'completed' | 'failed' | 'cancelled';
+          started_at: string;
+          completed_at: string | null;
+          estimated_completion_at: string | null;
+          structural_result: ExecutorResult | null;
+        } | null;
+        jobs: EnrichmentJobView[];
+        summary: EnrichmentSummary;
+      };
+      if (!data.build) return false;
+
+      // Only adopt builds that are recent enough that they could plausibly
+      // belong to the in-flight attempt the user is staring at. An ancient
+      // build from a long-completed run shouldn't blow away the user's
+      // current state.
+      const ageMs = Date.now() - new Date(data.build.started_at).getTime();
+      if (ageMs > EXECUTION_STALE_MS) return false;
+
+      store.getState().setBuild({
+        buildId: data.build.id,
+        buildStatus: data.build.status,
+        buildStartedAt: data.build.started_at,
+        buildEstimatedCompletionAt: data.build.estimated_completion_at,
+        // ETA was computed at build start; we no longer have the raw
+        // minutes, so leave null (the polling effect refreshes the rest).
+        buildEtaMinutes: null,
+      });
+      store.getState().setEnrichmentJobs(data.jobs ?? []);
+      store.getState().setEnrichmentSummary(data.summary);
+
+      if (data.build.structural_result) {
+        const items = (data.build.structural_result.items ?? []) as ExecutionItem[];
+        store.getState().setExecutionItems(items);
+        const result: ExecutionResult = {
+          success: data.build.structural_result.success ?? items.every(i => i.status !== 'error'),
+          spacesCreated: items.filter(i => i.type === 'space' && (i.status === 'success' || i.status === 'skipped')).length,
+          foldersCreated: items.filter(i => i.type === 'folder' && (i.status === 'success' || i.status === 'skipped')).length,
+          listsCreated: items.filter(i => i.type === 'list' && (i.status === 'success' || i.status === 'skipped')).length,
+          errors: items.filter(i => i.status === 'error').map(i => i.error || i.name),
+        };
+        store.getState().setExecutionResult(result);
+        store.getState().setBuildCompleted(true);
+      }
+
+      // The build row is in the DB and the polling effect will own its
+      // lifecycle from here on. Clear the pre-queue in-flight flag.
+      store.getState().markExecutionComplete();
+      return true;
+    } catch (err) {
+      console.warn('[useSetup] execution recovery failed:', err);
+      return false;
+    }
+  }, [workspace_id, store, EXECUTION_STALE_MS]);
+
+  // Mount-time recovery for execution.
+  useEffect(() => {
+    if (currentStep !== 4) return;
+    if (buildId) return; // Already adopted; polling effect handles it.
+    if (!persistedIsExecutingBuild) return;
+    if (!workspace_id) return;
+    if (executionInFlightRef.current) return;
+    if (executionRecoveryAttemptedRef.current) return;
+    executionRecoveryAttemptedRef.current = true;
+    void recoverExecutionFromServer();
+  }, [currentStep, buildId, persistedIsExecutingBuild, workspace_id, recoverExecutionFromServer]);
+
+  // Visibility recovery for execution.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (currentStep !== 4) return;
+      if (buildId) return;
+      if (!persistedIsExecutingBuild) return;
+      if (!workspace_id) return;
+      if (executionInFlightRef.current) return;
+      void recoverExecutionFromServer();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [currentStep, buildId, persistedIsExecutingBuild, workspace_id, recoverExecutionFromServer]);
 
   // Load existing workspace structure when arriving at step 3 (Review)
   const existingStructureLoadedRef = useRef(false);
@@ -952,12 +1227,13 @@ export function useSetup(): UseSetupReturn {
     // Reset analysis so it re-runs with fresh data, then move to step 1
     store?.getState().resetFromStep(1);
     // resetFromStep(1) cascades through steps 1-4, clearing analysis, chat,
-    // plan, and execution data. Reset all tracking refs to match.
-    analysisStartedRef.current = false;
+    // plan, and execution data (including the persisted isAnalyzing /
+    // isExecutingBuild flags). Reset the in-flight refs so the analyze
+    // effect can fire fresh on the next mount of step 1.
+    analysisInFlightRef.current = false;
     existingStructureLoadedRef.current = false;
     buildRestoredRef.current = false;
     recommendationsLoadedRef.current = false;
-    setIsAnalyzing(false);
     setExecutionProgress(null);
     setExecutionResult(null);
     setExecutionItems([]);
@@ -1177,11 +1453,19 @@ export function useSetup(): UseSetupReturn {
   }, [store]);
 
   const generateStructure = useCallback(async () => {
-    store?.getState().setIsGeneratingPlan(true);
+    if (!store) return;
+    // Same-instance guard: re-clicking Generate Structure while a fetch is
+    // already in flight is a no-op. (The persisted request id below also
+    // handles cross-instance / cross-tab cases.)
+    if (planGenerationInFlightRef.current) return;
+    planGenerationInFlightRef.current = true;
+
+    const myRequestId = newConversationId();
+    store.getState().markPlanGenerationStarted(myRequestId);
     setIsSending(true);
 
     // If rebuilding after a previous build, clear stale state
-    if (store?.getState().buildCompleted) {
+    if (store.getState().buildCompleted) {
       clearBuildState();
     }
 
@@ -1257,7 +1541,13 @@ export function useSetup(): UseSetupReturn {
         throw new Error(errData.error || `Plan generation failed (status ${res.status})`);
       }
       const { plan } = await res.json();
-      store?.getState().setPlan(plan);
+
+      // Race protection: only the latest attempt may write back. If the
+      // user clicked Generate Structure twice (or a recovery POST raced
+      // with the original), the stale request silently drops here.
+      if (store.getState().planGenerationRequestId !== myRequestId) return;
+
+      store.getState().setPlan(plan);
       const version = (history.length || 0) + (currentPlan ? 2 : 1);
       const totalLists = plan.spaces.reduce((acc: number, s: { folders: Array<{ lists: unknown[] }>; lists?: unknown[] }) => {
         const folderLists = s.folders.reduce((a: number, f: { lists: unknown[] }) => a + f.lists.length, 0);
@@ -1270,13 +1560,24 @@ export function useSetup(): UseSetupReturn {
       addMessage('assistant', `I've designed your workspace structure (v${version}) with ${structureDesc}.\n\nTake a look and let me know if you'd like any changes.`);
     } catch (err) {
       console.error('[generateStructure] Failed:', err);
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      addMessage('assistant', `Sorry, I had trouble generating a workspace plan: ${message}. Please try again.`);
-      // Go back to Describe step on failure
-      setCurrentStep(2);
+      // Same race-protection rule for failures: a stale attempt's error
+      // shouldn't yank the user back to step 2 if a fresher attempt is
+      // already underway.
+      if (store.getState().planGenerationRequestId === myRequestId) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        addMessage('assistant', `Sorry, I had trouble generating a workspace plan: ${message}. Please try again.`);
+        setCurrentStep(2);
+      }
+    } finally {
+      // Always clear the in-flight ref. Only clear the persisted in-flight
+      // state if we're still the latest attempt, so we don't blow away a
+      // newer attempt's freshly-set flag.
+      if (store.getState().planGenerationRequestId === myRequestId) {
+        store.getState().markPlanGenerationComplete();
+      }
+      planGenerationInFlightRef.current = false;
+      setIsSending(false);
     }
-    store?.getState().setIsGeneratingPlan(false);
-    setIsSending(false);
   }, [addMessage, businessDescription, businessProfile, workspaceAnalysis, store, setCurrentStep, clearBuildState, conversationId]);
 
   const enhancedSendMessage = useCallback(
@@ -1297,9 +1598,17 @@ export function useSetup(): UseSetupReturn {
   // so the enrichment continues even if the user navigates away.
   const runExecution = useCallback(async (
     structure: ExistingWorkspaceStructure | null,
-    runOptions?: { generateEnrichment?: boolean },
+    runOptions?: { generateEnrichment?: boolean; requestId?: string },
   ) => {
     if (!proposedPlan) return;
+
+    // Race-protection token threaded through from executeBuild. When set,
+    // every store write below first checks that the persisted execution
+    // request id still matches; a late stale response from a superseded
+    // attempt is silently dropped.
+    const myRequestId = runOptions?.requestId ?? null;
+    const stillLatest = () =>
+      !myRequestId || store?.getState().executionRequestId === myRequestId;
 
     // Pre-compute manual steps from the plan immediately. They never depend
     // on execution outcomes, so the Finish step is useful even if the
@@ -1328,6 +1637,9 @@ export function useSetup(): UseSetupReturn {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: 'Execution failed' }));
+        // Drop a stale failure write — a fresher attempt is owning the
+        // store now.
+        if (!stillLatest()) return;
         const structuralFromError = errData?.structural_result;
         if (structuralFromError?.items) {
           setExecutionItems(structuralFromError.items);
@@ -1351,6 +1663,9 @@ export function useSetup(): UseSetupReturn {
         structural_result: ExecutorResult;
         total_jobs: number;
       };
+
+      // Race protection: only the latest attempt may write back.
+      if (!stillLatest()) return;
 
       const executorResult = responseData.structural_result;
       const resultItems = executorResult.items;
@@ -1412,6 +1727,7 @@ export function useSetup(): UseSetupReturn {
       }
     } catch (err) {
       console.error('[useSetup] Execution failed:', err);
+      if (!stillLatest()) return;
       setExecutionProgress({
         phase: 'complete',
         current: 0,
@@ -1420,7 +1736,12 @@ export function useSetup(): UseSetupReturn {
         errors: [err instanceof Error ? err.message : 'Execution failed unexpectedly'],
       });
     } finally {
-      store?.getState().setIsExecutingBuild(false);
+      // markExecutionComplete is the new equivalent of setIsExecutingBuild(false)
+      // and additionally clears the request id. Gated so we don't blow away a
+      // newer attempt's id if we ourselves are stale.
+      if (stillLatest()) {
+        store?.getState().markExecutionComplete();
+      }
     }
   }, [proposedPlan, workspace_id, store, setCurrentStep]);
 
@@ -1442,9 +1763,13 @@ export function useSetup(): UseSetupReturn {
     isRetry?: boolean;
     generateEnrichment?: boolean;
   }) => {
-    if (!proposedPlan || isExecuting) return;
+    if (!proposedPlan || isExecuting || !store) return;
+    if (executionInFlightRef.current) return;
+    executionInFlightRef.current = true;
+
+    const myExecutionRequestId = newConversationId();
+    store.getState().markExecutionStarted(myExecutionRequestId);
     setCurrentStep(4);
-    store?.getState().setIsExecutingBuild(true);
 
     // For retries, reset progress state so UI shows building animation
     if (options?.isRetry) {
@@ -1452,10 +1777,14 @@ export function useSetup(): UseSetupReturn {
       setExecutionProgress(null);
       setExecutionItems([]);
       setExecutionResult(null);
-      store?.getState().setBuildCompleted(false);
-      store?.getState().setExecutionResult(null);
-      store?.getState().setExecutionItems([]);
+      store.getState().setBuildCompleted(false);
+      store.getState().setExecutionResult(null);
+      store.getState().setExecutionItems([]);
     }
+    // outer try/finally guarantees markExecutionComplete + ref cleanup on
+    // every exit path (including the early returns in the deletion phase
+    // and any uncaught throws inside runExecution).
+    try {
 
     // Take a pre-build snapshot (non-blocking safety net)
     fetch('/api/setup/snapshot', {
@@ -1574,11 +1903,22 @@ export function useSetup(): UseSetupReturn {
       console.error('[useSetup] Failed to refresh existing structure:', err);
     }
 
-    // ------------------------------------------------------------------
-    // Phase 3: CREATE — Execute the plan. The executor skips items that
-    // already exist and creates everything else.
-    // ------------------------------------------------------------------
-    await runExecution(freshStructure, { generateEnrichment: options?.generateEnrichment });
+      // ------------------------------------------------------------------
+      // Phase 3: CREATE — Execute the plan. The executor skips items that
+      // already exist and creates everything else.
+      // ------------------------------------------------------------------
+      await runExecution(freshStructure, {
+        generateEnrichment: options?.generateEnrichment,
+        requestId: myExecutionRequestId,
+      });
+    } finally {
+      // Only clear the persisted in-flight state if we're still the latest
+      // attempt; runExecution may already have done it.
+      if (store.getState().executionRequestId === myExecutionRequestId) {
+        store.getState().markExecutionComplete();
+      }
+      executionInFlightRef.current = false;
+    }
   }, [proposedPlan, isExecuting, workspace_id, setCurrentStep, itemsToDelete, previouslyBuiltItems, existingStructure, store, runExecution]);
 
   // Public API — thin wrappers over the unified build lifecycle
@@ -1850,8 +2190,12 @@ export function useSetup(): UseSetupReturn {
     // Clear data from this step onward and navigate to it
     store?.getState().resetFromStep(step);
     if (step === 1) {
-      analysisStartedRef.current = false;
-      setIsAnalyzing(false);
+      // resetFromStep(1) above already cleared isAnalyzing in the persisted
+      // store. Reset the in-flight ref so a fresh analysis can fire, then
+      // explicitly trigger it with force_refresh=true: the user clicked
+      // "Re-analyze", they want the AI to run again, not the cached result.
+      analysisInFlightRef.current = false;
+      void startAnalysis({ forceRefresh: true });
     }
     if (step === 2) {
       // Add a welcome-back message so the chat isn't empty
@@ -1872,13 +2216,15 @@ export function useSetup(): UseSetupReturn {
     setExecutionItems([]);
     store?.getState().setIsExecutingBuild(false);
     setIsSending(false);
-  }, [store]);
+  }, [store, startAnalysis]);
 
   const restartSetup = useCallback(() => {
     const newId = newConversationId();
     store?.getState().reset(newId);
-    // Reset all tracking refs so effects re-run with fresh data
-    analysisStartedRef.current = false;
+    // store.reset() clears all persisted flags (isAnalyzing, isGeneratingPlan,
+    // isExecutingBuild). Reset the in-flight refs so the matching effects
+    // can fire fresh on the next mount.
+    analysisInFlightRef.current = false;
     existingStructureLoadedRef.current = false;
     buildRestoredRef.current = false;
     recommendationsLoadedRef.current = false;
@@ -1887,7 +2233,6 @@ export function useSetup(): UseSetupReturn {
     setExecutionItems([]);
     store?.getState().setIsExecutingBuild(false);
     setIsSending(false);
-    setIsAnalyzing(false);
     // If ClickUp is connected, go to analysis (step 1), otherwise connect (step 0)
     if (clickUp.connected) {
       store?.getState().setStep(1);

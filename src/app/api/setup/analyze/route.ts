@@ -15,6 +15,13 @@ import { takeWorkspaceSnapshot } from '@/lib/setup/snapshots';
 // so a workspace below 0.55 credits never reaches the Anthropic call.
 const ANALYZE_CREDIT_COST = MESSAGE_CREDIT_TIERS.light;
 
+// Idempotency window: a successful analysis is cached on workspaces.last_analysis_*
+// for this long. A POST that arrives within the window returns the cached result
+// for free instead of re-running the AI. This is the recovery hatch for clients
+// that lost their original response (tab hidden, network drop, Vercel cold start
+// truncation). The "Re-analyze" button passes `force_refresh: true` to bypass.
+const ANALYSIS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export const maxDuration = 45;
 
 let _client: Anthropic | null = null;
@@ -47,20 +54,58 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Too many requests.' }, { status: 429 });
     }
 
-    const { workspace_id } = await request.json();
+    const body = await request.json();
+    const workspace_id = body?.workspace_id as string | undefined;
+    const force_refresh = body?.force_refresh === true;
     if (!workspace_id) {
       return NextResponse.json({ error: 'Missing workspace_id' }, { status: 400 });
     }
-
-    // Platform-wide credit guard: refuse before the Anthropic sub-agent
-    // call when the workspace is over its credit limit.
-    const creditCheck = await assertSufficientCredits(supabase, workspace_id, ANALYZE_CREDIT_COST);
-    if (!creditCheck.ok) return creditCheck.response;
 
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
+
+    // Idempotency / recovery short-circuit. Read the cached analysis from the
+    // workspaces row first; if it is fresh enough and the caller did not
+    // explicitly request a refresh, return it without spending credits or
+    // calling the AI. This is what makes the analyze fetch safe to re-issue
+    // after a tab-hide / network drop: the second POST returns the same
+    // result the first one would have, for free.
+    if (!force_refresh) {
+      const { data: cached } = await adminClient
+        .from('workspaces')
+        .select('last_analysis_at, last_analysis_data')
+        .eq('id', workspace_id)
+        .maybeSingle();
+      if (cached?.last_analysis_at && cached?.last_analysis_data) {
+        const ageMs = Date.now() - new Date(cached.last_analysis_at).getTime();
+        if (ageMs >= 0 && ageMs < ANALYSIS_CACHE_TTL_MS) {
+          const data = cached.last_analysis_data as {
+            summary?: string;
+            counts?: { spaces: number; folders: number; lists: number; tasks: number; members: number } | null;
+            findings?: Array<{ type: string; text: string }>;
+            recommendations?: Array<{ action: string; text: string }>;
+          };
+          return NextResponse.json({
+            summary: data.summary ?? '',
+            counts: data.counts ?? null,
+            findings: data.findings ?? [],
+            recommendations: data.recommendations ?? [],
+            error: null,
+            credits_consumed: 0,
+            cached: true,
+          });
+        }
+      }
+    }
+
+    // Platform-wide credit guard: refuse before the Anthropic sub-agent
+    // call when the workspace is over its credit limit. Run AFTER the cache
+    // check so a workspace at 0 credits can still recover its most recent
+    // analysis from cache.
+    const creditCheck = await assertSufficientCredits(supabase, workspace_id, ANALYZE_CREDIT_COST);
+    if (!creditCheck.ok) return creditCheck.response;
 
     // Step 1: Sync fresh workspace structure from ClickUp
     let structureCounts = { spaces: 0, folders: 0, lists: 0, members: 0 };
@@ -263,6 +308,28 @@ If workspace is empty: {"findings":[{"type":"info","text":"Clean slate, perfect 
       console.error('[setup/analyze] Credit deduction failed:', creditErr);
     }
 
+    // Persist the result on the workspaces row BEFORE responding so that any
+    // client recovery path (visibility return, remount, retry) sees the same
+    // result without re-running the AI. Failure to write is non-fatal: the
+    // response body still carries the result; only the recovery path will
+    // miss the cache and retry.
+    try {
+      await adminClient
+        .from('workspaces')
+        .update({
+          last_analysis_at: new Date().toISOString(),
+          last_analysis_data: {
+            summary: result.summary,
+            counts,
+            findings,
+            recommendations,
+          },
+        })
+        .eq('id', workspace_id);
+    } catch (cacheErr) {
+      console.error('[setup/analyze] cache write failed (non-fatal):', cacheErr);
+    }
+
     return NextResponse.json({
       summary: result.summary,
       counts,
@@ -270,6 +337,7 @@ If workspace is empty: {"findings":[{"type":"info","text":"Clean slate, perfect 
       recommendations,
       error: result.error || null,
       credits_consumed: creditsToCharge,
+      cached: false,
     });
   } catch (error) {
     console.error('[POST /api/setup/analyze] Error:', error);
