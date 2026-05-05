@@ -7,6 +7,12 @@ import { loadUserMemories } from '@/lib/ai/user-memory';
 import type { ImageAttachmentPayload } from '@/types/ai';
 import { runClarifier } from './clarifier';
 import { runReviser } from './reviser';
+import { runInfoHandler } from './info-handler';
+import {
+  classifyIntent,
+  formatRecentTurnsForClassifier,
+  type IntentClassification,
+} from './intent-classifier';
 import type { ClarifierAsk, WorkspaceBrief } from './contracts';
 
 const SONNET_MODEL_ID = 'claude-sonnet-4-20250514';
@@ -20,6 +26,32 @@ const SONNET_MODEL_ID = 'claude-sonnet-4-20250514';
  * misbehaves in production.
  */
 const MULTI_AGENT_SETUP = process.env.MULTI_AGENT_SETUP !== 'false';
+
+/**
+ * Phase 0 of the adaptive intent-classifier rollout. Default 'disabled' is
+ * bit-identical to current production. See .env.example for valid values.
+ *
+ *   - 'disabled' (default): classifier never runs, no behavior change
+ *   - 'shadow':             classifier runs and logs, routing is unchanged
+ *   - 'info_only':          info classifications activate the new handler;
+ *                           discovery and refine still use legacy routing
+ *   - 'enabled':            full classifier-driven routing
+ *
+ * Anything other than these four values is treated as 'disabled'.
+ */
+type IntentClassifierMode = 'disabled' | 'shadow' | 'info_only' | 'enabled';
+function readIntentClassifierMode(): IntentClassifierMode {
+  const raw = (process.env.SETUP_INTENT_CLASSIFIER ?? 'disabled').toLowerCase();
+  if (raw === 'shadow' || raw === 'info_only' || raw === 'enabled') return raw;
+  return 'disabled';
+}
+
+/**
+ * Confidence floor for acting on a classifier decision. Below this value the
+ * orchestrator falls back to legacy isReadyDraft-based routing regardless of
+ * what the classifier picked. Tuned at 0.6 based on the slim-router pattern.
+ */
+const INTENT_CONFIDENCE_FLOOR = 0.6;
 
 interface SetupperInput {
   userMessage: string;
@@ -104,7 +136,7 @@ interface SetupperResult {
   /** Phase 4: emitted only when a snapshot was successfully merged this turn. */
   snapshotDiagnostics?: SnapshotDiagnostics;
   /** Multi-agent: which role handled this turn (for telemetry). */
-  role?: 'clarifier' | 'generator-chat' | 'reviser';
+  role?: 'clarifier' | 'generator-chat' | 'reviser' | 'info';
   /** Multi-agent: the next chip-ask for the UI when the Clarifier ran. */
   ask?: ClarifierAsk;
   /** Multi-agent: the discovery brief when ready=true. */
@@ -124,7 +156,7 @@ export interface SetupperTimings {
   /** Wall-clock for the whole handleSetupMessage invocation. */
   totalMs: number;
   /** Which path ran. Helps slice averages by role. */
-  path: 'multi-agent-clarifier' | 'multi-agent-reviser' | 'legacy-sonnet';
+  path: 'multi-agent-clarifier' | 'multi-agent-reviser' | 'multi-agent-info' | 'legacy-sonnet';
   /** Workspace analyzer sub-agent (only on first turn / cold path). */
   analyzerMs?: number;
   /** The Anthropic .messages.create() call (the dominant cost). */
@@ -722,21 +754,168 @@ async function routeMultiAgentTurn(
   }
 
   const draft = input.chatStructureSnapshot;
+  const draftReady = isReadyDraft(draft);
+
+  // Default routing is exactly what legacy isReadyDraft did, so when the
+  // intent classifier is disabled, behavior is bit-identical to before.
+  // Using an explicit alias instead of a tuple-typed literal so TypeScript's
+  // flow analysis keeps the full union available for later assignment to
+  // 'info' (avoids "no overlap" errors below when classifier mode is on).
+  type RoutedAgent = 'reviser' | 'clarifier' | 'info';
+  let routedAgent: RoutedAgent = draftReady ? 'reviser' : 'clarifier';
+  let classification: IntentClassification | null = null;
+
+  const classifierMode = readIntentClassifierMode();
+  if (classifierMode !== 'disabled') {
+    classification = await classifyIntent({
+      userMessage: input.userMessage,
+      recentTurns: formatRecentTurnsForClassifier(input.conversationHistory),
+      state: {
+        workspaceHasExistingStructure: hasExistingStructureSummary(workspaceAnalysis),
+        draftHasReadyState: draftReady,
+        hasImagesThisTurn: !!input.imageAttachments?.length,
+        questionsAsked: readQuestionsAskedFromDraft(draft),
+      },
+    });
+
+    // Always log the decision so shadow-mode data is auditable in
+    // production. One JSON line per turn so logs grep cleanly.
+    console.log('[setup-intent]', JSON.stringify({
+      mode: classifierMode,
+      conversationId: input.conversationId,
+      intent: classification.intent,
+      confidence: classification.confidence,
+      reasoning: classification.reasoning,
+      fallbackUsed: classification.fallbackUsed,
+      modelCallMs: classification.modelCallMs,
+      legacyWouldHavePicked: routedAgent,
+    }));
+
+    // Only act on a confident, non-fallback classification.
+    if (!classification.fallbackUsed && classification.confidence >= INTENT_CONFIDENCE_FLOOR) {
+      const intentChoice: RoutedAgent =
+        classification.intent === 'info' ? 'info'
+          : classification.intent === 'refine' ? 'reviser'
+          : 'clarifier';
+
+      if (classifierMode === 'enabled') {
+        // 'refine' on a non-ready draft is meaningless (nothing to refine);
+        // fall back to clarifier in that edge case so we never call the
+        // Reviser without a draft. Defense in depth above what the
+        // classifier prompt itself biases for.
+        routedAgent = (intentChoice === 'reviser' && !draftReady)
+          ? 'clarifier'
+          : intentChoice;
+      } else if (classifierMode === 'info_only' && intentChoice === 'info') {
+        routedAgent = 'info';
+      }
+      // 'shadow' mode: log only, never change routing.
+    }
+  }
+
+  // Helper: roll the classifier's Anthropic cost and tokens into the chosen
+  // handler's totals so credit_usage telemetry reflects the full per-turn
+  // model spend. No-op when classifier did not run (legacy disabled path).
+  const addClassifierCostTo = (
+    handlerInputTokens: number,
+    handlerOutputTokens: number,
+    handlerCostCents: number,
+  ): { inputTokens: number; outputTokens: number; costCents: number } => {
+    if (!classification || classification.fallbackUsed) {
+      return {
+        inputTokens: handlerInputTokens,
+        outputTokens: handlerOutputTokens,
+        costCents: handlerCostCents,
+      };
+    }
+    const classifierCost = calculateAnthropicCost({
+      input_tokens: classification.inputTokens,
+      output_tokens: classification.outputTokens,
+      model: 'haiku',
+    });
+    return {
+      inputTokens: handlerInputTokens + classification.inputTokens,
+      outputTokens: handlerOutputTokens + classification.outputTokens,
+      costCents: handlerCostCents + classifierCost.totalCostCents,
+    };
+  };
 
   // Reviser path: discovery already done AND a plan exists in the draft.
-  if (isReadyDraft(draft)) {
-    const result = await runReviser({
+  if (routedAgent === 'reviser') {
+    // Defensive guard. The legacy default and the classifier guard above
+    // both prevent this from ever being false here, but if a future caller
+    // re-orders things, we never want to enter the Reviser without a draft.
+    if (!draftReady) {
+      routedAgent = 'clarifier';
+    } else {
+      const result = await runReviser({
+        userMessage: input.userMessage,
+        conversationHistory: input.conversationHistory,
+        currentPlan: draft as Record<string, unknown>,
+        brief: (draft?.brief as Record<string, unknown> | undefined) ?? null,
+        planTier: input.planTier,
+        industry: input.profileData?.industry,
+      });
+      const merged = addClassifierCostTo(
+        result.totalInputTokens,
+        result.totalOutputTokens,
+        result.anthropicCostCents,
+      );
+      const totalMs = Date.now() - handleStart;
+      const timings: SetupperTimings = {
+        totalMs,
+        path: 'multi-agent-reviser',
+        analyzerMs,
+        modelCallMs: result.modelCallMs,
+        modelStopReason: result.modelStopReason,
+        postProcessMs: Math.max(0, totalMs - result.modelCallMs - (analyzerMs ?? 0)),
+        inputTokens: result.totalInputTokens,
+        outputTokens: result.totalOutputTokens,
+      };
+      return {
+        content: result.content,
+        creditsToCharge: result.creditsToCharge,
+        totalInputTokens: merged.inputTokens,
+        totalOutputTokens: merged.outputTokens,
+        anthropicCostCents: merged.costCents,
+        toolCalls: result.toolCalls,
+        structureSnapshot: result.structureSnapshot,
+        snapshotDiagnostics: result.snapshotDiagnostics,
+        role: 'reviser',
+        ready: true,
+        timings,
+      };
+    }
+  }
+
+  // Info path: classifier-routed turns where the user asked a question or
+  // explicitly opted out of structural changes. The Info Handler is read-
+  // only on the draft (no structureSnapshot in the result), so discovery
+  // state - coverage, brief, ready, questions_asked - is preserved across
+  // info turns. The Handler echoes prior brief/ready into its result so the
+  // UI store at useSetup.ts:1113-1131 stays consistent.
+  if (routedAgent === 'info') {
+    const result = await runInfoHandler({
       userMessage: input.userMessage,
+      workspaceId: input.workspaceId,
+      userId: input.userId,
       conversationHistory: input.conversationHistory,
-      currentPlan: draft as Record<string, unknown>,
-      brief: (draft?.brief as Record<string, unknown> | undefined) ?? null,
+      profileData: input.profileData,
+      workspaceAnalysis,
+      chatStructureSnapshot: draft,
+      attachmentDigestBlock: input.attachmentDigestBlock,
+      imageAttachments: input.imageAttachments,
       planTier: input.planTier,
-      industry: input.profileData?.industry,
     });
+    const merged = addClassifierCostTo(
+      result.totalInputTokens,
+      result.totalOutputTokens,
+      result.anthropicCostCents,
+    );
     const totalMs = Date.now() - handleStart;
     const timings: SetupperTimings = {
       totalMs,
-      path: 'multi-agent-reviser',
+      path: 'multi-agent-info',
       analyzerMs,
       modelCallMs: result.modelCallMs,
       modelStopReason: result.modelStopReason,
@@ -747,14 +926,21 @@ async function routeMultiAgentTurn(
     return {
       content: result.content,
       creditsToCharge: result.creditsToCharge,
-      totalInputTokens: result.totalInputTokens,
-      totalOutputTokens: result.totalOutputTokens,
-      anthropicCostCents: result.anthropicCostCents,
+      totalInputTokens: merged.inputTokens,
+      totalOutputTokens: merged.outputTokens,
+      anthropicCostCents: merged.costCents,
       toolCalls: result.toolCalls,
-      structureSnapshot: result.structureSnapshot,
-      snapshotDiagnostics: result.snapshotDiagnostics,
-      role: 'reviser',
-      ready: true,
+      // CRITICAL: never set these on info turns. The chat route only writes
+      // to setup_drafts when structureSnapshot is set, so leaving these
+      // undefined is what guarantees the draft (coverage, brief, ready,
+      // questions_asked) survives the turn unchanged.
+      structureSnapshot: undefined,
+      snapshotDiagnostics: undefined,
+      role: 'info',
+      // Echo prior multi-agent state for UI-store stability.
+      ask: result.ask,
+      brief: result.brief,
+      ready: result.ready,
       timings,
     };
   }
@@ -773,6 +959,11 @@ async function routeMultiAgentTurn(
     imageAttachments: input.imageAttachments,
     attachmentDigestBlock: input.attachmentDigestBlock,
   });
+  const mergedClarifier = addClassifierCostTo(
+    result.totalInputTokens,
+    result.totalOutputTokens,
+    result.anthropicCostCents,
+  );
   const totalMs = Date.now() - handleStart;
   const timings: SetupperTimings = {
     totalMs,
@@ -787,9 +978,9 @@ async function routeMultiAgentTurn(
   return {
     content: result.content,
     creditsToCharge: result.creditsToCharge,
-    totalInputTokens: result.totalInputTokens,
-    totalOutputTokens: result.totalOutputTokens,
-    anthropicCostCents: result.anthropicCostCents,
+    totalInputTokens: mergedClarifier.inputTokens,
+    totalOutputTokens: mergedClarifier.outputTokens,
+    anthropicCostCents: mergedClarifier.costCents,
     toolCalls: result.toolCalls,
     structureSnapshot: result.structureSnapshot,
     snapshotDiagnostics: result.snapshotDiagnostics,
@@ -799,4 +990,26 @@ async function routeMultiAgentTurn(
     ready: result.ready,
     timings,
   };
+}
+
+/**
+ * Heuristic for the classifier state hint. Returns true when the workspace
+ * analysis contains substantive content; false when it's empty or the
+ * analyzer reported failure. Mirrors the heuristic used in setupper-prompt.ts
+ * so classifier and Setupper share a single source of truth.
+ */
+function hasExistingStructureSummary(workspaceAnalysis: string | undefined): boolean {
+  if (!workspaceAnalysis) return false;
+  const lower = workspaceAnalysis.toLowerCase();
+  if (lower.includes('empty')) return false;
+  if (lower.includes('unable to analyze')) return false;
+  if (lower.includes('no workspace data')) return false;
+  return workspaceAnalysis.trim().length > 0;
+}
+
+/** Read questions_asked off the draft, defaulting to 0 when missing. */
+function readQuestionsAskedFromDraft(snap: Record<string, unknown> | undefined): number {
+  if (!snap || typeof snap !== 'object') return 0;
+  const n = snap.questions_asked;
+  return typeof n === 'number' && n >= 0 ? n : 0;
 }

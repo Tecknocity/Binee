@@ -151,6 +151,33 @@ export interface PlanDeltaAdds {
 }
 
 // ---------------------------------------------------------------------------
+// Intent classification - Phase 0 of the adaptive routing rollout.
+//
+// A small Haiku classifier reads the user's latest message and returns one
+// of three intents. The Setupper orchestrator uses this to decide which
+// downstream agent should handle the turn:
+//   - discovery -> Clarifier (existing, Haiku)
+//   - refine    -> Reviser (existing, Sonnet)
+//   - info      -> Info Handler (new, Sonnet, read-only on the draft)
+//
+// The classifier is gated by SETUP_INTENT_CLASSIFIER. When that env var is
+// 'disabled' (the default) the classifier is never called and routing falls
+// through to the legacy isReadyDraft-based logic. See setupper-brain.ts.
+// ---------------------------------------------------------------------------
+
+export type SetupIntent = 'discovery' | 'refine' | 'info';
+
+/**
+ * Strict JSON shape the Haiku classifier emits. Anything outside this shape
+ * is rejected by the parser and the orchestrator falls back to legacy routing.
+ */
+export interface IntentClassificationOutput {
+  intent: SetupIntent;
+  confidence: number;
+  reasoning: string;
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot extension - additive fields the Clarifier adds to setup_drafts.
 // ---------------------------------------------------------------------------
 
