@@ -780,6 +780,8 @@ async function routeMultiAgentTurn(
 
     // Always log the decision so shadow-mode data is auditable in
     // production. One JSON line per turn so logs grep cleanly.
+    // messagePreview is the first 120 chars of the user message so spot-checks
+    // can be done from the log line alone without a Supabase round-trip.
     console.log('[setup-intent]', JSON.stringify({
       mode: classifierMode,
       conversationId: input.conversationId,
@@ -789,6 +791,7 @@ async function routeMultiAgentTurn(
       fallbackUsed: classification.fallbackUsed,
       modelCallMs: classification.modelCallMs,
       legacyWouldHavePicked: routedAgent,
+      messagePreview: input.userMessage.slice(0, 120),
     }));
 
     // Only act on a confident, non-fallback classification.
