@@ -203,6 +203,16 @@ export const CLICKUP_TOOL_REGISTRY: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'get_workspace_hierarchy',
+    description:
+      'Get the full workspace structure as a tree: spaces, folders within each space, and lists within each folder (plus folderless lists directly under each space). Returns names, IDs, and task counts at every level. Use this for any question about where things are located, what spaces or folders exist, which lists belong where, or to map the organizational hierarchy.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'get_weekly_summary',
     description:
       'Get a time-scoped progress summary showing tasks completed, tasks due, tasks created, and tasks currently in progress within a date range.',

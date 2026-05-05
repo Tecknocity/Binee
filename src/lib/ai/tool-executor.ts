@@ -71,6 +71,8 @@ export async function executeTool(
         return await handleMoveTask(toolInput, workspaceId);
       case 'get_workspace_summary':
         return await handleGetWorkspaceSummary(workspaceId);
+      case 'get_workspace_hierarchy':
+        return await handleGetWorkspaceHierarchy(workspaceId);
       case 'get_weekly_summary':
         return await handleGetWeeklySummary(toolInput, workspaceId);
       case 'get_team_activity':
@@ -809,6 +811,105 @@ async function handleGetWorkspaceSummary(
       lists: allLists.map((l) => l.name),
       spaces: allSpaces.map((s) => s.name),
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// get_workspace_hierarchy — full spaces -> folders -> lists tree
+// Reads from cached_spaces, cached_folders, cached_lists (kept fresh by sync
+// and webhooks). No ClickUp API call required.
+// ---------------------------------------------------------------------------
+
+async function handleGetWorkspaceHierarchy(
+  workspaceId: string,
+): Promise<Record<string, unknown>> {
+  const supabase = getSupabaseAdmin();
+
+  const [
+    { data: spaces },
+    { data: folders },
+    { data: lists },
+  ] = await Promise.all([
+    supabase
+      .from('cached_spaces')
+      .select('clickup_id, name, private')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('cached_folders')
+      .select('clickup_id, space_id, name, hidden, task_count')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('cached_lists')
+      .select('clickup_id, space_id, folder_id, name, task_count')
+      .eq('workspace_id', workspaceId),
+  ]);
+
+  const allSpaces = spaces ?? [];
+  const allFolders = folders ?? [];
+  const allLists = lists ?? [];
+
+  const foldersBySpace = new Map<string, typeof allFolders>();
+  for (const f of allFolders) {
+    const arr = foldersBySpace.get(f.space_id as string) ?? [];
+    arr.push(f);
+    foldersBySpace.set(f.space_id as string, arr);
+  }
+
+  const listsByFolder = new Map<string, typeof allLists>();
+  const folderlessListsBySpace = new Map<string, typeof allLists>();
+  for (const l of allLists) {
+    if (l.folder_id) {
+      const arr = listsByFolder.get(l.folder_id as string) ?? [];
+      arr.push(l);
+      listsByFolder.set(l.folder_id as string, arr);
+    } else {
+      const arr = folderlessListsBySpace.get(l.space_id as string) ?? [];
+      arr.push(l);
+      folderlessListsBySpace.set(l.space_id as string, arr);
+    }
+  }
+
+  const tree = allSpaces.map((space) => {
+    const spaceFolders = (foldersBySpace.get(space.clickup_id as string) ?? []).map((f) => {
+      const folderLists = (listsByFolder.get(f.clickup_id as string) ?? []).map((l) => ({
+        id: l.clickup_id,
+        name: l.name,
+        task_count: l.task_count ?? 0,
+      }));
+      return {
+        id: f.clickup_id,
+        name: f.name,
+        hidden: f.hidden ?? false,
+        task_count: f.task_count ?? 0,
+        list_count: folderLists.length,
+        lists: folderLists,
+      };
+    });
+
+    const folderlessLists = (folderlessListsBySpace.get(space.clickup_id as string) ?? []).map(
+      (l) => ({ id: l.clickup_id, name: l.name, task_count: l.task_count ?? 0 }),
+    );
+
+    return {
+      id: space.clickup_id,
+      name: space.name,
+      private: space.private ?? false,
+      folder_count: spaceFolders.length,
+      folderless_list_count: folderlessLists.length,
+      folders: spaceFolders,
+      folderless_lists: folderlessLists,
+    };
+  });
+
+  return {
+    success: true,
+    totals: {
+      spaces: allSpaces.length,
+      folders: allFolders.length,
+      lists: allLists.length,
+      folderless_lists: allLists.filter((l) => !l.folder_id).length,
+    },
+    spaces: tree,
   };
 }
 
